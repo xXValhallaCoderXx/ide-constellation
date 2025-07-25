@@ -6,7 +6,7 @@ function readSelectedText() {
 
     // Handle case when no active editor exists
     if (!activeEditor) {
-        vscode.window.showInformationMessage('No active editor found');
+        vscode.window.showInformationMessage('No active ssseditsssor found');
         return;
     }
 
@@ -81,7 +81,7 @@ export function activate(context: vscode.ExtensionContext) {
     console.log('Hello Kiro Extension is now active!');
 
     const disposable = vscode.commands.registerCommand('helloKiro.showWelcomeMessage', () => {
-        vscode.window.showInformationMessage('ssss from your custom extension! Kiro compatibility confirmed.');
+        vscode.window.showInformationMessage('Weeeesssse from your custom extension! Kiro compatibility confirmed.');
     });
 
     const readSelectedTextDisposable = vscode.commands.registerCommand('helloKiro.readSelectedText', readSelectedText);

@@ -5,8 +5,11 @@
   "version": "0.0.1",
   "main": "./out/extension.js",
   "engines": {
-    "vscode": "1.74.0"
+    "vscode": "^1.74.0"
   },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "categories": [
     "Other"
   ],
@@ -17,7 +20,7 @@
     "commands": [
       {
         "command": "helloKiro.showWelcomeMessage",
-        "title": "Hello Kiro: Shosssw Welcome Message"
+        "title": "Hello Kiro: Show Welcome Message"
       },
       {
         "command": "helloKiro.readSelectedText",
