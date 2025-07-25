@@ -14,7 +14,7 @@
   - Write unit tests for all FileSystemService methods
   - _Requirements: 5.1, 5.2, 5.4_
 
-- [ ] 3. Implement CodeParserService for AST parsing
+- [x] 3. Implement CodeParserService for AST parsing
   - Create src/services/CodeParserService.ts with parse method
   - Configure Babel parser with TypeScript support and module source type
   - Implement AST traversal targeting FunctionDeclaration nodes
