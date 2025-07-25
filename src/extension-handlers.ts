@@ -96,10 +96,12 @@ export async function handleFileSave(document: vscode.TextDocument): Promise<voi
         try {
             await updateManifest(workspaceFolder, workspaceRelativePath, symbols);
 
-            // Log extracted symbols for debugging
-            symbols.forEach(symbol => {
-                console.log(`Symbol: ${symbol.name} (${symbol.kind}) at line ${symbol.position.start.line + 1}`);
-            });
+            // Log extracted symbols for debugging (only in development)
+            if (process.env.NODE_ENV !== 'test') {
+                symbols.forEach(symbol => {
+                    console.log(`Symbol: ${symbol.name} (${symbol.kind}) at line ${symbol.position.start.line + 1}`);
+                });
+            }
         } catch (manifestError) {
             console.error('Failed to update manifest:', manifestError);
             // Don't re-throw to prevent extension crashes

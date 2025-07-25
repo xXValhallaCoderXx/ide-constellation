@@ -33,9 +33,17 @@ vi.mock('vscode', () => ({
 describe('End-to-End Integration Tests', () => {
     let mockWorkspaceFolder: vscode.WorkspaceFolder;
     let mockDocument: vscode.TextDocument;
+    let originalConsoleLog: typeof console.log;
+    let originalConsoleError: typeof console.error;
 
     beforeEach(() => {
         vi.clearAllMocks();
+
+        // Mock console methods to reduce test noise
+        originalConsoleLog = console.log;
+        originalConsoleError = console.error;
+        console.log = vi.fn();
+        console.error = vi.fn();
 
         // Setup mock workspace folder
         mockWorkspaceFolder = {
@@ -68,6 +76,9 @@ describe('End-to-End Integration Tests', () => {
     });
 
     afterEach(() => {
+        // Restore console methods
+        console.log = originalConsoleLog;
+        console.error = originalConsoleError;
         vi.restoreAllMocks();
     });
 
