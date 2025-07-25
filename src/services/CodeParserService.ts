@@ -45,6 +45,17 @@ export class CodeParserService {
                         return; // Skip anonymous functions
                     }
 
+                    // REFINEMENT: Only index top-level functions, ignore nested functions
+                    // Check if this function is declared at the module's top level
+                    const programParent = path.findParent((parent) =>
+                        parent.isProgram()
+                    );
+
+                    if (!programParent || path.parent !== programParent.node) {
+                        // This function is not at the top level - it's nested inside another function or block
+                        return;
+                    }
+
                     const functionName = node.id.name;
 
                     // Extract position information
@@ -184,6 +195,26 @@ export class CodeParserService {
                         return; // Skip destructuring patterns and other complex patterns
                     }
 
+                    // REFINEMENT: Only index top-level variables, ignore local variables inside functions
+                    // Check if this variable is declared at the module's top level
+                    const parentDeclaration = path.findParent((parent) =>
+                        parent.isVariableDeclaration()
+                    );
+
+                    if (!parentDeclaration) {
+                        return; // Skip if no parent declaration found
+                    }
+
+                    // Check if the variable declaration is at the top level (direct child of Program)
+                    const programParent = parentDeclaration.findParent((parent) =>
+                        parent.isProgram()
+                    );
+
+                    if (!programParent || parentDeclaration.parent !== programParent.node) {
+                        // This variable is not at the top level - it's inside a function, class, or other block
+                        return;
+                    }
+
                     const variableName = node.id.name;
 
                     // Extract position information
@@ -217,16 +248,12 @@ export class CodeParserService {
                     }
 
                     // Extract docstring from leading comments of the parent declaration
-                    const parentDeclaration = path.findParent((parent) =>
-                        parent.isVariableDeclaration()
-                    );
-
                     let docstring: string | null = null;
                     if (parentDeclaration && parentDeclaration.node) {
                         docstring = CodeParserService.extractDocstring(parentDeclaration.node);
                     }
 
-                    // Create CodeSymbol for the variable or arrow function
+                    // Create CodeSymbol for the top-level variable or arrow function
                     const symbol: CodeSymbol = {
                         id: `${filePath}#${variableName}`,
                         name: variableName,

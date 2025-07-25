@@ -829,6 +829,67 @@ const mustHaveInit = 'value';
                 expect(variables[2].name).toBe('mustHaveInit');
                 expect(variables[2].kind).toBe('variable');
             });
+
+            it('should only index top-level variables and ignore local variables inside functions', () => {
+                const code = `
+// Top-level variable - should be indexed
+const topLevelVar = 'global';
+
+// Top-level arrow function - should be indexed
+const topLevelArrow = () => {
+    // Local variable inside function - should NOT be indexed
+    const localVar = 'local';
+    let anotherLocal = 'another';
+    
+    // Nested function - should NOT be indexed
+    function nestedFunction() {
+        const nestedLocal = 'nested';
+        return nestedLocal;
+    }
+    
+    return localVar + anotherLocal;
+};
+
+// Top-level function - should be indexed
+function topLevelFunction() {
+    // Local variable inside function - should NOT be indexed
+    const functionLocal = 'function local';
+    
+    // Nested arrow function - should NOT be indexed
+    const nestedArrow = () => 'nested arrow';
+    
+    return functionLocal;
+}
+
+// Another top-level variable - should be indexed
+let anotherTopLevel = 'another global';
+`;
+
+                const symbols = CodeParserService.parse('src/test.ts', code);
+
+                // Should only have 4 top-level symbols: topLevelVar, topLevelArrow, topLevelFunction, anotherTopLevel
+                expect(symbols).toHaveLength(4);
+
+                const symbolNames = symbols.map(s => s.name).sort();
+                expect(symbolNames).toEqual(['anotherTopLevel', 'topLevelArrow', 'topLevelFunction', 'topLevelVar']);
+
+                // Verify kinds
+                const topLevelVar = symbols.find(s => s.name === 'topLevelVar');
+                const topLevelArrow = symbols.find(s => s.name === 'topLevelArrow');
+                const topLevelFunction = symbols.find(s => s.name === 'topLevelFunction');
+                const anotherTopLevel = symbols.find(s => s.name === 'anotherTopLevel');
+
+                expect(topLevelVar?.kind).toBe('variable');
+                expect(topLevelArrow?.kind).toBe('function');
+                expect(topLevelFunction?.kind).toBe('function');
+                expect(anotherTopLevel?.kind).toBe('variable');
+
+                // Verify that local variables are NOT present
+                const localVarNames = ['localVar', 'anotherLocal', 'nestedFunction', 'functionLocal', 'nestedArrow', 'nestedLocal'];
+                localVarNames.forEach(name => {
+                    expect(symbols.find(s => s.name === name)).toBeUndefined();
+                });
+            });
         });
 
         describe('mixed symbol types', () => {
