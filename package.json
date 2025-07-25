@@ -1,0 +1,49 @@
+{
+  "name": "ide-constellation",
+  "displayName": "Hello Kiro Extension",
+  "description": "A minimal extension to test Kiro IDE compatibility",
+  "version": "0.0.1",
+  "main": "./out/extension.js",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "repository": "git@github.com:xXValhallaCoderXx/ide-constellation.git",
+  "author": "Renate Gouveia <renate@hq.xyz>",
+  "license": "MIT",
+  "contributes": {
+    "commands": [
+      {
+        "command": "helloKiro.showWelcomeMessage",
+        "title": "Hello Kiro: Show Welcome Message"
+      },
+      {
+        "command": "helloKiro.readSelectedText",
+        "title": "Test: Read Selected Text"
+      },
+      {
+        "command": "helloKiro.writeTimestamp",
+        "title": "Test: Write Timestamp"
+      },
+      {
+        "command": "helloKiro.readKiroSpec",
+        "title": "Test: Read Kiro Spec"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "16.x",
+    "typescript": "^4.9.4"
+  }
+}
