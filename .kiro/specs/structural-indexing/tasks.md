@@ -30,7 +30,7 @@
   - Write unit tests for class and method parsing
   - _Requirements: 2.1, 2.2, 2.4_
 
-- [ ] 5. Add variable and arrow function support to CodeParserService
+- [x] 5. Add variable and arrow function support to CodeParserService
   - Add VariableDeclarator visitor for arrow functions and variables
   - Implement logic to distinguish between variables and arrow functions
   - Extract position and docstring information for variables

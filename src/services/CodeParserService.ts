@@ -164,6 +164,69 @@ export class CodeParserService {
                     };
 
                     symbols.push(symbol);
+                },
+
+                VariableDeclarator(path) {
+                    const node = path.node;
+
+                    // Extract variable name
+                    if (!t.isIdentifier(node.id)) {
+                        return; // Skip destructuring patterns and other complex patterns
+                    }
+
+                    const variableName = node.id.name;
+
+                    // Extract position information
+                    if (!node.loc) {
+                        return; // Skip if no location info
+                    }
+
+                    const position = {
+                        start: {
+                            line: node.loc.start.line - 1, // Convert to 0-based
+                            character: node.loc.start.column
+                        },
+                        end: {
+                            line: node.loc.end.line - 1, // Convert to 0-based
+                            character: node.loc.end.column
+                        }
+                    };
+
+                    // Determine if this is an arrow function or regular variable
+                    let kind: 'function' | 'variable' = 'variable';
+
+                    if (node.init) {
+                        // Check if the initializer is an arrow function
+                        if (t.isArrowFunctionExpression(node.init)) {
+                            kind = 'function';
+                        }
+                        // Check if the initializer is a function expression
+                        else if (t.isFunctionExpression(node.init)) {
+                            kind = 'function';
+                        }
+                    }
+
+                    // Extract docstring from leading comments of the parent declaration
+                    const parentDeclaration = path.findParent((parent) =>
+                        parent.isVariableDeclaration()
+                    );
+
+                    let docstring: string | null = null;
+                    if (parentDeclaration && parentDeclaration.node) {
+                        docstring = CodeParserService.extractDocstring(parentDeclaration.node);
+                    }
+
+                    // Create CodeSymbol for the variable or arrow function
+                    const symbol: CodeSymbol = {
+                        id: `${filePath}#${variableName}`,
+                        name: variableName,
+                        kind,
+                        filePath,
+                        position,
+                        docstring
+                    };
+
+                    symbols.push(symbol);
                 }
             });
 
