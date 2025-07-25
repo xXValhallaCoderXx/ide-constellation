@@ -44,7 +44,7 @@
   - Create service instances and wire up basic event flow
   - _Requirements: 1.1, 3.1, 3.2_
 
-- [ ] 7. Implement manifest reading and updating logic
+- [x] 7. Implement manifest reading and updating logic
   - Add logic to construct manifest.json URI in workspace .constellation directory
   - Implement manifest reading with empty object fallback for new workspaces
   - Add manifest updating logic that replaces file-specific symbol arrays

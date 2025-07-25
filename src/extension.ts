@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { CodeParserService } from './services/CodeParserService';
+import { FileSystemService } from './services/FileSystemService';
+import { Manifest, CodeSymbol } from './types';
 
 function readSelectedText() {
     // Get the active text editor
@@ -80,6 +82,58 @@ async function readKiroSpec() {
 }
 
 /**
+ * Constructs the URI for the manifest.json file in the workspace .constellation directory
+ * @param workspaceFolder - The workspace folder
+ * @returns URI for the manifest.json file
+ */
+function getManifestUri(workspaceFolder: vscode.WorkspaceFolder): vscode.Uri {
+    return vscode.Uri.joinPath(workspaceFolder.uri, '.constellation', 'manifest.json');
+}
+
+/**
+ * Reads the existing manifest from disk with empty object fallback for new workspaces
+ * @param workspaceFolder - The workspace folder
+ * @returns Promise resolving to the manifest object
+ */
+async function readManifest(workspaceFolder: vscode.WorkspaceFolder): Promise<Manifest> {
+    try {
+        const manifestUri = getManifestUri(workspaceFolder);
+        const manifestContent = await FileSystemService.readFile(manifestUri);
+        return JSON.parse(manifestContent) as Manifest;
+    } catch (error) {
+        // Return empty object fallback for new workspaces or read errors
+        console.log('Manifest not found or invalid, starting with empty manifest');
+        return {};
+    }
+}
+
+/**
+ * Updates the manifest with new symbols for a specific file, ensuring atomic updates
+ * @param workspaceFolder - The workspace folder
+ * @param filePath - The relative file path from workspace root
+ * @param symbols - Array of code symbols for the file
+ */
+async function updateManifest(workspaceFolder: vscode.WorkspaceFolder, filePath: string, symbols: CodeSymbol[]): Promise<void> {
+    try {
+        // Read current manifest
+        const manifest = await readManifest(workspaceFolder);
+
+        // Replace file-specific symbol arrays without affecting other files' entries
+        manifest[filePath] = symbols;
+
+        // Write updated manifest atomically
+        const manifestUri = getManifestUri(workspaceFolder);
+        const manifestContent = JSON.stringify(manifest, null, 2);
+        await FileSystemService.writeFile(manifestUri, manifestContent);
+
+        console.log(`Updated manifest with ${symbols.length} symbols for ${filePath}`);
+    } catch (error) {
+        console.error('Error updating manifest:', error);
+        throw error;
+    }
+}
+
+/**
  * Handles file save events for TypeScript files and triggers structural indexing
  * @param document - The saved text document
  */
@@ -110,8 +164,10 @@ async function handleFileSave(document: vscode.TextDocument) {
 
         console.log(`Extracted ${symbols.length} symbols from ${workspaceRelativePath}`);
 
-        // TODO: In future tasks, this will be connected to manifest reading/updating logic
-        // For now, just log the extracted symbols to verify the event flow works
+        // Update manifest with extracted symbols
+        await updateManifest(workspaceFolder, workspaceRelativePath, symbols);
+
+        // Log extracted symbols for debugging
         symbols.forEach(symbol => {
             console.log(`Symbol: ${symbol.name} (${symbol.kind}) at line ${symbol.position.start.line + 1}`);
         });
