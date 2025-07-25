@@ -36,8 +36,12 @@ describe('End-to-End Integration Tests', () => {
     let originalConsoleLog: typeof console.log;
     let originalConsoleError: typeof console.error;
 
-    beforeEach(() => {
+    beforeEach(async () => {
         vi.clearAllMocks();
+
+        // Clear file modification cache for clean test state
+        const { clearFileModificationCache } = await import('./extension-handlers');
+        clearFileModificationCache();
 
         // Mock console methods to reduce test noise
         originalConsoleLog = console.log;
@@ -57,6 +61,7 @@ describe('End-to-End Integration Tests', () => {
             uri: { fsPath: '/test/workspace/src/test.ts', scheme: 'file' } as vscode.Uri,
             fileName: '/test/workspace/src/test.ts',
             getText: vi.fn(),
+            version: 1, // Add version for file change detection
         } as any;
 
         // Mock vscode.Uri.joinPath

@@ -4,6 +4,79 @@ import { CodeParserService } from './services/CodeParserService';
 import { FileSystemService } from './services/FileSystemService';
 import { Manifest, CodeSymbol } from './types';
 
+// Performance optimization constants
+const MAX_FILE_SIZE_BYTES = 1024 * 1024; // 1MB limit to prevent memory issues
+const EXCLUDED_PATTERNS = [
+    'node_modules',
+    '.git',
+    'dist',
+    'build',
+    'out',
+    '.next',
+    'coverage',
+    '.nyc_output',
+    'lib',
+    'es',
+    'umd',
+    '.cache'
+];
+
+// Cache for file modification times to optimize manifest updates
+const fileModificationCache = new Map<string, number>();
+
+/**
+ * Clears the file modification cache (useful for testing and memory management)
+ */
+export function clearFileModificationCache(): void {
+    fileModificationCache.clear();
+}
+
+/**
+ * Checks if a file path should be excluded from indexing based on exclusion patterns
+ * @param filePath - The file path to check
+ * @returns True if the file should be excluded, false otherwise
+ */
+function shouldExcludeFile(filePath: string): boolean {
+    const normalizedPath = filePath.replace(/\\/g, '/'); // Normalize path separators
+
+    return EXCLUDED_PATTERNS.some(pattern => {
+        // Check if the path contains the excluded pattern
+        return normalizedPath.includes(`/${pattern}/`) ||
+            normalizedPath.startsWith(`${pattern}/`) ||
+            normalizedPath.includes(`\\${pattern}\\`) ||
+            normalizedPath.startsWith(`${pattern}\\`);
+    });
+}
+
+/**
+ * Checks if a file has been modified since last processing
+ * @param document - The text document to check
+ * @returns True if the file has been modified, false otherwise
+ */
+function hasFileChanged(document: vscode.TextDocument): boolean {
+    const filePath = document.uri.fsPath;
+    const lastModified = document.version; // Use document version as modification indicator
+
+    const cachedVersion = fileModificationCache.get(filePath);
+    if (cachedVersion === lastModified) {
+        return false; // File hasn't changed since last processing
+    }
+
+    // Update cache with new version
+    fileModificationCache.set(filePath, lastModified);
+    return true;
+}
+
+/**
+ * Checks if a file size is within acceptable limits for processing
+ * @param document - The text document to check
+ * @returns True if the file size is acceptable, false otherwise
+ */
+function isFileSizeAcceptable(document: vscode.TextDocument): boolean {
+    const fileSize = Buffer.byteLength(document.getText(), 'utf8');
+    return fileSize <= MAX_FILE_SIZE_BYTES;
+}
+
 /**
  * Constructs the URI for the manifest.json file in the workspace .constellation directory
  * @param workspaceFolder - The workspace folder
@@ -61,11 +134,22 @@ export async function updateManifest(workspaceFolder: vscode.WorkspaceFolder, fi
  * @param document - The saved text document
  */
 export async function handleFileSave(document: vscode.TextDocument): Promise<void> {
+    const startTime = Date.now(); // Track processing time for performance monitoring
+
     try {
         // Get workspace folder
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
         if (!workspaceFolder) {
             console.log('File is not in a workspace folder, skipping indexing');
+            return;
+        }
+
+        // Extract workspace-relative path early for filtering
+        const workspaceRelativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
+
+        // Performance optimization: Check exclusion patterns first
+        if (shouldExcludeFile(workspaceRelativePath)) {
+            console.log(`Skipping excluded file: ${workspaceRelativePath}`);
             return;
         }
 
@@ -76,9 +160,20 @@ export async function handleFileSave(document: vscode.TextDocument): Promise<voi
             return;
         }
 
-        // Extract file content and workspace-relative path from save events
+        // Performance optimization: Check file size limits
+        if (!isFileSizeAcceptable(document)) {
+            console.log(`Skipping large file (>${MAX_FILE_SIZE_BYTES} bytes): ${workspaceRelativePath}`);
+            return;
+        }
+
+        // Performance optimization: Only process changed files
+        if (!hasFileChanged(document)) {
+            console.log(`Skipping unchanged file: ${workspaceRelativePath}`);
+            return;
+        }
+
+        // Extract file content after all filters pass
         const fileContent = document.getText();
-        const workspaceRelativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
 
         console.log(`Processing TypeScript file: ${workspaceRelativePath}`);
 
@@ -105,6 +200,12 @@ export async function handleFileSave(document: vscode.TextDocument): Promise<voi
         } catch (manifestError) {
             console.error('Failed to update manifest:', manifestError);
             // Don't re-throw to prevent extension crashes
+        }
+
+        // Performance monitoring: Log processing time
+        const processingTime = Date.now() - startTime;
+        if (processingTime > 100) { // Log if processing takes more than 100ms
+            console.warn(`File processing took ${processingTime}ms for ${workspaceRelativePath}`);
         }
 
     } catch (error) {

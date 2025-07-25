@@ -1,8 +1,24 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { CodeParserService } from './CodeParserService';
 
 describe('CodeParserService', () => {
     describe('parse', () => {
+        it('should skip parsing files larger than 1MB', () => {
+            // Create a large code string (over 1MB)
+            const largeCode = 'function test() {}\n'.repeat(100000); // Creates a file > 1MB
+
+            const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
+
+            const symbols = CodeParserService.parse('large-test.ts', largeCode);
+
+            expect(symbols).toHaveLength(0);
+            expect(consoleSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Skipping parsing of large file')
+            );
+
+            consoleSpy.mockRestore();
+        });
+
         it('should extract function declarations with basic metadata', () => {
             const code = `
 function getUserData() {

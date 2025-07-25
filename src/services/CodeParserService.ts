@@ -7,6 +7,9 @@ import { CodeSymbol } from '../types';
  * Service for parsing TypeScript code and extracting code symbols using Babel AST
  */
 export class CodeParserService {
+    // Performance optimization: File size limit for parsing
+    private static readonly MAX_PARSE_SIZE_BYTES = 1024 * 1024; // 1MB limit
+
     /**
      * Parse TypeScript code and extract code symbols (functions, classes, methods)
      * @param filePath - Relative path from workspace root
@@ -15,6 +18,13 @@ export class CodeParserService {
      */
     static parse(filePath: string, code: string): CodeSymbol[] {
         const symbols: CodeSymbol[] = [];
+
+        // Performance optimization: Check file size before parsing
+        const codeSize = Buffer.byteLength(code, 'utf8');
+        if (codeSize > this.MAX_PARSE_SIZE_BYTES) {
+            console.warn(`Skipping parsing of large file (${codeSize} bytes): ${filePath}`);
+            return symbols;
+        }
 
         try {
             // Configure Babel parser with TypeScript support and module source type
