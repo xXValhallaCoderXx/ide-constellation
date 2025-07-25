@@ -15,8 +15,12 @@
       "declaration": false,
       "declarationMap": false
     },
+    "include": [
+      "src/**/*"
+    ],
     "exclude": [
       "node_modules",
-      ".vscode-test"
+      ".vscode-test",
+      "vitest.config.ts"
     ]
   }

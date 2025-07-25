@@ -22,7 +22,7 @@
   - Write unit tests for function parsing with sample TypeScript code
   - _Requirements: 1.1, 2.1, 2.2, 2.3_
 
-- [ ] 4. Extend CodeParserService for class and method parsing
+- [x] 4. Extend CodeParserService for class and method parsing
   - Add ClassDeclaration visitor to AST traversal
   - Add MethodDefinition visitor for class methods
   - Implement symbol extraction for classes and methods
