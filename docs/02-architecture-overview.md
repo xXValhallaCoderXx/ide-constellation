@@ -72,13 +72,43 @@ IDE Constellation is designed as a VS Code extension that provides intelligent c
 **Responsibilities**:
 - Extension activation and deactivation
 - Command registration and handling
-- Event listener setup (future: file save events)
-- Service coordination
+- File save event handling for structural indexing
+- Service coordination and event flow management
 
 **Key Functions**:
-- `activate()`: Registers commands and initializes extension
+- `activate()`: Registers commands, initializes extension, and sets up event listeners
 - `deactivate()`: Cleanup on extension shutdown
+- `handleFileSave()`: Processes TypeScript file save events for structural indexing
 - Command handlers for UI interactions
+
+**File Save Event Integration**:
+The extension now includes real-time structural indexing through file save event handling:
+
+```typescript
+// Event listener registration in activate()
+const fileSaveDisposable = vscode.workspace.onDidSaveTextDocument(handleFileSave);
+context.subscriptions.push(fileSaveDisposable);
+
+// File save event handler
+async function handleFileSave(document: vscode.TextDocument) {
+  // 1. Validate workspace context
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+  
+  // 2. Filter for TypeScript files (.ts, .tsx)
+  const fileExtension = path.extname(document.fileName);
+  if (fileExtension !== '.ts' && fileExtension !== '.tsx') return;
+  
+  // 3. Extract file content and workspace-relative path
+  const fileContent = document.getText();
+  const workspaceRelativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
+  
+  // 4. Parse symbols using CodeParserService
+  const symbols = CodeParserService.parse(workspaceRelativePath, fileContent);
+  
+  // 5. Log extracted symbols (future: update manifest)
+  console.log(`Extracted ${symbols.length} symbols from ${workspaceRelativePath}`);
+}
+```
 
 ### Type System (`src/types.ts`)
 
@@ -171,25 +201,31 @@ VS Code API Interaction
 User Feedback (Information Message)
 ```
 
-### Planned Implementation (Structural Indexing)
+### Current Implementation (Structural Indexing)
 
 ```
-File Save Event
+File Save Event (TypeScript files)
            ↓
-Event Handler (extension.ts)
+handleFileSave() (extension.ts)
            ↓
-File Type Validation
+Workspace & File Type Validation
+           ↓
+Content & Path Extraction
            ↓
 CodeParserService.parse()
            ↓
 Symbol Extraction (AST)
            ↓
-Manifest Update Logic
+Symbol Logging (current)
            ↓
-FileSystemService.writeFile()
+[Future: Manifest Update Logic]
            ↓
-Persistent Storage (.constellation/manifest.json)
+[Future: FileSystemService.writeFile()]
+           ↓
+[Future: Persistent Storage (.constellation/manifest.json)]
 ```
+
+**Current Status**: File save events are captured and processed, with symbols extracted and logged. The next phase will integrate manifest reading/updating logic.
 
 ## Design Patterns
 
@@ -204,8 +240,9 @@ Persistent Storage (.constellation/manifest.json)
 - **Recovery Mechanisms**: Continue operation despite individual failures
 
 ### Event-Driven Architecture
-- **VS Code Events**: File save, document change, workspace events
-- **Reactive Processing**: Respond to user actions and file changes
+- **VS Code Events**: File save events integrated for real-time indexing
+- **Reactive Processing**: Automatic symbol extraction on TypeScript file saves
+- **File Type Filtering**: Only processes .ts and .tsx files for performance
 - **Asynchronous Operations**: Non-blocking file I/O and parsing
 
 ## Technology Stack
@@ -265,8 +302,12 @@ Persistent Storage (.constellation/manifest.json)
 
 ## Future Architecture Enhancements
 
+### Implemented Features
+1. **Real-time Indexing**: File save event integration with TypeScript file filtering
+2. **Symbol Extraction**: Automatic parsing and symbol identification on file saves
+
 ### Planned Features
-1. **Real-time Indexing**: File save event integration
+1. **Manifest Persistence**: Save extracted symbols to .constellation/manifest.json
 2. **Symbol Search**: Fast symbol lookup and navigation
 3. **Cross-file Analysis**: Import/export relationship tracking
 4. **Performance Monitoring**: Parsing time and memory usage metrics

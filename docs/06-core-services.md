@@ -453,9 +453,45 @@ try {
 
 ## Service Integration Patterns
 
-### Service Composition
+### Real-time File Save Integration
 
-Services are designed to work together in larger workflows:
+The services are now integrated with VS Code's file save events for automatic structural indexing:
+
+```typescript
+// Current implementation in extension.ts
+async function handleFileSave(document: vscode.TextDocument) {
+  try {
+    // Workspace validation
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+    if (!workspaceFolder) return;
+
+    // File type filtering for TypeScript files
+    const fileExtension = path.extname(document.fileName);
+    if (fileExtension !== '.ts' && fileExtension !== '.tsx') return;
+
+    // Extract content and workspace-relative path
+    const fileContent = document.getText();
+    const workspaceRelativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
+
+    // Parse symbols using CodeParserService
+    const symbols = CodeParserService.parse(workspaceRelativePath, fileContent);
+    
+    // Log symbols (future: persist to manifest)
+    console.log(`Processing TypeScript file: ${workspaceRelativePath}`);
+    console.log(`Extracted ${symbols.length} symbols`);
+    symbols.forEach(symbol => {
+      console.log(`Symbol: ${symbol.name} (${symbol.kind}) at line ${symbol.position.start.line + 1}`);
+    });
+
+  } catch (error) {
+    console.error('Error processing file save event:', error);
+  }
+}
+```
+
+### Service Composition (Planned Enhancement)
+
+Services will work together in manifest update workflows:
 
 ```typescript
 async function updateManifest(filePath: string, code: string) {
