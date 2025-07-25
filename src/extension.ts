@@ -1,8 +1,5 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
-import { CodeParserService } from './services/CodeParserService';
-import { FileSystemService } from './services/FileSystemService';
-import { Manifest, CodeSymbol } from './types';
+import { handleFileSave } from './extension-handlers';
 
 function readSelectedText() {
     // Get the active text editor
@@ -81,101 +78,7 @@ async function readKiroSpec() {
     }
 }
 
-/**
- * Constructs the URI for the manifest.json file in the workspace .constellation directory
- * @param workspaceFolder - The workspace folder
- * @returns URI for the manifest.json file
- */
-function getManifestUri(workspaceFolder: vscode.WorkspaceFolder): vscode.Uri {
-    return vscode.Uri.joinPath(workspaceFolder.uri, '.constellation', 'manifest.json');
-}
 
-/**
- * Reads the existing manifest from disk with empty object fallback for new workspaces
- * @param workspaceFolder - The workspace folder
- * @returns Promise resolving to the manifest object
- */
-async function readManifest(workspaceFolder: vscode.WorkspaceFolder): Promise<Manifest> {
-    try {
-        const manifestUri = getManifestUri(workspaceFolder);
-        const manifestContent = await FileSystemService.readFile(manifestUri);
-        return JSON.parse(manifestContent) as Manifest;
-    } catch (error) {
-        // Return empty object fallback for new workspaces or read errors
-        console.log('Manifest not found or invalid, starting with empty manifest');
-        return {};
-    }
-}
-
-/**
- * Updates the manifest with new symbols for a specific file, ensuring atomic updates
- * @param workspaceFolder - The workspace folder
- * @param filePath - The relative file path from workspace root
- * @param symbols - Array of code symbols for the file
- */
-async function updateManifest(workspaceFolder: vscode.WorkspaceFolder, filePath: string, symbols: CodeSymbol[]): Promise<void> {
-    try {
-        // Read current manifest
-        const manifest = await readManifest(workspaceFolder);
-
-        // Replace file-specific symbol arrays without affecting other files' entries
-        manifest[filePath] = symbols;
-
-        // Write updated manifest atomically
-        const manifestUri = getManifestUri(workspaceFolder);
-        const manifestContent = JSON.stringify(manifest, null, 2);
-        await FileSystemService.writeFile(manifestUri, manifestContent);
-
-        console.log(`Updated manifest with ${symbols.length} symbols for ${filePath}`);
-    } catch (error) {
-        console.error('Error updating manifest:', error);
-        throw error;
-    }
-}
-
-/**
- * Handles file save events for TypeScript files and triggers structural indexing
- * @param document - The saved text document
- */
-async function handleFileSave(document: vscode.TextDocument) {
-    try {
-        // Get workspace folder
-        const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
-        if (!workspaceFolder) {
-            console.log('File is not in a workspace folder, skipping indexing');
-            return;
-        }
-
-        // Implement file type filtering for TypeScript files (.ts, .tsx)
-        const fileExtension = path.extname(document.fileName);
-        if (fileExtension !== '.ts' && fileExtension !== '.tsx') {
-            // Skip non-TypeScript files
-            return;
-        }
-
-        // Extract file content and workspace-relative path from save events
-        const fileContent = document.getText();
-        const workspaceRelativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
-
-        console.log(`Processing TypeScript file: ${workspaceRelativePath}`);
-
-        // Create service instances and wire up basic event flow
-        const symbols = CodeParserService.parse(workspaceRelativePath, fileContent);
-
-        console.log(`Extracted ${symbols.length} symbols from ${workspaceRelativePath}`);
-
-        // Update manifest with extracted symbols
-        await updateManifest(workspaceFolder, workspaceRelativePath, symbols);
-
-        // Log extracted symbols for debugging
-        symbols.forEach(symbol => {
-            console.log(`Symbol: ${symbol.name} (${symbol.kind}) at line ${symbol.position.start.line + 1}`);
-        });
-
-    } catch (error) {
-        console.error('Error processing file save event:', error);
-    }
-}
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Hello Kiro Extension is now active!');
