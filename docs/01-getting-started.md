@@ -86,13 +86,42 @@ In the Extension Development Host window:
    - `Test: Write Timestamp` - Inserts current timestamp at cursor
    - `Test: Read Kiro Spec` - Reads `.kiro/spec.md` file content
 
+### 7. Test Structural Indexing
+
+The extension automatically indexes TypeScript files when saved:
+
+1. **Create a TypeScript file** in your workspace (e.g., `test.ts`)
+2. **Add some code** with functions, classes, and methods:
+   ```typescript
+   /**
+    * Sample function for testing
+    */
+   function sampleFunction(param: string): string {
+     return `Hello, ${param}!`;
+   }
+   
+   class SampleClass {
+     /**
+      * Sample method
+      */
+     getValue(): number {
+       return 42;
+     }
+   }
+   ```
+3. **Save the file** (`Cmd+S` / `Ctrl+S`)
+4. **Check the manifest**: Look for `.constellation/manifest.json` in your workspace
+5. **View console output**: Check VS Code Developer Console for indexing logs
+
 ## Project Structure
 
 ```
 ide-constellation/
 ├── src/                          # Source code
 │   ├── extension.ts             # Main extension entry point
+│   ├── extension-handlers.ts    # Structural indexing logic
 │   ├── types.ts                 # Core TypeScript interfaces
+│   ├── integration.test.ts      # End-to-end integration tests
 │   └── services/                # Business logic services
 │       ├── CodeParserService.ts # AST parsing and symbol extraction
 │       ├── FileSystemService.ts # File operations with error handling
@@ -181,4 +210,4 @@ After successful setup:
 3. **Understand Contributing Guidelines** (`docs/03-contributing-guidelines.md`)
 4. **Explore Current Feature Development** (`.kiro/specs/structural-indexing/`)
 
-The extension is currently implementing structural indexing functionality that will automatically parse and index TypeScript code symbols when files are saved.
+The extension now includes **complete structural indexing functionality** that automatically parses and indexes TypeScript code symbols when files are saved, creating a persistent manifest at `.constellation/manifest.json` for fast code navigation and analysis.

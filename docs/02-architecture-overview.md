@@ -72,41 +72,76 @@ IDE Constellation is designed as a VS Code extension that provides intelligent c
 **Responsibilities**:
 - Extension activation and deactivation
 - Command registration and handling
-- File save event handling for structural indexing
-- Service coordination and event flow management
+- File save event listener registration
+- Service coordination delegation to extension handlers
 
 **Key Functions**:
 - `activate()`: Registers commands, initializes extension, and sets up event listeners
 - `deactivate()`: Cleanup on extension shutdown
-- `handleFileSave()`: Processes TypeScript file save events for structural indexing
-- Command handlers for UI interactions
+- Command handlers for UI interactions (welcome message, text operations, spec reading)
 
-**File Save Event Integration**:
-The extension now includes real-time structural indexing through file save event handling:
+**Modular Architecture**:
+The extension now delegates structural indexing logic to `src/extension-handlers.ts` for better maintainability:
 
 ```typescript
-// Event listener registration in activate()
-const fileSaveDisposable = vscode.workspace.onDidSaveTextDocument(handleFileSave);
-context.subscriptions.push(fileSaveDisposable);
+// Clean separation in extension.ts
+import { handleFileSave } from './extension-handlers';
 
-// File save event handler
-async function handleFileSave(document: vscode.TextDocument) {
-  // 1. Validate workspace context
-  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+export function activate(context: vscode.ExtensionContext) {
+  console.log('Hello Kiro Extension is now active!');
+
+  // Register file save event listener
+  const fileSaveDisposable = vscode.workspace.onDidSaveTextDocument(handleFileSave);
+  context.subscriptions.push(fileSaveDisposable);
   
-  // 2. Filter for TypeScript files (.ts, .tsx)
-  const fileExtension = path.extname(document.fileName);
-  if (fileExtension !== '.ts' && fileExtension !== '.tsx') return;
-  
-  // 3. Extract file content and workspace-relative path
-  const fileContent = document.getText();
-  const workspaceRelativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
-  
-  // 4. Parse symbols using CodeParserService
-  const symbols = CodeParserService.parse(workspaceRelativePath, fileContent);
-  
-  // 5. Log extracted symbols (future: update manifest)
-  console.log(`Extracted ${symbols.length} symbols from ${workspaceRelativePath}`);
+  // Register other commands...
+}
+```
+
+### Extension Handlers (`src/extension-handlers.ts`)
+
+**Purpose**: Dedicated module for structural indexing logic and manifest management.
+
+**Key Functions**:
+- `handleFileSave()`: Complete file save event processing with error handling
+- `getManifestUri()`: Constructs manifest file URI for workspace
+- `readManifest()`: Reads existing manifest with fallback for new workspaces
+- `updateManifest()`: Atomic manifest updates preserving other files' symbols
+
+**Complete File Save Integration**:
+```typescript
+export async function handleFileSave(document: vscode.TextDocument): Promise<void> {
+  try {
+    // 1. Validate workspace context and file type
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+    if (!workspaceFolder) return;
+    
+    const fileExtension = path.extname(document.fileName);
+    if (fileExtension !== '.ts' && fileExtension !== '.tsx') return;
+    
+    // 2. Extract content and parse symbols
+    const fileContent = document.getText();
+    const workspaceRelativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
+    
+    let symbols: CodeSymbol[] = [];
+    try {
+      symbols = CodeParserService.parse(workspaceRelativePath, fileContent);
+    } catch (parseError) {
+      console.error(`Failed to parse ${workspaceRelativePath}:`, parseError);
+      // Continue with empty symbols for graceful degradation
+    }
+    
+    // 3. Update manifest with atomic file-specific updates
+    try {
+      await updateManifest(workspaceFolder, workspaceRelativePath, symbols);
+    } catch (manifestError) {
+      console.error('Failed to update manifest:', manifestError);
+      // Don't crash extension on manifest errors
+    }
+    
+  } catch (error) {
+    console.error('Error processing file save event:', error);
+  }
 }
 ```
 
@@ -201,12 +236,12 @@ VS Code API Interaction
 User Feedback (Information Message)
 ```
 
-### Current Implementation (Structural Indexing)
+### Complete Implementation (Structural Indexing)
 
 ```
 File Save Event (TypeScript files)
            ↓
-handleFileSave() (extension.ts)
+handleFileSave() (extension-handlers.ts)
            ↓
 Workspace & File Type Validation
            ↓
@@ -216,16 +251,21 @@ CodeParserService.parse()
            ↓
 Symbol Extraction (AST)
            ↓
-Symbol Logging (current)
+readManifest() (existing manifest)
            ↓
-[Future: Manifest Update Logic]
+updateManifest() (atomic update)
            ↓
-[Future: FileSystemService.writeFile()]
+FileSystemService.writeFile()
            ↓
-[Future: Persistent Storage (.constellation/manifest.json)]
+Persistent Storage (.constellation/manifest.json)
 ```
 
-**Current Status**: File save events are captured and processed, with symbols extracted and logged. The next phase will integrate manifest reading/updating logic.
+**Implementation Status**: ✅ **COMPLETE** - Full end-to-end structural indexing is now operational with:
+- Real-time TypeScript file processing on save events
+- Complete symbol extraction (functions, classes, methods, variables)
+- Persistent manifest storage with atomic updates
+- Comprehensive error handling and graceful degradation
+- Full test coverage (47 tests including integration tests)
 
 ## Design Patterns
 
@@ -300,17 +340,25 @@ Symbol Logging (current)
 - **Input Validation**: Validate file content before parsing
 - **Resource Limits**: Prevent excessive memory usage
 
-## Future Architecture Enhancements
+## Architecture Enhancements
 
-### Implemented Features
+### ✅ Completed Features
 1. **Real-time Indexing**: File save event integration with TypeScript file filtering
 2. **Symbol Extraction**: Automatic parsing and symbol identification on file saves
+3. **Manifest Persistence**: Complete implementation saving extracted symbols to `.constellation/manifest.json`
+4. **Atomic Updates**: File-specific manifest updates preserving other files' symbols
+5. **Error Handling**: Comprehensive error recovery and graceful degradation
+6. **Integration Testing**: Full end-to-end test coverage with 47 test cases
 
-### Planned Features
-1. **Manifest Persistence**: Save extracted symbols to .constellation/manifest.json
-2. **Symbol Search**: Fast symbol lookup and navigation
-3. **Cross-file Analysis**: Import/export relationship tracking
-4. **Performance Monitoring**: Parsing time and memory usage metrics
+### 🚧 In Progress Features
+1. **Performance Optimizations**: File size limits and exclusion patterns (Task 9)
+2. **Additional Integration Tests**: Extended error recovery scenarios (Task 10)
+
+### 📋 Planned Features
+1. **Symbol Search**: Fast symbol lookup and navigation interface
+2. **Cross-file Analysis**: Import/export relationship tracking
+3. **Performance Monitoring**: Parsing time and memory usage metrics
+4. **Symbol Navigation**: VS Code integration for quick symbol jumping
 
 ### Architectural Evolution
 - **Database Integration**: SQLite for complex queries

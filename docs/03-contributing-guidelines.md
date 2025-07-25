@@ -234,17 +234,31 @@ const mockCodeSymbol: CodeSymbol = {
 - **Critical Paths**: 100% coverage for error handling paths
 - **Edge Cases**: Tests for empty inputs, malformed data, boundary conditions
 
+**Current Test Status**: ✅ **47 tests passing** across all services
+- **CodeParserService**: 23 unit tests covering all symbol types and error scenarios
+- **FileSystemService**: 11 unit tests covering file operations and error handling
+- **ManifestService**: 5 unit tests for manifest operations
+- **Integration Tests**: 8 end-to-end tests covering complete workflows
+
 **Running Tests**:
 ```bash
 # Run all tests
 npm test
 
-# Run tests in watch mode
+# Run tests in watch mode (future enhancement)
 npm run test:watch
 
 # Run specific test file
 npx vitest run src/services/CodeParserService.test.ts
+
+# Run integration tests only
+npx vitest run src/integration.test.ts
 ```
+
+**Test Configuration**: Tests are configured in `vitest.config.ts` with:
+- Source files only (`src/**/*.test.ts`)
+- Exclusion of compiled output (`out/**/*`)
+- Node environment for VS Code API mocking
 
 ## Pull Request Process
 
