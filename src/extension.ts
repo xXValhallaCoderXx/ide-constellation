@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import { CodeParserService } from './services/CodeParserService';
 
 function readSelectedText() {
     // Get the active text editor
@@ -77,8 +79,53 @@ async function readKiroSpec() {
     }
 }
 
+/**
+ * Handles file save events for TypeScript files and triggers structural indexing
+ * @param document - The saved text document
+ */
+async function handleFileSave(document: vscode.TextDocument) {
+    try {
+        // Get workspace folder
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+        if (!workspaceFolder) {
+            console.log('File is not in a workspace folder, skipping indexing');
+            return;
+        }
+
+        // Implement file type filtering for TypeScript files (.ts, .tsx)
+        const fileExtension = path.extname(document.fileName);
+        if (fileExtension !== '.ts' && fileExtension !== '.tsx') {
+            // Skip non-TypeScript files
+            return;
+        }
+
+        // Extract file content and workspace-relative path from save events
+        const fileContent = document.getText();
+        const workspaceRelativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
+
+        console.log(`Processing TypeScript file: ${workspaceRelativePath}`);
+
+        // Create service instances and wire up basic event flow
+        const symbols = CodeParserService.parse(workspaceRelativePath, fileContent);
+
+        console.log(`Extracted ${symbols.length} symbols from ${workspaceRelativePath}`);
+
+        // TODO: In future tasks, this will be connected to manifest reading/updating logic
+        // For now, just log the extracted symbols to verify the event flow works
+        symbols.forEach(symbol => {
+            console.log(`Symbol: ${symbol.name} (${symbol.kind}) at line ${symbol.position.start.line + 1}`);
+        });
+
+    } catch (error) {
+        console.error('Error processing file save event:', error);
+    }
+}
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('Hello Kiro Extension is now active!');
+
+    // Add onDidSaveTextDocument event listener in activate function
+    const fileSaveDisposable = vscode.workspace.onDidSaveTextDocument(handleFileSave);
 
     const disposable = vscode.commands.registerCommand('helloKiro.showWelcomeMessage', () => {
         vscode.window.showInformationMessage('Weeeesssse from your custom extension! Kiro compatibility confirmed.');
@@ -88,6 +135,7 @@ export function activate(context: vscode.ExtensionContext) {
     const writeTimestampDisposable = vscode.commands.registerCommand('helloKiro.writeTimestamp', writeTimestamp);
     const readKiroSpecDisposable = vscode.commands.registerCommand('helloKiro.readKiroSpec', readKiroSpec);
 
+    context.subscriptions.push(fileSaveDisposable);
     context.subscriptions.push(disposable);
     context.subscriptions.push(readSelectedTextDisposable);
     context.subscriptions.push(writeTimestampDisposable);

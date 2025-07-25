@@ -37,7 +37,7 @@
   - Write unit tests for variable and arrow function parsing
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 6. Integrate file save event handling in extension.ts
+- [x] 6. Integrate file save event handling in extension.ts
   - Add onDidSaveTextDocument event listener in activate function
   - Implement file type filtering for TypeScript files (.ts, .tsx)
   - Extract file content and workspace-relative path from save events
