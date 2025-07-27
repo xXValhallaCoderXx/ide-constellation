@@ -6,7 +6,16 @@
 		{
 			"type": "npm",
 			"script": "watch",
-			"problemMatcher": "$tsc-watch",
+			"problemMatcher": [
+				{
+					"base": "$tsc",
+					"background": {
+						"activeOnStart": true,
+						"beginsPattern": "^vite v.* building",
+						"endsPattern": "built in \\d+ms\\.|✓ built in \\d+ms"
+					}
+				}
+			],
 			"isBackground": true,
 			"presentation": {
 				"reveal": "never"
