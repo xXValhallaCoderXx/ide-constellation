@@ -2,8 +2,6 @@
 
 All notable changes to the "kiro-constellation" extension will be documented in this file.
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## [2025-01-28]
 
-## [Unreleased]
-
-- Initial release
+- Completed design specification for file-save event listener feature. The design defines a modular architecture for monitoring workspace file saves with intelligent filtering to determine which files should trigger Polaris functionality.
