@@ -9,6 +9,9 @@ export default defineConfig({
     },
     rollupOptions: {
       external: ["vscode"],
+      output: {
+        entryFileNames: "extension.cjs"
+      }
     },
     sourcemap: true,
     outDir: "out",
