@@ -24,6 +24,8 @@ export function logDocumentContent(document: vscode.TextDocument): void {
  * @param document - The VS Code text document to process
  */
 export async function processDocument(document: vscode.TextDocument): Promise<void> {
+    const startTime = Date.now();
+    
     try {
         if (!document) {
             console.error('Cannot process document: document is null or undefined');
@@ -41,23 +43,35 @@ export async function processDocument(document: vscode.TextDocument): Promise<vo
             return;
         }
 
-        console.log(`Processing document: ${filePath} (${fileExtension})`);
+        console.log(`Processing document: ${filePath} (${fileExtension}, ${fileContent.length} chars)`);
+
+        // Yield control to keep the UI responsive during processing
+        await new Promise(resolve => setImmediate(resolve));
 
         // Call CodeParserService with extracted information
+        const parsingStartTime = Date.now();
         const codeParserService = new CodeParserService();
         const extractedSymbols = codeParserService.parseCode(fileContent, filePath, fileExtension);
+        const parsingTime = Date.now() - parsingStartTime;
 
-        console.log(`Extracted ${extractedSymbols.length} symbols from ${filePath}`);
+        console.log(`Extracted ${extractedSymbols.length} symbols from ${filePath} (parsing: ${parsingTime}ms)`);
+
+        // Yield control again before manifest update
+        await new Promise(resolve => setImmediate(resolve));
 
         // Update the manifest with the extracted symbols
+        const manifestStartTime = Date.now();
         const manifestService = new ManifestService();
         await manifestService.updateFileSymbols(filePath, extractedSymbols);
+        const manifestTime = Date.now() - manifestStartTime;
 
-        console.log(`Successfully processed and indexed: ${filePath}`);
+        const totalTime = Date.now() - startTime;
+        console.log(`✅ Successfully processed and indexed: ${filePath} (total: ${totalTime}ms, parsing: ${parsingTime}ms, manifest: ${manifestTime}ms)`);
 
     } catch (error) {
+        const totalTime = Date.now() - startTime;
         // Add error handling to ensure parsing failures don't crash the extension
-        console.error(`Error processing document ${document.fileName}:`, error);
+        console.error(`❌ Error processing document ${document.fileName} (${totalTime}ms):`, error);
 
         // Fallback logging when document content cannot be accessed
         try {
