@@ -35,7 +35,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "kiro-constellation" is now active!');
+	console.log('Kiro Constellation extension activated!');
+
+	// Show a welcome message
+	vscode.window.showInformationMessage('Kiro Constellation extension activated!');
 
 	// Register file save event listener
 	const saveListener = vscode.workspace.onDidSaveTextDocument(handleDocumentSave);
@@ -49,11 +52,13 @@ export function activate(context: vscode.ExtensionContext) {
 	const disposable = vscode.commands.registerCommand('kiro-constellation.helloWorld', () => {
 		// The code you place here will be executed every time your command is executed
 		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from kiro-Seeeeee!');
+		vscode.window.showInformationMessage('Hello World from kiro-constellation!');
 	});
 
 	context.subscriptions.push(disposable);
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() { }
+export function deactivate() {
+	console.log('Kiro Constellation extension deactivated');
+}
