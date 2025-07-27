@@ -8,13 +8,13 @@ import { processDocument } from './contentProcessor';
  * Handles document save events with filtering and processing
  * @param document - The saved text document
  */
-function handleDocumentSave(document: vscode.TextDocument): void {
+async function handleDocumentSave(document: vscode.TextDocument): Promise<void> {
 	console.log("HANDLE DOCUMENT SAVE");
 	try {
 		// Apply document filtering to determine if we should process this file
 		if (shouldProcessDocument(document, DEFAULT_CONFIG)) {
-			// Process the document (currently logs content to Debug Console)
-			processDocument(document);
+			// Process the document (now includes structural indexing)
+			await processDocument(document);
 		}
 	} catch (error) {
 		// Ensure extension stability by catching all errors in save event processing

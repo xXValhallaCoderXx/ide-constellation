@@ -5,7 +5,7 @@
   - Create src/types.ts file with CodeSymbol, SymbolLocation, SymbolMetadata, and Manifest interfaces
   - _Requirements: 1.1, 2.1, 3.1, 6.1, 6.2, 6.3_
 
-- [ ] 2. Implement core parsing service
+- [x] 2. Implement core parsing service
 - [x] 2.1 Create CodeParserService class structure
   - Create src/services/CodeParserService.ts file with class definition and method signatures
   - Implement getParserOptions method to handle different file extensions (.ts, .js, .tsx, .jsx)
@@ -30,39 +30,39 @@
   - _Requirements: 1.4, 4.4, 5.4_
 
 - [ ] 3. Implement manifest file management service
-- [ ] 3.1 Create ManifestService class structure
+- [x] 3.1 Create ManifestService class structure
   - Create src/services/ManifestService.ts file with class definition and method signatures
   - Implement ensureDirectoryExists method to create .constellation directory if needed
   - Define manifest file path as /.constellation/manifest.json
   - _Requirements: 3.1, 3.2_
 
-- [ ] 3.2 Implement manifest file reading functionality
+- [x] 3.2 Implement manifest file reading functionality
   - Implement readManifest method to safely read existing manifest.json file
   - Handle cases where manifest file doesn't exist by returning empty Manifest object
   - Parse JSON content and validate structure
   - _Requirements: 3.2, 3.3_
 
-- [ ] 3.3 Implement manifest file writing functionality
+- [x] 3.3 Implement manifest file writing functionality
   - Implement writeManifest method to serialize Manifest object to formatted JSON
   - Ensure proper JSON indentation for readability
   - Handle file system errors gracefully with appropriate logging
   - _Requirements: 3.3, 3.4_
 
-- [ ] 3.4 Implement file-specific symbol updating
+- [x] 3.4 Implement file-specific symbol updating
   - Implement updateFileSymbols method to update symbols for a specific file path
   - Preserve existing data for other files while updating only current file's data
   - Update lastUpdated timestamp when making changes
   - _Requirements: 1.3, 3.3_
 
 - [ ] 4. Integrate parsing services with existing file save handler
-- [ ] 4.1 Modify contentProcessor to use CodeParserService
+- [x] 4.1 Modify contentProcessor to use CodeParserService
   - Update processDocument function in src/contentProcessor.ts to call CodeParserService
   - Extract file content, file path, and file extension from vscode.TextDocument
   - Call CodeParserService.parseCode with extracted information
   - Add error handling to ensure parsing failures don't crash the extension
   - _Requirements: 1.1, 1.4_
 
-- [ ] 4.2 Integrate ManifestService with document processing
+- [x] 4.2 Integrate ManifestService with document processing
   - Update processDocument function to call ManifestService.updateFileSymbols
   - Pass extracted symbols from CodeParserService to ManifestService
   - Ensure manifest updates happen after successful parsing
