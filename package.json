@@ -3,6 +3,7 @@
   "displayName": "kiro-constellation",
   "description": "The stellar devloper toolkit for Kiro IDE",
   "version": "0.0.1",
+  "type": "module",
   "publisher": "kiro-dev",
   "engines": {
     "vscode": "^1.90.0"
@@ -19,6 +20,14 @@
       {
         "command": "kiro-constellation.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "kiro-constellation.testAgentPrompt",
+        "title": "Test Agent Prompt"
+      },
+      {
+        "command": "constellation.testLlmConnection",
+        "title": "Test LLM Connection"
       }
     ]
   },
@@ -48,6 +57,7 @@
   },
   "dependencies": {
     "@babel/parser": "^7.28.0",
-    "@babel/traverse": "^7.28.0"
+    "@babel/traverse": "^7.28.0",
+    "dotenv": "^17.2.1"
   }
 }

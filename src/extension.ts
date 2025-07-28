@@ -1,8 +1,12 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+import * as fs from 'fs';
 import { shouldProcessDocument, DEFAULT_CONFIG } from './documentFilter';
 import { processDocument } from './contentProcessor';
+import { LLMService } from './services/LLMService';
 
 /**
  * Map to track ongoing processing tasks to handle concurrent saves gracefully
@@ -94,6 +98,47 @@ async function processDocumentAsync(document: vscode.TextDocument, startTime: nu
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+	// Load environment variables from .env file
+	try {
+		// Try multiple paths to find the .env file
+
+		// Possible .env file locations
+		const envPaths = [
+			'.env',  // Current working directory
+			path.join(__dirname, '..', '.env'),  // Parent of out directory
+			path.join(__dirname, '..', '..', '.env'),  // Workspace root
+			path.join(context.extensionPath, '.env')  // Extension path
+		];
+
+		let envLoaded = false;
+		for (const envPath of envPaths) {
+			try {
+				if (fs.existsSync(envPath)) {
+					dotenv.config({ path: envPath });
+					console.log(`Environment variables loaded successfully from: ${envPath}`);
+					envLoaded = true;
+					break;
+				}
+			} catch (pathError) {
+				console.log(`Failed to load from ${envPath}:`, pathError);
+			}
+		}
+
+		if (!envLoaded) {
+			console.warn('No .env file found in any of the expected locations');
+			console.log('Searched paths:', envPaths);
+		}
+
+		// Log environment status for debugging
+		console.log(`OPENROUTER_API_KEY present: ${!!process.env.OPENROUTER_API_KEY}`);
+		if (process.env.OPENROUTER_API_KEY) {
+			console.log(`OPENROUTER_API_KEY length: ${process.env.OPENROUTER_API_KEY.length}`);
+		}
+
+	} catch (error) {
+		console.error('Failed to load environment variables:', error);
+		vscode.window.showWarningMessage('Failed to load environment configuration. Some features may not work properly.');
+	}
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
@@ -118,6 +163,90 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(disposable);
+
+	// Register the LLM connection test command
+	const testLlmConnectionCommand = vscode.commands.registerCommand('constellation.testLlmConnection', async () => {
+		const startTime = Date.now();
+		console.log('🔄 Starting LLM connection test...');
+
+		try {
+			// Log environment check
+			const hasApiKey = !!process.env.OPENROUTER_API_KEY;
+			console.log(`Environment check - API key present: ${hasApiKey}`);
+
+			if (!hasApiKey) {
+				console.log('❌ API key not found in environment variables');
+			}
+
+			// Instantiate LLMService and call testConnection
+			console.log('📡 Initializing LLM service...');
+			const llmService = new LLMService();
+
+			console.log('🌐 Making API request to OpenRouter...');
+			const response = await llmService.testConnection();
+
+			const endTime = Date.now();
+			const duration = endTime - startTime;
+
+			// Show success message with API response
+			vscode.window.showInformationMessage(`✅ LLM Connection Test Successful: ${response}`);
+			console.log(`✅ LLM connection test completed successfully in ${duration}ms`);
+			console.log(`API Response: "${response}"`);
+
+		} catch (error) {
+			const endTime = Date.now();
+			const duration = endTime - startTime;
+
+			// Handle different types of errors with specific user feedback
+			let userMessage = 'LLM Connection Test Failed';
+			let errorDetails = '';
+
+			if (error instanceof Error) {
+				errorDetails = error.message;
+
+				// Provide more specific user guidance based on error type
+				if (error.message.includes('OPENROUTER_API_KEY')) {
+					userMessage = '🔑 Configuration Error: Missing API Key';
+					console.log('❌ Configuration error detected - missing API key');
+				} else if (error.message.includes('Authentication failed') || error.message.includes('Invalid API key')) {
+					userMessage = '🔐 Authentication Error: Invalid API Key';
+					console.log('❌ Authentication error detected - invalid API key');
+				} else if (error.message.includes('Network error') || error.message.includes('Unable to connect')) {
+					userMessage = '🌐 Network Error: Connection Failed';
+					console.log('❌ Network error detected - connection failed');
+				} else if (error.message.includes('Rate limit')) {
+					userMessage = '⏱️ Rate Limit Error: Too Many Requests';
+					console.log('❌ Rate limit error detected');
+				} else if (error.message.includes('server error') || error.message.includes('service unavailable')) {
+					userMessage = '🔧 Service Error: API Temporarily Unavailable';
+					console.log('❌ Service error detected - API unavailable');
+				} else {
+					userMessage = '❌ API Error: Request Failed';
+					console.log('❌ General API error detected');
+				}
+			} else {
+				errorDetails = 'Unknown error occurred';
+				console.log('❌ Unknown error type detected');
+			}
+
+			// Display error message to user
+			vscode.window.showErrorMessage(`${userMessage}: ${errorDetails}`);
+
+			// Comprehensive error logging for debugging
+			console.error(`❌ LLM Connection Test failed after ${duration}ms`);
+			console.error('Error details:', error);
+			console.error('Error type:', typeof error);
+			console.error('Error constructor:', error?.constructor?.name);
+
+			// Log environment state for debugging
+			console.log('🔍 Debug info:');
+			console.log(`  - API key configured: ${!!process.env.OPENROUTER_API_KEY}`);
+			console.log(`  - API key length: ${process.env.OPENROUTER_API_KEY?.length || 0}`);
+			console.log(`  - Test duration: ${duration}ms`);
+		}
+	});
+
+	context.subscriptions.push(testLlmConnectionCommand);
 }
 
 // This method is called when your extension is deactivated
