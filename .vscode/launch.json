@@ -16,7 +16,11 @@
 				"${workspaceFolder}/out/**/*.js",
 				"${workspaceFolder}/out/**/*.cjs"
 			],
-			"preLaunchTask": "${defaultBuildTask}"
+			"preLaunchTask": "${defaultBuildTask}",
+			"env": {
+				"OPENROUTER_API_KEY": "${env:OPENROUTER_API_KEY}"
+			},
+			"envFile": "${workspaceFolder}/.env"
 		}
 	]
 }

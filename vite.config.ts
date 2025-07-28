@@ -8,7 +8,7 @@ export default defineConfig({
       fileName: "extension",
     },
     rollupOptions: {
-      external: ["vscode"],
+      external: ["vscode", "path", "fs", "os", "crypto"],
       output: {
         entryFileNames: "extension.cjs"
       }
