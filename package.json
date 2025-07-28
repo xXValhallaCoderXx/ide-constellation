@@ -4,7 +4,6 @@
   "description": "The stellar devloper toolkit for Kiro IDE",
   "version": "0.0.1",
   "publisher": "kiro-dev",
-  "type": "module",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -29,9 +28,12 @@
     "watch": "vite build --watch",
     "package": "vite build --mode production",
     "lint": "eslint src",
+    "compile-tests": "tsc -p tsconfig.test.json",
+    "pretest": "npm run compile-tests",
     "test": "vscode-test"
   },
   "devDependencies": {
+    "@types/babel__traverse": "^7.20.7",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/vscode": "^1.90.0",
@@ -43,5 +45,9 @@
     "glob": "^11.0.3",
     "typescript": "^5.8.3",
     "vite": "^7.0.6"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.28.0",
+    "@babel/traverse": "^7.28.0"
   }
 }
