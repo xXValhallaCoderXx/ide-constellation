@@ -66,6 +66,13 @@ export async function processDocument(document: vscode.TextDocument): Promise<vo
         const manifestTime = Date.now() - manifestStartTime;
 
         const totalTime = Date.now() - startTime;
+        
+        // Log warnings when processing takes longer than expected based on file size
+        const expectedTimeMs = Math.max(100, fileContent.length / 1000); // ~1ms per 1000 chars, min 100ms
+        if (totalTime > expectedTimeMs * 3) { // Warn if 3x slower than expected
+            console.warn(`⚠️  Processing took longer than expected: ${filePath} (${totalTime}ms vs expected ~${Math.round(expectedTimeMs)}ms for ${fileContent.length} chars)`);
+        }
+        
         console.log(`✅ Successfully processed and indexed: ${filePath} (total: ${totalTime}ms, parsing: ${parsingTime}ms, manifest: ${manifestTime}ms)`);
 
     } catch (error) {

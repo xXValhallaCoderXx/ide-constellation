@@ -77,13 +77,13 @@
   - _Requirements: 5.1, 5.2, 5.3_
 
 - [ ] 5. Add comprehensive error handling and logging
-- [ ] 5.1 Implement error boundaries in file save event handler
+- [x] 5.1 Implement error boundaries in file save event handler
   - Update handleDocumentSave function to catch and log all parsing-related errors
   - Ensure extension stability by preventing any parsing errors from crashing the extension
   - Add fallback logging when document information cannot be accessed
   - _Requirements: 1.4, 4.4_
 
-- [ ] 5.2 Add performance monitoring and timeout handling
+- [x] 5.2 Add performance monitoring and timeout handling
   - Implement timeout mechanism for parsing operations to prevent blocking
   - Add performance logging to track parsing duration for different file sizes
   - Log warnings when parsing takes longer than expected
