@@ -34,21 +34,21 @@
   - Update CodeSymbol objects with the structured documentation data
   - _Requirements: 2.1, 2.2, 2.3, 5.4_
 
-- [-] 6. Integrate DocGeneratorService into the main workflow
+- [x] 6. Integrate DocGeneratorService into the main workflow
   - Call DocGeneratorService.generateFileDoc() with the complete symbol list
   - Implement file path mapping from source files to documentation files
   - Write generated markdown content to appropriate files in `/docs/api/` directory
   - Add error handling for file system operations and directory creation
   - _Requirements: 1.1, 1.3, 1.4, 3.4_
 
-- [ ] 7. Implement professional markdown templates and formatting
+- [x] 7. Implement professional markdown templates and formatting
   - Enhance DocGeneratorService with detailed function documentation sections
   - Create markdown tables for parameters and return values using proper formatting
   - Add source code sections with TypeScript syntax highlighting
   - Implement proper header hierarchy and section organization
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 8. Add file deletion handler for documentation synchronization
+- [-] 8. Add file deletion handler for documentation synchronization
   - Register `vscode.workspace.onDidDeleteFiles` event listener in extension.ts
   - Implement logic to calculate corresponding documentation file paths
   - Add file deletion functionality using `vscode.workspace.fs.delete()`
