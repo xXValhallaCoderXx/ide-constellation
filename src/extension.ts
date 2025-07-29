@@ -8,7 +8,7 @@ import { shouldProcessDocument, DEFAULT_CONFIG } from './documentFilter';
 import { processDocument } from './contentProcessor';
 import { CodeParserService } from './services/CodeParserService';
 import { DocGeneratorService } from './services/DocGeneratorService';
-import { CodeSymbol } from './types';
+import { CodeSymbol, ParsedJSDoc } from './types';
 
 /**
  * Map to track ongoing processing tasks to handle concurrent saves gracefully
@@ -125,12 +125,21 @@ async function processFileDocumentationAsync(document: vscode.TextDocument, star
 		const { documentedSymbols, undocumentedSymbols } = classifySymbols(allSymbols);
 		console.log(`📋 Symbol classification: ${documentedSymbols.length} documented, ${undocumentedSymbols.length} undocumented`);
 
+		// Process undocumented symbols with AI-powered documentation generation
+		let processedSymbols = [...documentedSymbols];
+		if (undocumentedSymbols.length > 0) {
+			console.log(`🤖 Starting AI-powered documentation generation for ${undocumentedSymbols.length} undocumented symbols`);
+			const aiDocumentedSymbols = await generateAIDocumentationForSymbols(undocumentedSymbols);
+			processedSymbols = [...documentedSymbols, ...aiDocumentedSymbols];
+			console.log(`✅ AI documentation generation completed. Total symbols: ${processedSymbols.length}`);
+		}
+
 		// Create documentation directory structure (/docs/api/) if it doesn't exist
 		const docGeneratorService = new DocGeneratorService();
 		await docGeneratorService.ensureDocsDirectory();
 
-		// Generate and write file-level documentation
-		const markdownContent = docGeneratorService.generateFileDoc(filePath, allSymbols);
+		// Generate and write file-level documentation with processed symbols
+		const markdownContent = docGeneratorService.generateFileDoc(filePath, processedSymbols);
 		await docGeneratorService.writeDocumentationFile(filePath, markdownContent);
 
 		const endTime = Date.now();
@@ -169,6 +178,137 @@ function classifySymbols(symbols: CodeSymbol[]): { documentedSymbols: CodeSymbol
 	});
 
 	return { documentedSymbols, undocumentedSymbols };
+}
+
+/**
+ * Generate AI-powered documentation for undocumented symbols using concurrent processing
+ * @param undocumentedSymbols - Array of symbols that need documentation
+ * @returns Promise<CodeSymbol[]> Array of symbols with AI-generated documentation
+ */
+async function generateAIDocumentationForSymbols(undocumentedSymbols: CodeSymbol[]): Promise<CodeSymbol[]> {
+	console.log(`🤖 Starting concurrent AI documentation generation for ${undocumentedSymbols.length} symbols`);
+
+	try {
+		// Import LLMService dynamically to handle potential initialization errors
+		const { LLMService } = await import('./services/LLMService');
+		const llmService = new LLMService();
+
+		// Process symbols concurrently using Promise.all for efficiency
+		const documentationPromises = undocumentedSymbols.map(async (symbol, index) => {
+			try {
+				console.log(`🔄 Processing symbol ${index + 1}/${undocumentedSymbols.length}: ${symbol.name} (${symbol.type})`);
+
+				// Only generate documentation for symbols that have source text
+				if (!symbol.sourceText || symbol.sourceText.trim().length === 0) {
+					console.warn(`⚠️ Skipping symbol ${symbol.name}: no source text available`);
+					return symbol; // Return original symbol unchanged
+				}
+
+				// Generate raw JSDoc using LLMService
+				const rawJSDoc = await llmService.generateDocstring(symbol.sourceText);
+				console.log(`📝 Generated raw JSDoc for ${symbol.name}: ${rawJSDoc.substring(0, 50)}...`);
+
+				// Parse raw JSDoc into structured format using JSDoc parser
+				const parsedJSDoc = llmService.parseRawDocstring(rawJSDoc);
+				console.log(`🔍 Parsed JSDoc for ${symbol.name}: description length ${parsedJSDoc.description.length}, ${parsedJSDoc.params.length} params`);
+
+				// Convert parsed JSDoc back to JSDoc comment format for storage
+				const formattedJSDoc = formatParsedJSDocToComment(parsedJSDoc);
+
+				// Update symbol with AI-generated documentation
+				const updatedSymbol: CodeSymbol = {
+					...symbol,
+					documentation: formattedJSDoc
+				};
+
+				console.log(`✅ Successfully generated documentation for ${symbol.name}`);
+				return updatedSymbol;
+
+			} catch (error) {
+				console.error(`❌ Failed to generate documentation for symbol ${symbol.name}:`, error);
+
+				// Return original symbol with a fallback documentation note
+				const fallbackSymbol: CodeSymbol = {
+					...symbol,
+					documentation: `/**\n * ${symbol.name} - Documentation generation failed, manual review required\n * @todo Add proper documentation\n */`
+				};
+
+				return fallbackSymbol;
+			}
+		});
+
+		// Wait for all documentation generation to complete
+		console.log(`⏳ Waiting for ${documentationPromises.length} concurrent documentation tasks to complete...`);
+		const documentedSymbols = await Promise.all(documentationPromises);
+
+		// Count successful vs failed generations
+		const successfulCount = documentedSymbols.filter(symbol =>
+			symbol.documentation && !symbol.documentation.includes('Documentation generation failed')
+		).length;
+		const failedCount = documentedSymbols.length - successfulCount;
+
+		console.log(`✅ AI documentation generation completed: ${successfulCount} successful, ${failedCount} failed`);
+
+		return documentedSymbols;
+
+	} catch (error) {
+		console.error('❌ Critical error in AI documentation generation:', error);
+
+		// Return original symbols with fallback documentation
+		const fallbackSymbols = undocumentedSymbols.map(symbol => ({
+			...symbol,
+			documentation: `/**\n * ${symbol.name} - AI documentation service unavailable\n * @todo Add proper documentation\n */`
+		}));
+
+		console.log(`🔄 Returning ${fallbackSymbols.length} symbols with fallback documentation`);
+		return fallbackSymbols;
+	}
+}
+
+/**
+ * Convert parsed JSDoc structure back to JSDoc comment format
+ * @param parsedJSDoc - Structured JSDoc data
+ * @returns string Formatted JSDoc comment
+ */
+function formatParsedJSDocToComment(parsedJSDoc: ParsedJSDoc): string {
+	const lines: string[] = ['/**'];
+
+	// Add description
+	if (parsedJSDoc.description) {
+		lines.push(` * ${parsedJSDoc.description}`);
+	}
+
+	// Add empty line before parameters if we have both description and parameters
+	if (parsedJSDoc.description && parsedJSDoc.params.length > 0) {
+		lines.push(' *');
+	}
+
+	// Add parameters
+	parsedJSDoc.params.forEach(param => {
+		const typeStr = param.type ? `{${param.type}} ` : '';
+		lines.push(` * @param ${typeStr}${param.name} ${param.description}`);
+	});
+
+	// Add return information
+	if (parsedJSDoc.returns) {
+		const typeStr = parsedJSDoc.returns.type ? `{${parsedJSDoc.returns.type}} ` : '';
+		lines.push(` * @returns ${typeStr}${parsedJSDoc.returns.description}`);
+	}
+
+	// Add examples if present
+	if (parsedJSDoc.examples && parsedJSDoc.examples.length > 0) {
+		parsedJSDoc.examples.forEach(example => {
+			lines.push(' * @example');
+			// Split example into lines and add proper indentation
+			example.split('\n').forEach(exampleLine => {
+				lines.push(` * ${exampleLine}`);
+			});
+		});
+	}
+
+	lines.push(' */');
+
+	return lines.join('\n');
 }
 
 // This method is called when your extension is activated

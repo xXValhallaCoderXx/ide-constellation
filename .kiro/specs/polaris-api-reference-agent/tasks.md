@@ -27,14 +27,14 @@
   - Create documentation directory structure (`/docs/api/`) if it doesn't exist
   - _Requirements: 1.1, 1.2, 1.3, 5.1_
 
-- [ ] 5. Implement AI-powered documentation generation for undocumented symbols
+- [x] 5. Implement AI-powered documentation generation for undocumented symbols
   - Add concurrent processing of undocumented symbols using Promise.all and LLMService
   - Integrate the JSDoc parser to convert raw LLM output into structured format
   - Merge AI-generated documentation with existing JSDoc comments
   - Update CodeSymbol objects with the structured documentation data
   - _Requirements: 2.1, 2.2, 2.3, 5.4_
 
-- [ ] 6. Integrate DocGeneratorService into the main workflow
+- [-] 6. Integrate DocGeneratorService into the main workflow
   - Call DocGeneratorService.generateFileDoc() with the complete symbol list
   - Implement file path mapping from source files to documentation files
   - Write generated markdown content to appropriate files in `/docs/api/` directory
