@@ -1,3 +1,5 @@
+import { ParsedJSDoc } from '../types';
+
 // Request interfaces
 interface OpenRouterMessage {
     role: string;
@@ -229,6 +231,266 @@ ${codeSnippet}
                 throw new Error(`Unexpected error during API connection test: ${String(error)}`);
             }
         }
+    }
+
+    /**
+     * Parse raw JSDoc string into structured components
+     * @param rawString The raw JSDoc comment string to parse
+     * @returns ParsedJSDoc Structured JSDoc components
+     */
+    public parseRawDocstring(rawString: string): ParsedJSDoc {
+        console.log('🔧 LLMService: Starting JSDoc parsing process...');
+        console.log('📝 LLMService: Raw JSDoc length:', rawString.length, 'characters');
+        console.log('📋 LLMService: Raw JSDoc preview:', rawString.substring(0, 100) + (rawString.length > 100 ? '...' : ''));
+
+        try {
+            // Validate input
+            if (!rawString || typeof rawString !== 'string') {
+                console.warn('⚠️ LLMService: Invalid input - empty or non-string JSDoc');
+                throw new Error('Invalid input: JSDoc string is required');
+            }
+
+            // Clean and normalize the JSDoc string
+            const cleanedJSDoc = this.cleanJSDocString(rawString);
+            console.log('🧹 LLMService: JSDoc cleaned successfully');
+
+            // Extract description
+            const description = this.extractDescription(cleanedJSDoc);
+            console.log('📝 LLMService: Description extracted:', description.substring(0, 50) + (description.length > 50 ? '...' : ''));
+
+            // Extract parameters
+            const params = this.extractParameters(cleanedJSDoc);
+            console.log('📋 LLMService: Parameters extracted:', params.length, 'parameters');
+
+            // Extract return information
+            const returns = this.extractReturns(cleanedJSDoc);
+            console.log('🔄 LLMService: Returns extracted:', returns ? 'yes' : 'no');
+
+            // Extract examples (optional)
+            const examples = this.extractExamples(cleanedJSDoc);
+            console.log('📚 LLMService: Examples extracted:', examples.length, 'examples');
+
+            const result: ParsedJSDoc = {
+                description,
+                params,
+                returns,
+                examples: examples.length > 0 ? examples : undefined
+            };
+
+            console.log('✅ LLMService: JSDoc parsing completed successfully');
+            console.log('📊 LLMService: Parsing results summary:');
+            console.log('  - Description length:', result.description.length);
+            console.log('  - Parameters count:', result.params.length);
+            console.log('  - Has returns:', !!result.returns);
+            console.log('  - Examples count:', result.examples?.length || 0);
+
+            return result;
+        } catch (error) {
+            console.error('❌ LLMService: Error during JSDoc parsing:', error);
+
+            if (error instanceof Error) {
+                console.error('⚠️ LLMService: Known error type:', error.constructor.name);
+                console.error('📋 LLMService: Error message:', error.message);
+
+                // Re-throw validation errors
+                if (error.message.includes('Invalid input')) {
+                    throw error;
+                }
+            }
+
+            // For parsing errors, return a minimal valid structure
+            console.log('🔄 LLMService: Generating fallback parsed JSDoc due to error...');
+            const fallbackResult: ParsedJSDoc = {
+                description: 'Documentation parsing failed - manual review required',
+                params: [],
+                returns: undefined,
+                examples: undefined
+            };
+
+            console.log('✅ LLMService: Fallback parsed JSDoc generated');
+            return fallbackResult;
+        }
+    }
+
+    /**
+     * Clean and normalize JSDoc string for parsing
+     * @param rawJSDoc Raw JSDoc string
+     * @returns string Cleaned JSDoc content
+     */
+    private cleanJSDocString(rawJSDoc: string): string {
+        console.log('🧹 LLMService: Cleaning JSDoc string...');
+
+        // Remove /** and */ markers
+        let cleaned = rawJSDoc.replace(/^\/\*\*/, '').replace(/\*\/$/, '');
+
+        // Split into lines and clean each line
+        const lines = cleaned.split('\n').map(line => {
+            // Remove leading asterisks and whitespace
+            return line.replace(/^\s*\*\s?/, '').trim();
+        }).filter(line => line.length > 0); // Remove empty lines
+
+        // Join back into a single string
+        const result = lines.join('\n');
+
+        console.log('✅ LLMService: JSDoc string cleaned');
+        console.log('📏 LLMService: Original length:', rawJSDoc.length, '-> Cleaned length:', result.length);
+
+        return result;
+    }
+
+    /**
+     * Extract description from cleaned JSDoc content
+     * @param cleanedJSDoc Cleaned JSDoc content
+     * @returns string The extracted description
+     */
+    private extractDescription(cleanedJSDoc: string): string {
+        console.log('📝 LLMService: Extracting description...');
+
+        // Split content by lines
+        const lines = cleanedJSDoc.split('\n');
+        const descriptionLines: string[] = [];
+
+        // Collect lines until we hit the first @tag
+        for (const line of lines) {
+            if (line.startsWith('@')) {
+                break;
+            }
+            descriptionLines.push(line);
+        }
+
+        // Join description lines and clean up
+        const description = descriptionLines.join(' ').trim();
+
+        console.log('📝 LLMService: Description extraction completed');
+        console.log('📏 LLMService: Description length:', description.length);
+
+        return description || 'No description provided';
+    }
+
+    /**
+     * Extract parameter information from JSDoc content
+     * @param cleanedJSDoc Cleaned JSDoc content
+     * @returns Array of parameter objects
+     */
+    private extractParameters(cleanedJSDoc: string): Array<{ name: string, type?: string, description: string }> {
+        console.log('📋 LLMService: Extracting parameters...');
+
+        const params: Array<{ name: string, type?: string, description: string }> = [];
+        const lines = cleanedJSDoc.split('\n');
+
+        for (const line of lines) {
+            // Match @param patterns: @param {type} name description or @param name description
+            const paramWithTypeMatch = line.match(/^@param\s+\{([^}]+)\}\s+(\w+)\s*(.*)/);
+            const paramWithoutTypeMatch = line.match(/^@param\s+(\w+)\s*(.*)/);
+
+            if (paramWithTypeMatch) {
+                const [, type, name, description] = paramWithTypeMatch;
+                params.push({
+                    name: name.trim(),
+                    type: type.trim(),
+                    description: description.trim() || 'No description provided'
+                });
+                console.log('📋 LLMService: Found parameter with type:', name, ':', type);
+            } else if (paramWithoutTypeMatch) {
+                const [, name, description] = paramWithoutTypeMatch;
+                params.push({
+                    name: name.trim(),
+                    description: description.trim() || 'No description provided'
+                });
+                console.log('📋 LLMService: Found parameter without type:', name);
+            }
+        }
+
+        console.log('✅ LLMService: Parameter extraction completed, found', params.length, 'parameters');
+        return params;
+    }
+
+    /**
+     * Extract return information from JSDoc content
+     * @param cleanedJSDoc Cleaned JSDoc content
+     * @returns Return object or undefined
+     */
+    private extractReturns(cleanedJSDoc: string): { type?: string, description: string } | undefined {
+        console.log('🔄 LLMService: Extracting return information...');
+
+        const lines = cleanedJSDoc.split('\n');
+
+        for (const line of lines) {
+            // Match @returns or @return patterns: @returns {type} description or @returns description
+            const returnsWithTypeMatch = line.match(/^@returns?\s+\{([^}]+)\}\s*(.*)/);
+            const returnsWithoutTypeMatch = line.match(/^@returns?\s+(.*)/);
+
+            if (returnsWithTypeMatch) {
+                const [, type, description] = returnsWithTypeMatch;
+                console.log('🔄 LLMService: Found return with type:', type);
+                return {
+                    type: type.trim(),
+                    description: description.trim() || 'No description provided'
+                };
+            } else if (returnsWithoutTypeMatch) {
+                const [, description] = returnsWithoutTypeMatch;
+                console.log('🔄 LLMService: Found return without type');
+                return {
+                    description: description.trim() || 'No description provided'
+                };
+            }
+        }
+
+        console.log('🔄 LLMService: No return information found');
+        return undefined;
+    }
+
+    /**
+     * Extract example code from JSDoc content
+     * @param cleanedJSDoc Cleaned JSDoc content
+     * @returns Array of example strings
+     */
+    private extractExamples(cleanedJSDoc: string): string[] {
+        console.log('📚 LLMService: Extracting examples...');
+
+        const examples: string[] = [];
+        const lines = cleanedJSDoc.split('\n');
+        let inExample = false;
+        let currentExample: string[] = [];
+
+        for (const line of lines) {
+            if (line.startsWith('@example')) {
+                // Start of a new example
+                if (inExample && currentExample.length > 0) {
+                    // Save previous example
+                    examples.push(currentExample.join('\n').trim());
+                }
+                inExample = true;
+                currentExample = [];
+
+                // Check if there's content on the same line as @example
+                const exampleContent = line.replace(/^@example\s*/, '');
+                if (exampleContent) {
+                    currentExample.push(exampleContent);
+                }
+                console.log('📚 LLMService: Found @example tag');
+            } else if (inExample) {
+                if (line.startsWith('@')) {
+                    // End of example, start of new tag
+                    if (currentExample.length > 0) {
+                        examples.push(currentExample.join('\n').trim());
+                        currentExample = [];
+                    }
+                    inExample = false;
+                } else {
+                    // Continue collecting example content
+                    currentExample.push(line);
+                }
+            }
+        }
+
+        // Don't forget the last example if we were still in one
+        if (inExample && currentExample.length > 0) {
+            examples.push(currentExample.join('\n').trim());
+        }
+
+        console.log('✅ LLMService: Example extraction completed, found', examples.length, 'examples');
+        return examples;
     }
 
     /**

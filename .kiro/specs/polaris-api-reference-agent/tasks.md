@@ -6,21 +6,21 @@
   - Modify symbol extraction methods to include the complete source code of functions/classes
   - _Requirements: 1.1, 5.2_
 
-- [ ] 2. Create DocGeneratorService for markdown documentation generation
+- [x] 2. Create DocGeneratorService for markdown documentation generation
   - Create new `src/services/DocGeneratorService.ts` with file-level documentation generation
   - Implement `generateFileDoc(filePath: string, symbols: CodeSymbol[]): string` method
   - Create markdown templates for functions, classes, interfaces, and other symbol types
   - Add utility methods for formatting parameters, return values, and source code sections
   - _Requirements: 1.1, 3.1, 3.2, 3.3_
 
-- [ ] 3. Implement JSDoc parsing capabilities in LLMService
+- [x] 3. Implement JSDoc parsing capabilities in LLMService
   - Add `parseRawDocstring(rawString: string): ParsedJSDoc` method to LLMService
   - Create ParsedJSDoc interface to structure extracted JSDoc components
   - Implement parsing logic to extract description, @param tags, @returns tags from raw strings
   - Add validation and error handling for malformed JSDoc strings
   - _Requirements: 2.3, 5.4_
 
-- [ ] 4. Create file-level documentation workflow in extension.ts
+- [x] 4. Create file-level documentation workflow in extension.ts
   - Modify the `handleDocumentSave` function to implement the new file-level workflow
   - Add logic to parse entire files and extract all symbols using CodeParserService
   - Implement symbol classification to separate documented from undocumented symbols

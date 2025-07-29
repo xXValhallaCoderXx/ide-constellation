@@ -47,6 +47,32 @@ export interface SymbolMetadata {
 }
 
 /**
+ * Parsed JSDoc components extracted from raw JSDoc strings
+ */
+export interface ParsedJSDoc {
+    /** Main description of the function/symbol */
+    description: string;
+    /** Parameter documentation */
+    params: Array<{
+        /** Parameter name */
+        name: string;
+        /** Parameter type (optional) */
+        type?: string;
+        /** Parameter description */
+        description: string;
+    }>;
+    /** Return value documentation (optional) */
+    returns?: {
+        /** Return type (optional) */
+        type?: string;
+        /** Return description */
+        description: string;
+    };
+    /** Code examples (optional) */
+    examples?: string[];
+}
+
+/**
  * Structure of the manifest.json file
  */
 export interface Manifest {

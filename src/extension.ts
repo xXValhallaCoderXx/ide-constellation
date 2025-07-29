@@ -6,7 +6,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { shouldProcessDocument, DEFAULT_CONFIG } from './documentFilter';
 import { processDocument } from './contentProcessor';
-import { LLMService } from './services/LLMService';
+import { CodeParserService } from './services/CodeParserService';
+import { DocGeneratorService } from './services/DocGeneratorService';
+import { CodeSymbol } from './types';
 
 /**
  * Map to track ongoing processing tasks to handle concurrent saves gracefully
@@ -34,8 +36,8 @@ async function handleDocumentSave(document: vscode.TextDocument): Promise<void> 
 				console.log(`Previous processing completed for: ${filePath}`);
 			}
 
-			// Process the document asynchronously without blocking the save operation
-			const processingTask = processDocumentAsync(document, startTime);
+			// Process the document with new file-level documentation workflow
+			const processingTask = processFileDocumentationAsync(document, startTime);
 			processingTasks.set(filePath, processingTask);
 
 			// Clean up the tracking when processing completes
@@ -93,6 +95,80 @@ async function processDocumentAsync(document: vscode.TextDocument, startTime: nu
 		
 		// Don't rethrow - we want background processing errors to be logged but not crash the extension
 	}
+}
+
+/**
+ * Processes a document for file-level documentation generation
+ * @param document - The saved text document
+ * @param startTime - When the save event started
+ */
+async function processFileDocumentationAsync(document: vscode.TextDocument, startTime: number): Promise<void> {
+	const filePath = document.fileName;
+	const processingStartTime = Date.now();
+
+	try {
+		console.log(`📝 Starting file-level documentation processing: ${filePath}`);
+
+		// Continue with existing structural indexing for backward compatibility
+		await processDocument(document);
+
+		// Parse entire file and extract all symbols using CodeParserService
+		const codeParserService = new CodeParserService();
+		const fileExtension = path.extname(filePath);
+		const sourceContent = document.getText();
+
+		console.log(`🔍 Parsing symbols from ${filePath} (${sourceContent.length} characters)`);
+		const allSymbols = codeParserService.parseCode(sourceContent, filePath, fileExtension);
+		console.log(`📊 Extracted ${allSymbols.length} symbols from ${filePath}`);
+
+		// Implement symbol classification to separate documented from undocumented symbols
+		const { documentedSymbols, undocumentedSymbols } = classifySymbols(allSymbols);
+		console.log(`📋 Symbol classification: ${documentedSymbols.length} documented, ${undocumentedSymbols.length} undocumented`);
+
+		// Create documentation directory structure (/docs/api/) if it doesn't exist
+		const docGeneratorService = new DocGeneratorService();
+		await docGeneratorService.ensureDocsDirectory();
+
+		// Generate and write file-level documentation
+		const markdownContent = docGeneratorService.generateFileDoc(filePath, allSymbols);
+		await docGeneratorService.writeDocumentationFile(filePath, markdownContent);
+
+		const endTime = Date.now();
+		const totalTime = endTime - startTime;
+		const processingTime = endTime - processingStartTime;
+
+		console.log(`✅ File-level documentation completed: ${filePath} (total: ${totalTime}ms, processing: ${processingTime}ms)`);
+
+	} catch (error) {
+		const endTime = Date.now();
+		const totalTime = endTime - startTime;
+		const processingTime = endTime - processingStartTime;
+
+		console.error(`❌ File-level documentation failed: ${filePath} (total: ${totalTime}ms, processing: ${processingTime}ms)`, error);
+
+		// Don't rethrow - we want background processing errors to be logged but not crash the extension
+	}
+}
+
+/**
+ * Classifies symbols into documented and undocumented categories
+ * @param symbols - Array of code symbols to classify
+ * @returns Object containing arrays of documented and undocumented symbols
+ */
+function classifySymbols(symbols: CodeSymbol[]): { documentedSymbols: CodeSymbol[]; undocumentedSymbols: CodeSymbol[] } {
+	const documentedSymbols: CodeSymbol[] = [];
+	const undocumentedSymbols: CodeSymbol[] = [];
+
+	symbols.forEach(symbol => {
+		// A symbol is considered documented if it has JSDoc documentation
+		if (symbol.documentation && symbol.documentation.trim().length > 0) {
+			documentedSymbols.push(symbol);
+		} else {
+			undocumentedSymbols.push(symbol);
+		}
+	});
+
+	return { documentedSymbols, undocumentedSymbols };
 }
 
 // This method is called when your extension is activated
@@ -178,8 +254,9 @@ export function activate(context: vscode.ExtensionContext) {
 				console.log('❌ API key not found in environment variables');
 			}
 
-			// Instantiate LLMService and call testConnection
+			// Dynamically import and instantiate LLMService
 			console.log('📡 Initializing LLM service...');
+			const { LLMService } = await import('./services/LLMService');
 			const llmService = new LLMService();
 
 			console.log('🌐 Making API request to OpenRouter...');
@@ -300,8 +377,9 @@ export function activate(context: vscode.ExtensionContext) {
 				return;
 			}
 
-			// Instantiate LLMService and call generateDocstring with testFunction
+			// Dynamically import and instantiate LLMService
 			console.log('📡 Initializing LLM service...');
+			const { LLMService } = await import('./services/LLMService');
 			const llmService = new LLMService();
 
 			console.log('🔧 Calling generateDocstring with test function...');
