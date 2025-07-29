@@ -136,7 +136,7 @@ export class CodeParserService {
             }
 
             // Traverse the AST to extract symbols
-            this.traverseAST(ast, filePath, symbols, isTimedOut);
+            this.traverseAST(ast, filePath, content, symbols, isTimedOut);
 
             const duration = Date.now() - startTime;
             if (duration > 1000) { // Log if parsing takes more than 1 second
@@ -173,10 +173,11 @@ export class CodeParserService {
      * Traverses AST to extract symbols with error handling
      * @param ast - The parsed AST
      * @param filePath - File path for location tracking
+     * @param sourceContent - Original source code content
      * @param symbols - Array to collect extracted symbols
      * @param isTimedOut - Function to check if operation has timed out
      */
-    private traverseAST(ast: any, filePath: string, symbols: CodeSymbol[], isTimedOut?: () => boolean): void {
+    private traverseAST(ast: any, filePath: string, sourceContent: string, symbols: CodeSymbol[], isTimedOut?: () => boolean): void {
         try {
             traverse(ast, {
                 // Function declarations
@@ -187,7 +188,7 @@ export class CodeParserService {
                             throw new Error('Parsing timeout during function extraction');
                         }
 
-                        const symbol = this.functionExtractor.extractFunctionDeclaration(path, filePath);
+                        const symbol = this.functionExtractor.extractFunctionDeclaration(path, filePath, sourceContent);
                         if (symbol) {
                             symbols.push(symbol);
                         }
@@ -205,13 +206,13 @@ export class CodeParserService {
                         }
 
                         if (t.isArrowFunctionExpression(path.node.init) || t.isFunctionExpression(path.node.init)) {
-                            const symbol = this.functionExtractor.extractVariableFunction(path, filePath);
+                            const symbol = this.functionExtractor.extractVariableFunction(path, filePath, sourceContent);
                             if (symbol) {
                                 symbols.push(symbol);
                             }
                         } else if (path.node.init) {
                             // Regular variable declarations
-                            const symbol = this.variableExtractor.extract(path, filePath);
+                            const symbol = this.variableExtractor.extract(path, filePath, sourceContent);
                             if (symbol) {
                                 symbols.push(symbol);
                             }
@@ -229,8 +230,12 @@ export class CodeParserService {
                             throw new Error('Parsing timeout during class extraction');
                         }
 
-                        const classSymbols = this.classExtractor.extract(path, filePath);
-                        symbols.push(...classSymbols);
+                        const classSymbols = this.classExtractor.extract(path, filePath, sourceContent);
+                        if (Array.isArray(classSymbols)) {
+                            symbols.push(...classSymbols);
+                        } else if (classSymbols) {
+                            symbols.push(classSymbols);
+                        }
                     } catch (error) {
                         this.logExtractionError(filePath, 'ClassDeclaration', error);
                     }
@@ -244,9 +249,13 @@ export class CodeParserService {
                             throw new Error('Parsing timeout during interface extraction');
                         }
 
-                        const symbol = this.interfaceExtractor.extract(path, filePath);
+                        const symbol = this.interfaceExtractor.extract(path, filePath, sourceContent);
                         if (symbol) {
-                            symbols.push(symbol);
+                            if (Array.isArray(symbol)) {
+                                symbols.push(...symbol);
+                            } else {
+                                symbols.push(symbol);
+                            }
                         }
                     } catch (error) {
                         this.logExtractionError(filePath, 'TSInterfaceDeclaration', error);
@@ -261,9 +270,13 @@ export class CodeParserService {
                             throw new Error('Parsing timeout during type alias extraction');
                         }
 
-                        const symbol = this.typeAliasExtractor.extract(path, filePath);
+                        const symbol = this.typeAliasExtractor.extract(path, filePath, sourceContent);
                         if (symbol) {
-                            symbols.push(symbol);
+                            if (Array.isArray(symbol)) {
+                                symbols.push(...symbol);
+                            } else {
+                                symbols.push(symbol);
+                            }
                         }
                     } catch (error) {
                         this.logExtractionError(filePath, 'TSTypeAliasDeclaration', error);

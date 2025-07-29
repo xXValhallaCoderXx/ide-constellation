@@ -11,7 +11,7 @@ export class FunctionSymbolExtractor extends BaseSymbolExtractor {
     /**
      * Extracts function symbol from function declaration
      */
-    public extractFunctionDeclaration(path: NodePath<t.FunctionDeclaration>, filePath: string): CodeSymbol | null {
+    public extractFunctionDeclaration(path: NodePath<t.FunctionDeclaration>, filePath: string, sourceContent?: string): CodeSymbol | null {
         const node = path.node;
         if (!node.id?.name) {
             return null;
@@ -24,20 +24,22 @@ export class FunctionSymbolExtractor extends BaseSymbolExtractor {
         };
 
         const documentation = this.extractJSDoc(node);
+        const sourceText = sourceContent ? this.extractSourceText(node, sourceContent) : undefined;
 
         return {
             name: node.id.name,
             type: 'function',
             documentation,
             location: this.createLocation(node, filePath),
-            metadata
+            metadata,
+            sourceText
         };
     }
 
     /**
      * Extracts function symbol from variable declarator with function expression
      */
-    public extractVariableFunction(path: NodePath<t.VariableDeclarator>, filePath: string): CodeSymbol | null {
+    public extractVariableFunction(path: NodePath<t.VariableDeclarator>, filePath: string, sourceContent?: string): CodeSymbol | null {
         const node = path.node;
         if (!t.isIdentifier(node.id) || !node.init) {
             return null;
@@ -57,21 +59,23 @@ export class FunctionSymbolExtractor extends BaseSymbolExtractor {
         };
 
         const documentation = this.extractJSDoc(node);
+        const sourceText = sourceContent ? this.extractSourceText(node, sourceContent) : undefined;
 
         return {
             name: node.id.name,
             type: 'function',
             documentation,
             location: this.createLocation(node, filePath),
-            metadata
+            metadata,
+            sourceText
         };
     }
 
-    public extract(path: NodePath<any>, filePath: string): CodeSymbol | null {
+    public extract(path: NodePath<any>, filePath: string, sourceContent?: string): CodeSymbol | null {
         if (path.isFunctionDeclaration()) {
-            return this.extractFunctionDeclaration(path, filePath);
+            return this.extractFunctionDeclaration(path, filePath, sourceContent);
         } else if (path.isVariableDeclarator()) {
-            return this.extractVariableFunction(path, filePath);
+            return this.extractVariableFunction(path, filePath, sourceContent);
         }
         return null;
     }

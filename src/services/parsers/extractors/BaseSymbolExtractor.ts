@@ -23,6 +23,13 @@ export abstract class BaseSymbolExtractor {
     }
 
     /**
+     * Extracts source text from AST node
+     */
+    protected extractSourceText(node: t.Node, sourceContent: string): string | undefined {
+        return ASTLocationHelper.extractSourceText(node, sourceContent);
+    }
+
+    /**
      * Extracts parameter names from function parameters
      */
     protected extractParameters(params: t.Function['params']): string[] {
@@ -39,5 +46,5 @@ export abstract class BaseSymbolExtractor {
     /**
      * Abstract method that each extractor must implement
      */
-    public abstract extract(path: NodePath<any>, filePath: string): CodeSymbol | CodeSymbol[] | null;
+    public abstract extract(path: NodePath<any>, filePath: string, sourceContent?: string): CodeSymbol | CodeSymbol[] | null;
 }

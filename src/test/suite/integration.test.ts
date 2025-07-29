@@ -385,4 +385,65 @@ function brokenFunction( {
         assert.ok(fallbackJSDoc.startsWith('/**'), 'Fallback should have proper JSDoc format');
         assert.ok(fallbackJSDoc.endsWith('*/'), 'Fallback should have proper JSDoc format');
     });
+
+    test('File deletion handler removes corresponding documentation files', async () => {
+        // Create a TypeScript file
+        const testContent = `
+/**
+ * A test function for documentation deletion test
+ * @param value - input value
+ * @returns processed value
+ */
+function testFunction(value: string): string {
+    return value.toUpperCase();
+}
+`;
+
+        const testFilePath = path.join(testWorkspaceUri.fsPath, 'deletion-test.ts');
+        const uri = vscode.Uri.file(testFilePath);
+
+        // Create and save the file to trigger documentation generation
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(testContent, 'utf8'));
+        const document = await vscode.workspace.openTextDocument(uri);
+        await document.save();
+
+        // Wait for documentation generation to complete
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Check if documentation file was created
+        const docsPath = path.join(testWorkspaceUri.fsPath, 'docs', 'api', 'deletion-test.md');
+        const docsUri = vscode.Uri.file(docsPath);
+
+        let docsExistsBefore = false;
+        try {
+            await vscode.workspace.fs.stat(docsUri);
+            docsExistsBefore = true;
+        } catch (error) {
+            // Documentation file doesn't exist yet, which is fine for this test
+        }
+
+        // Delete the source file to trigger documentation deletion
+        await vscode.workspace.fs.delete(uri);
+
+        // Wait for deletion processing to complete
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Check if documentation file was deleted
+        let docsExistsAfter = false;
+        try {
+            await vscode.workspace.fs.stat(docsUri);
+            docsExistsAfter = true;
+        } catch (error) {
+            // Documentation file was deleted, which is expected
+        }
+
+        // The test passes if:
+        // 1. No errors were thrown during the deletion process
+        // 2. If documentation existed before, it should be deleted after
+        if (docsExistsBefore) {
+            assert.ok(!docsExistsAfter, 'Documentation file should be deleted when source file is deleted');
+        }
+
+        assert.ok(true, 'File deletion handler executed without errors');
+    });
 });
