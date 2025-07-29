@@ -247,6 +247,138 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(testLlmConnectionCommand);
+
+	// Register the docstring generation test command
+	const testDocstringGenerationCommand = vscode.commands.registerCommand('constellation.testDocstringGeneration', async () => {
+		const startTime = Date.now();
+		console.log('🔄 Starting docstring generation test...');
+
+		// Define testFunction constant with multi-line calculateAge function implementation including edge case logic
+		const testFunction = `function calculateAge(birthDate: Date, currentDate?: Date): number {
+    // Use current date if not provided
+    const today = currentDate || new Date();
+    
+    // Validate input parameters
+    if (!(birthDate instanceof Date) || isNaN(birthDate.getTime())) {
+        throw new Error('Invalid birth date provided');
+    }
+    
+    if (!(today instanceof Date) || isNaN(today.getTime())) {
+        throw new Error('Invalid current date provided');
+    }
+    
+    // Check if birth date is in the future
+    if (birthDate > today) {
+        throw new Error('Birth date cannot be in the future');
+    }
+    
+    // Calculate age in years
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDifference = today.getMonth() - birthDate.getMonth();
+    
+    // Adjust age if birthday hasn't occurred this year yet
+    if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+    }
+    
+    // Handle edge case where calculated age is negative (shouldn't happen with validation above)
+    if (age < 0) {
+        throw new Error('Calculated age cannot be negative');
+    }
+    
+    return age;
+}`;
+
+		try {
+			// Log environment check
+			const hasApiKey = !!process.env.OPENROUTER_API_KEY;
+			console.log(`Environment check - API key present: ${hasApiKey}`);
+
+			if (!hasApiKey) {
+				console.log('❌ API key not found in environment variables');
+				vscode.window.showErrorMessage('🔑 Configuration Error: Missing API Key. Please check your .env file.');
+				return;
+			}
+
+			// Instantiate LLMService and call generateDocstring with testFunction
+			console.log('📡 Initializing LLM service...');
+			const llmService = new LLMService();
+
+			console.log('🔧 Calling generateDocstring with test function...');
+			console.log('📝 Test function preview:', testFunction.substring(0, 100) + '...');
+
+			// Implement proper async/await handling for API call
+			const generatedJSDoc = await llmService.generateDocstring(testFunction);
+
+			const endTime = Date.now();
+			const duration = endTime - startTime;
+
+			// Log the generated JSDoc comment to Debug Console
+			console.log(`✅ Docstring generation test completed successfully in ${duration}ms`);
+			console.log(`Generated JSDoc:`);
+			console.log(generatedJSDoc);
+
+			// Show success message to user with truncated JSDoc for readability
+			const truncatedJSDoc = generatedJSDoc.length > 100
+				? generatedJSDoc.substring(0, 100) + '...'
+				: generatedJSDoc;
+			vscode.window.showInformationMessage(`✅ Docstring Generation Test Successful! Check Debug Console for full output. Preview: ${truncatedJSDoc}`);
+
+		} catch (error) {
+			const endTime = Date.now();
+			const duration = endTime - startTime;
+
+			// Add error handling and user feedback messages for command execution success/failure
+			let userMessage = 'Docstring Generation Test Failed';
+			let errorDetails = '';
+
+			if (error instanceof Error) {
+				errorDetails = error.message;
+
+				// Provide more specific user guidance based on error type
+				if (error.message.includes('OPENROUTER_API_KEY')) {
+					userMessage = '🔑 Configuration Error: Missing API Key';
+					console.log('❌ Configuration error detected - missing API key');
+				} else if (error.message.includes('Authentication failed') || error.message.includes('Invalid API key')) {
+					userMessage = '🔐 Authentication Error: Invalid API Key';
+					console.log('❌ Authentication error detected - invalid API key');
+				} else if (error.message.includes('Network error') || error.message.includes('Unable to connect')) {
+					userMessage = '🌐 Network Error: Connection Failed';
+					console.log('❌ Network error detected - connection failed');
+				} else if (error.message.includes('Rate limit')) {
+					userMessage = '⏱️ Rate Limit Error: Too Many Requests';
+					console.log('❌ Rate limit error detected');
+				} else if (error.message.includes('server error') || error.message.includes('service unavailable')) {
+					userMessage = '🔧 Service Error: API Temporarily Unavailable';
+					console.log('❌ Service error detected - API unavailable');
+				} else {
+					userMessage = '❌ Generation Error: Request Failed';
+					console.log('❌ General generation error detected');
+				}
+			} else {
+				errorDetails = 'Unknown error occurred';
+				console.log('❌ Unknown error type detected');
+			}
+
+			// Display error message to user
+			vscode.window.showErrorMessage(`${userMessage}: ${errorDetails}`);
+
+			// Comprehensive error logging for debugging
+			console.error(`❌ Docstring Generation Test failed after ${duration}ms`);
+			console.error('Error details:', error);
+			console.error('Error type:', typeof error);
+			console.error('Error constructor:', error?.constructor?.name);
+
+			// Log environment state for debugging
+			console.log('🔍 Debug info:');
+			console.log(`  - API key configured: ${!!process.env.OPENROUTER_API_KEY}`);
+			console.log(`  - API key length: ${process.env.OPENROUTER_API_KEY?.length || 0}`);
+			console.log(`  - Test duration: ${duration}ms`);
+			console.log(`  - Test function length: ${testFunction.length} characters`);
+		}
+	});
+
+	context.subscriptions.push(testDocstringGenerationCommand);
 }
 
 // This method is called when your extension is deactivated

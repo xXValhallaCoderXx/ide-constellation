@@ -22,12 +22,12 @@
         "title": "Hello World"
       },
       {
-        "command": "kiro-constellation.testAgentPrompt",
-        "title": "Test Agent Prompt"
-      },
-      {
         "command": "constellation.testLlmConnection",
         "title": "Test LLM Connection"
+      },
+      {
+        "command": "constellation.testDocstringGeneration",
+        "title": "Test Docstring Generation"
       }
     ]
   },
