@@ -10,19 +10,21 @@ export class InterfaceSymbolExtractor extends BaseSymbolExtractor {
     /**
      * Extracts interface symbol from TypeScript interface declaration
      */
-    public extract(path: NodePath<t.TSInterfaceDeclaration>, filePath: string): CodeSymbol | null {
+    public extract(path: NodePath<t.TSInterfaceDeclaration>, filePath: string, sourceContent?: string): CodeSymbol | null {
         const node = path.node;
         if (!node.id?.name) {
             return null;
         }
 
         const documentation = this.extractJSDoc(node);
+        const sourceText = sourceContent ? this.extractSourceText(node, sourceContent) : undefined;
 
         return {
             name: node.id.name,
             type: 'interface',
             documentation,
             location: this.createLocation(node, filePath),
+            sourceText
         };
     }
 }

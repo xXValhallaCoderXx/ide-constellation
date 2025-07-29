@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. Enhance CodeSymbol interface and CodeParserService for source text extraction
+- [x] 1. Enhance CodeSymbol interface and CodeParserService for source text extraction
   - Modify the CodeSymbol interface in `src/types.ts` to include optional `sourceText` property
   - Update CodeParserService extractors to capture raw source text for each symbol
   - Modify symbol extraction methods to include the complete source code of functions/classes

@@ -12,6 +12,8 @@ export interface CodeSymbol {
     location: SymbolLocation;
     /** Additional metadata specific to symbol type */
     metadata?: SymbolMetadata;
+    /** Raw source code text for the symbol */
+    sourceText?: string;
 }
 
 /**

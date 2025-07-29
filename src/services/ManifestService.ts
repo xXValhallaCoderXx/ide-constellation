@@ -28,7 +28,13 @@ export class ManifestService {
             const fileContent = await vscode.workspace.fs.readFile(manifestUri);
             
             // Convert Uint8Array to string
-            const jsonString = Buffer.from(fileContent).toString('utf8');
+            const jsonString = Buffer.from(fileContent).toString('utf8').trim();
+
+            // Check if the file is empty or contains only whitespace
+            if (!jsonString) {
+                console.log('Manifest file is empty, returning empty manifest');
+                return this.createEmptyManifest();
+            }
             
             // Parse JSON content
             const manifest: Manifest = JSON.parse(jsonString);
@@ -53,8 +59,8 @@ export class ManifestService {
                 console.log('Manifest file not found, returning empty manifest');
                 return this.createEmptyManifest();
             } else if (error instanceof SyntaxError) {
-                // JSON parsing error
-                console.error('Failed to parse manifest JSON, returning empty manifest:', error);
+                // JSON parsing error - this can happen if the file is corrupted or partially written
+                console.log('Manifest file contains invalid JSON, creating new manifest');
                 return this.createEmptyManifest();
             } else {
                 // Other file system errors
