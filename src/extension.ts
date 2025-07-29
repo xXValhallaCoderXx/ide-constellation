@@ -664,7 +664,7 @@ async function deleteCorrespondingDocumentationFile(sourceFilePath: string, oper
 			fileExists = true;
 			console.log(`[${operationId}] 📄 Documentation file exists, proceeding with deletion (stat: ${statDuration}ms)`);
 		} catch (statError) {
-			const statDuration = Date.now() - statStartTime;
+			const statDuration = Date.now() - startTime;
 			// File doesn't exist, which is fine - no need to delete
 			console.log(`[${operationId}] 📭 Documentation file doesn't exist, no deletion needed: ${docFileName} (stat: ${statDuration}ms)`);
 			return;
