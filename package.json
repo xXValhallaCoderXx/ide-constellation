@@ -20,14 +20,6 @@
       {
         "command": "kiro-constellation.helloWorld",
         "title": "Hello World"
-      },
-      {
-        "command": "constellation.testLlmConnection",
-        "title": "Test LLM Connection"
-      },
-      {
-        "command": "constellation.testDocstringGeneration",
-        "title": "Test Docstring Generation"
       }
     ]
   },
