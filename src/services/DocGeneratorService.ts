@@ -231,16 +231,63 @@ export class DocGeneratorService {
      * @returns Promise that resolves when directory is created
      */
     public async ensureDocsDirectory(): Promise<void> {
+        const startTime = Date.now();
+
         try {
             const docsDirUri = vscode.Uri.file(this.docsBasePath);
-            await vscode.workspace.fs.createDirectory(docsDirUri);
-            console.log(`📁 DocGeneratorService: Ensured docs directory exists at ${this.docsBasePath}`);
-        } catch (error) {
-            // VS Code's createDirectory doesn't fail if directory already exists
-            if ((error as vscode.FileSystemError).code !== 'FileExists') {
-                console.error('❌ DocGeneratorService: Failed to create docs directory:', error);
-                throw error;
+
+            // First check if directory already exists to avoid unnecessary operations
+            try {
+                await vscode.workspace.fs.stat(docsDirUri);
+                const duration = Date.now() - startTime;
+                console.log(`📁 DocGeneratorService: Docs directory already exists at ${this.docsBasePath} (${duration}ms)`);
+                return;
+            } catch (statError) {
+                // Directory doesn't exist, proceed with creation
+                console.log(`📁 DocGeneratorService: Docs directory doesn't exist, creating: ${this.docsBasePath}`);
             }
+
+            // Create directory with timeout protection
+            const createTimeout = 5000; // 5 seconds
+            const createPromise = vscode.workspace.fs.createDirectory(docsDirUri);
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => {
+                    reject(new Error(`Directory creation timeout after ${createTimeout}ms`));
+                }, createTimeout);
+            });
+
+            await Promise.race([createPromise, timeoutPromise]);
+
+            const duration = Date.now() - startTime;
+            console.log(`📁 DocGeneratorService: Successfully created docs directory at ${this.docsBasePath} (${duration}ms)`);
+
+        } catch (error) {
+            const duration = Date.now() - startTime;
+
+            // VS Code's createDirectory doesn't fail if directory already exists
+            if ((error as vscode.FileSystemError).code === 'FileExists') {
+                console.log(`📁 DocGeneratorService: Docs directory already exists (race condition) at ${this.docsBasePath} (${duration}ms)`);
+                return;
+            }
+
+            console.error(`❌ DocGeneratorService: Failed to create docs directory at ${this.docsBasePath} (${duration}ms):`, error);
+
+            // Log detailed error information
+            if (error instanceof Error) {
+                console.error(`DocGeneratorService: Error type: ${error.constructor.name}`);
+                console.error(`DocGeneratorService: Error message: ${error.message}`);
+
+                // Provide specific guidance for common errors
+                if (error.message.includes('permission') || error.message.includes('EACCES')) {
+                    console.error(`DocGeneratorService: Permission error - check write permissions for workspace directory`);
+                } else if (error.message.includes('ENOSPC')) {
+                    console.error(`DocGeneratorService: Disk space error - insufficient disk space`);
+                } else if (error.message.includes('timeout')) {
+                    console.error(`DocGeneratorService: Timeout error - directory creation took too long`);
+                }
+            }
+
+            throw new Error(`Failed to create documentation directory: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
 
@@ -251,22 +298,116 @@ export class DocGeneratorService {
      * @returns Promise that resolves when file is written
      */
     public async writeDocumentationFile(sourceFilePath: string, content: string): Promise<void> {
+        const startTime = Date.now();
+        const fileName = path.basename(sourceFilePath);
+        const contentSize = Buffer.byteLength(content, 'utf8');
+
+        console.log(`📝 DocGeneratorService: Starting file write for ${fileName} (${contentSize} bytes)`);
+
         try {
-            // Ensure docs directory exists
-            await this.ensureDocsDirectory();
+            // Validate inputs
+            if (!sourceFilePath || typeof sourceFilePath !== 'string') {
+                throw new Error('Invalid source file path provided');
+            }
+
+            if (!content || typeof content !== 'string') {
+                throw new Error('Invalid content provided');
+            }
+
+            if (contentSize === 0) {
+                console.warn(`⚠️ DocGeneratorService: Empty content for ${fileName}, proceeding anyway`);
+            }
+
+            // Check for very large files that might cause performance issues
+            if (contentSize > 1024 * 1024) { // 1MB
+                console.warn(`⚠️ DocGeneratorService: Large documentation file detected: ${fileName} (${Math.round(contentSize / 1024)}KB)`);
+            }
+
+            // Ensure docs directory exists with error handling
+            const dirStartTime = Date.now();
+            try {
+                await this.ensureDocsDirectory();
+                const dirDuration = Date.now() - dirStartTime;
+                console.log(`📁 DocGeneratorService: Directory check completed (${dirDuration}ms)`);
+            } catch (dirError) {
+                const dirDuration = Date.now() - dirStartTime;
+                console.error(`❌ DocGeneratorService: Directory creation failed for ${fileName} (${dirDuration}ms):`, dirError);
+                throw new Error(`Failed to create documentation directory: ${dirError instanceof Error ? dirError.message : 'Unknown error'}`);
+            }
 
             // Calculate documentation file path
             const docFilePath = this.getDocumentationFilePath(sourceFilePath);
+            const docFileName = path.basename(docFilePath);
             const docFileUri = vscode.Uri.file(docFilePath);
 
-            // Write content to file
-            const contentBuffer = Buffer.from(content, 'utf8');
-            await vscode.workspace.fs.writeFile(docFileUri, contentBuffer);
+            console.log(`🎯 DocGeneratorService: Target file: ${docFileName}`);
 
-            console.log(`✅ DocGeneratorService: Documentation written to ${docFilePath}`);
+            // Write content to file with timeout protection
+            const writeStartTime = Date.now();
+            const writeTimeout = 10000; // 10 seconds
+
+            try {
+                const contentBuffer = Buffer.from(content, 'utf8');
+                const writePromise = vscode.workspace.fs.writeFile(docFileUri, contentBuffer);
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                    setTimeout(() => {
+                        reject(new Error(`File write timeout after ${writeTimeout}ms`));
+                    }, writeTimeout);
+                });
+
+                await Promise.race([writePromise, timeoutPromise]);
+
+                const writeDuration = Date.now() - writeStartTime;
+                const totalDuration = Date.now() - startTime;
+
+                console.log(`✅ DocGeneratorService: Documentation written to ${docFileName} (write: ${writeDuration}ms, total: ${totalDuration}ms)`);
+
+                // Log performance warning for slow writes
+                if (writeDuration > 2000) {
+                    console.warn(`⚠️ DocGeneratorService: Slow file write detected: ${docFileName} took ${writeDuration}ms`);
+                }
+
+            } catch (writeError) {
+                const writeDuration = Date.now() - writeStartTime;
+                const totalDuration = Date.now() - startTime;
+
+                console.error(`❌ DocGeneratorService: File write failed for ${docFileName} (write: ${writeDuration}ms, total: ${totalDuration}ms):`, writeError);
+
+                // Log detailed error information
+                if (writeError instanceof Error) {
+                    console.error(`DocGeneratorService: Write error type: ${writeError.constructor.name}`);
+                    console.error(`DocGeneratorService: Write error message: ${writeError.message}`);
+
+                    // Provide specific guidance for common errors
+                    if (writeError.message.includes('permission') || writeError.message.includes('EACCES')) {
+                        console.error(`DocGeneratorService: Permission error - check write permissions for docs directory`);
+                    } else if (writeError.message.includes('ENOSPC')) {
+                        console.error(`DocGeneratorService: Disk space error - insufficient disk space`);
+                    } else if (writeError.message.includes('timeout')) {
+                        console.error(`DocGeneratorService: Timeout error - file write took too long`);
+                    } else if (writeError.message.includes('EMFILE') || writeError.message.includes('ENFILE')) {
+                        console.error(`DocGeneratorService: File handle error - too many open files`);
+                    }
+                }
+
+                throw new Error(`Failed to write documentation file: ${writeError instanceof Error ? writeError.message : 'Unknown error'}`);
+            }
+
         } catch (error) {
-            console.error(`❌ DocGeneratorService: Failed to write documentation file:`, error);
-            throw error;
+            const totalDuration = Date.now() - startTime;
+            console.error(`❌ DocGeneratorService: Failed to write documentation file for ${fileName} (${totalDuration}ms):`, error);
+
+            // Log detailed error information
+            if (error instanceof Error) {
+                console.error(`DocGeneratorService: Error type: ${error.constructor.name}`);
+                console.error(`DocGeneratorService: Error message: ${error.message}`);
+                if (error.stack) {
+                    console.error(`DocGeneratorService: Error stack:`, error.stack);
+                }
+            }
+
+            // Re-throw with context
+            throw new Error(`Documentation file write failed for ${fileName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
 
