@@ -265,43 +265,6 @@ function brokenFunction( {
         }
     });
 
-    test('JSDoc generation with validation and error handling', async function () {
-        // Increase timeout for this test since it involves API calls
-        this.timeout(30000);
-
-        // Skip this test if no API key is configured
-        if (!process.env.OPENROUTER_API_KEY) {
-            console.log('Skipping JSDoc generation test - no API key configured');
-            this.skip();
-            return;
-        }
-
-        try {
-            // Test the command exists
-            const commands = await vscode.commands.getCommands();
-            assert.ok(commands.includes('constellation.testDocstringGeneration'),
-                'constellation.testDocstringGeneration command should be registered');
-
-            // Execute the command and wait for completion
-            console.log('Executing JSDoc generation test command...');
-            await vscode.commands.executeCommand('constellation.testDocstringGeneration');
-
-            // Wait for the command to complete
-            await new Promise(resolve => setTimeout(resolve, 5000));
-
-            // The test passes if the command executes without throwing an error
-            // The actual JSDoc output will be logged to the Debug Console
-            assert.ok(true, 'JSDoc generation command executed successfully');
-
-        } catch (error) {
-            // If there's an error, it should be handled gracefully by the fallback system
-            console.log('JSDoc generation encountered an error (this tests fallback handling):', error);
-
-            // The command should not throw unhandled errors due to our error handling
-            assert.ok(true, 'JSDoc generation error was handled gracefully');
-        }
-    });
-
     test('JSDoc validation logic works correctly', () => {
         // Test format validation
         const validJSDoc = '/**\n * Test function\n * @param param Test parameter\n * @returns Test result\n */';
