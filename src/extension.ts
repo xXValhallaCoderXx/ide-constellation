@@ -97,9 +97,52 @@ async function initializeServices(): Promise<void> {
 		totalInitializationTime: 0
 	};
 
-	// Get workspace root for proper path resolution
-	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
-	console.log(`[${initId}] 📁 Extension: Using workspace root: ${workspaceRoot}`);
+	// Robust workspace root detection with proper error handling
+	let workspaceRoot: string;
+	try {
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+
+		if (!workspaceFolders || workspaceFolders.length === 0) {
+			console.error(`[${initId}] ❌ Extension: No workspace folder is open`);
+
+			// Display error message to user
+			const errorMessage = "Kiro Constellation could not start: No workspace folder is open.";
+			vscode.window.showErrorMessage(errorMessage);
+
+			// Log workspace root detection failure
+			console.error(`[${initId}] 🚫 Extension: Workspace root detection failed - extension will be disabled`);
+
+			// Set services as unavailable and exit early
+			embeddingServicesAvailable = false;
+			serviceMetrics.totalInitializationTime = Date.now() - startTime;
+
+			console.log(`[${initId}] ⚠️ Extension: Services disabled due to workspace detection failure (${serviceMetrics.totalInitializationTime}ms)`);
+			logServiceMetrics(initId, serviceMetrics);
+			return; // Exit early - no services will be initialized
+		}
+
+		workspaceRoot = workspaceFolders[0].uri.fsPath;
+		console.log(`[${initId}] 📁 Extension: Workspace root detection successful: ${workspaceRoot}`);
+
+		// Validate workspace root path
+		if (!workspaceRoot || workspaceRoot.trim().length === 0) {
+			throw new Error('Workspace root path is empty');
+		}
+
+	} catch (workspaceError) {
+		console.error(`[${initId}] ❌ Extension: Workspace root detection error:`, workspaceError);
+
+		const errorMessage = "Kiro Constellation could not start: No workspace folder is open.";
+		vscode.window.showErrorMessage(errorMessage);
+
+		// Set services as unavailable and exit early
+		embeddingServicesAvailable = false;
+		serviceMetrics.totalInitializationTime = Date.now() - startTime;
+
+		console.log(`[${initId}] ⚠️ Extension: Services disabled due to workspace detection error (${serviceMetrics.totalInitializationTime}ms)`);
+		logServiceMetrics(initId, serviceMetrics);
+		return; // Exit early - no services will be initialized
+	}
 
 	let criticalFailures: string[] = [];
 	let warnings: string[] = [];

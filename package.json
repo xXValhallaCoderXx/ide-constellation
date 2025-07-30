@@ -24,6 +24,10 @@
       {
         "command": "constellation.testVectorQuery",
         "title": "Constellation: Test Vector Search"
+      },
+      {
+        "command": "constellation.debugVectorDb",
+        "title": "Constellation: Debug Vector Database"
       }
     ]
   },

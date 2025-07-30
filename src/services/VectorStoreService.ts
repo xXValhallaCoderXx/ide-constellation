@@ -268,17 +268,29 @@ export class VectorStoreService {
             
             console.log(`[${initId}] 📋 VectorStoreService: Checking for filePath field compatibility...`);
             
-            // For LanceDB, we'll try to run a simple query to check if filePath field exists
-            // If the table doesn't have filePath field, we assume migration is needed
+            // Check if table has the required schema by examining its structure
             try {
                 // Try to count records - if successful, table is accessible
                 const count = await existingTable.countRows();
                 console.log(`[${initId}] 📊 VectorStoreService: Table has ${count} records`);
                 
-                // For now, we'll assume existing tables need migration to add filePath field
-                // In a real implementation, we could try to sample a record and check its structure
-                console.log(`[${initId}] ⚠️ VectorStoreService: Existing table detected, assuming migration needed for filePath field`);
-                return true; // Migration needed to add filePath field
+                // Get table schema to check for required fields
+                const schema = await existingTable.schema();
+                const fieldNames = schema.fields.map((field: any) => field.name);
+                console.log(`[${initId}] 📋 VectorStoreService: Table fields:`, fieldNames);
+
+                // Check if table has all required fields for current schema
+                const requiredFields = ['id', 'text', 'vector', 'filePath'];
+                const hasAllFields = requiredFields.every(field => fieldNames.includes(field));
+
+                if (hasAllFields) {
+                    console.log(`[${initId}] ✅ VectorStoreService: Schema is compatible (has all required fields)`);
+                    return false; // No migration needed
+                } else {
+                    const missingFields = requiredFields.filter(field => !fieldNames.includes(field));
+                    console.log(`[${initId}] ⚠️ VectorStoreService: Schema migration needed, missing fields:`, missingFields);
+                    return true; // Migration needed
+                }
                 
             } catch (accessError) {
                 console.log(`[${initId}] ❌ VectorStoreService: Cannot access existing table:`, accessError);
@@ -685,11 +697,12 @@ export class VectorStoreService {
             throw new Error('VectorStoreService is not initialized. Call initialize() first.');
         }
 
-        // Validate and normalize filePath input
-        const normalizedFilePath = this.validateAndNormalizeFilePath(filePath, requestId);
+        // The filePath should already be normalized by the caller (PolarisController)
+        // No need to normalize again here - just use it directly
+        console.log(`[${requestId}] 📁 VectorStoreService: Using normalized filePath: ${filePath}`);
 
         try {
-            console.log(`[${requestId}] 🔍 VectorStoreService: Querying embeddings for file: ${normalizedFilePath}`);
+            console.log(`[${requestId}] 🔍 VectorStoreService: Querying embeddings for file: ${filePath}`);
 
             // For LanceDB, we need to get records that match the filePath
             // Since we can't do SELECT queries easily, we'll use the existing search functionality
@@ -706,28 +719,77 @@ export class VectorStoreService {
                 // We'll iterate through records and match the filePath field
                 // This is not efficient for large datasets, but works for our use case
                 
-                console.log(`[${requestId}] 🔍 VectorStoreService: Searching for records with filePath: ${normalizedFilePath}`);
+                console.log(`[${requestId}] 🔍 VectorStoreService: Searching for records with filePath: ${filePath}`);
                 
                 // Since we can't directly query by filePath, we'll use a workaround:
-                // Query using a dummy vector to get all records, then filter by filePath
-                // This is inefficient but necessary due to LanceDB limitations
-                
-                const dummyVector = new Array(384).fill(0); // Create dummy query vector
-                const searchResults = await VectorStoreService.table
-                    .search(dummyVector)
-                    .limit(10000) // Large limit to get all records
-                    .toArray();
-                
+                // Try multiple vector search strategies to ensure we get all records
+                // This is more reliable than a single dummy vector
+
+                let searchResults: any[] = [];
+
+                // Try table scan first if available (most reliable)
+                try {
+                    console.log(`[${requestId}] 📊 VectorStoreService: Attempting table scan...`);
+                    searchResults = await (VectorStoreService.table as any).scan().toArray();
+                    console.log(`[${requestId}] ✅ VectorStoreService: Table scan found ${searchResults.length} records`);
+                } catch (scanError) {
+                    console.log(`[${requestId}] ⚠️ VectorStoreService: Table scan not available, using vector search fallback`);
+
+                    // Fallback to multiple vector search strategies
+                    const strategies = [
+                        new Array(384).fill(0),           // All zeros
+                        new Array(384).fill(0.001),       // Small positive values
+                        new Array(384).fill(-0.001),      // Small negative values
+                        Array.from({ length: 384 }, () => Math.random() * 0.01 - 0.005), // Random small values
+                    ];
+
+                    for (let i = 0; i < strategies.length; i++) {
+                        try {
+                            console.log(`[${requestId}] 🔍 VectorStoreService: Trying vector strategy ${i + 1}/4...`);
+                            const results = await VectorStoreService.table
+                                .search(strategies[i])
+                                .limit(10000) // Large limit to get all records
+                                .toArray();
+
+                            console.log(`[${requestId}] 📊 VectorStoreService: Strategy ${i + 1} found ${results.length} records`);
+
+                            // Merge results, avoiding duplicates
+                            for (const result of results) {
+                                if (!searchResults.find((existing: any) => existing.id === result.id)) {
+                                    searchResults.push(result);
+                                }
+                            }
+
+                            // If we found records, we can stop
+                            if (searchResults.length > 0) {
+                                console.log(`[${requestId}] ✅ VectorStoreService: Found records with strategy ${i + 1}, stopping search`);
+                                break;
+                            }
+
+                        } catch (strategyError) {
+                            console.warn(`[${requestId}] ⚠️ VectorStoreService: Strategy ${i + 1} failed:`, strategyError);
+                        }
+                    }
+                }
+
+                console.log(`[${requestId}] 📊 VectorStoreService: Total records retrieved: ${searchResults.length}`);
+
+                // Debug: Log all unique file paths found in the database
+                const allFoundPaths = [...new Set(searchResults.map((r: any) => r.filePath))];
+                console.log(`[${requestId}] 🔍 VectorStoreService: All file paths in database: [${allFoundPaths.join(', ')}]`);
+                console.log(`[${requestId}] 🎯 VectorStoreService: Looking for specific path: "${filePath}"`);
+
                 // Filter results by filePath
                 for (const record of searchResults) {
-                    if (record.filePath === normalizedFilePath && record.id && typeof record.id === 'string') {
+                    console.log(`[${requestId}] 🔍 VectorStoreService: Checking record - ID: ${record.id}, FilePath: ${record.filePath}`);
+                    if (record.filePath === filePath && record.id && typeof record.id === 'string') {
                         allIds.push(record.id);
                     }
                 }
                 
                 const queryDuration = Date.now() - queryStartTime;
                 console.log(`[${requestId}] ✅ VectorStoreService: Search and filter completed (${queryDuration}ms)`);
-                console.log(`[${requestId}] 📊 VectorStoreService: Found ${allIds.length} embedding IDs for file: ${normalizedFilePath}`);
+                console.log(`[${requestId}] 📊 VectorStoreService: Found ${allIds.length} embedding IDs for file: ${filePath}`);
                 
                 if (allIds.length > 0) {
                     console.log(`[${requestId}] 📋 VectorStoreService: Sample IDs: ${allIds.slice(0, 3).join(', ')}${allIds.length > 3 ? '...' : ''}`);
@@ -735,7 +797,7 @@ export class VectorStoreService {
                 
             } catch (queryError) {
                 console.error(`[${requestId}] ❌ VectorStoreService: Query failed:`, queryError);
-                throw new Error(`Failed to query embeddings for file ${normalizedFilePath}: ${queryError instanceof Error ? queryError.message : String(queryError)}`);
+                throw new Error(`Failed to query embeddings for file ${filePath}: ${queryError instanceof Error ? queryError.message : String(queryError)}`);
             }
 
             const totalDuration = Date.now() - startTime;
@@ -787,7 +849,7 @@ export class VectorStoreService {
      * @param requestId Request ID for logging
      * @returns string The normalized file path
      */
-    private validateAndNormalizeFilePath(filePath: string, requestId: string): string {
+    public validateAndNormalizeFilePath(filePath: string, requestId: string): string {
         // Validate filePath input
         if (!filePath || typeof filePath !== 'string') {
             console.error(`[${requestId}] ❌ VectorStoreService: Invalid filePath - must be a non-empty string`);
@@ -1266,6 +1328,67 @@ export class VectorStoreService {
         const expectedDimensions = 384;
         if (queryVector.length !== expectedDimensions) {
             console.warn(`[${requestId}] ⚠️ VectorStoreService: Unexpected query vector dimensions: ${queryVector.length} (expected ${expectedDimensions})`);
+        }
+    }
+
+    /**
+     * Debug method to get all records from the database
+     * @param filePath Optional file path to filter records
+     * @returns Promise<any[]> Array of all records (or filtered by file path)
+     */
+    public async debugGetAllRecords(filePath?: string): Promise<any[]> {
+        const debugId = `debug-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        try {
+            console.log(`[${debugId}] 🐛 VectorStoreService: Starting debugGetAllRecords...`);
+
+            if (!VectorStoreService.table) {
+                console.error(`[${debugId}] ❌ VectorStoreService: Table not initialized`);
+                throw new Error('VectorStoreService not initialized');
+            }
+
+            console.log(`[${debugId}] 🔍 VectorStoreService: Retrieving all records from database...`);
+
+            let records: any[] = [];
+
+            // Try table scan first (more reliable)
+            try {
+                if (typeof (VectorStoreService.table as any).scan === 'function') {
+                    console.log(`[${debugId}] 📊 VectorStoreService: Using table scan for debug retrieval...`);
+                    records = await (VectorStoreService.table as any).scan().toArray();
+                    console.log(`[${debugId}] ✅ VectorStoreService: Table scan retrieved ${records.length} records`);
+                } else {
+                    console.log(`[${debugId}] ⚠️ VectorStoreService: Table scan not available, using vector search fallback...`);
+                    // Fallback to vector search with dummy vector
+                    const dummyVector = new Array(384).fill(0);
+                    const searchResults = await VectorStoreService.table.search(dummyVector).limit(1000).toArray();
+                    records = searchResults.map((result: any) => ({
+                        id: result.id,
+                        text: result.text,
+                        vector: result.vector,
+                        filePath: result.filePath,
+                        contentHash: result.contentHash || 'unknown'
+                    }));
+                    console.log(`[${debugId}] ✅ VectorStoreService: Vector search fallback retrieved ${records.length} records`);
+                }
+            } catch (retrievalError) {
+                console.error(`[${debugId}] ❌ VectorStoreService: Failed to retrieve records:`, retrievalError);
+                throw retrievalError;
+            }
+
+            // Filter by file path if provided
+            if (filePath) {
+                const originalCount = records.length;
+                records = records.filter((record: any) => record.filePath === filePath);
+                console.log(`[${debugId}] 🔍 VectorStoreService: Filtered ${originalCount} records to ${records.length} for filePath: ${filePath}`);
+            }
+
+            console.log(`[${debugId}] 📊 VectorStoreService: debugGetAllRecords completed - returning ${records.length} records`);
+            return records;
+
+        } catch (error) {
+            console.error(`[${debugId}] ❌ VectorStoreService: debugGetAllRecords failed:`, error);
+            throw new Error(`Failed to retrieve debug records: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 }

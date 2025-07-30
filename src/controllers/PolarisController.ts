@@ -9,6 +9,7 @@ import { VectorStoreService } from '../services/VectorStoreService';
 import { CodeSymbol, ParsedJSDoc } from '../types';
 import { ErrorHandler } from '../utils/ErrorHandler';
 import { PerformanceMonitor } from '../utils/PerformanceMonitor';
+import { normalizePath } from '../utils/pathUtils';
 
 /**
  * Controller responsible for handling file save events and documentation processing
@@ -575,9 +576,13 @@ export class PolarisController {
             const embeddingService = EmbeddingService.getInstance();
             const vectorStoreService = VectorStoreService.getInstance();
 
-            // Convert file path to relative path for consistent ID generation
-            const relativePath = this.getRelativeFilePath(filePath);
-            console.log(`[${operationId}] 📁 Using relative path for IDs: ${relativePath}`);
+            // Convert file path to relative path for consistent ID generation using centralized utility
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!workspaceRoot) {
+                throw new Error('No workspace folder found');
+            }
+            const normalizedFilePath = normalizePath(filePath, workspaceRoot);
+            console.log(`[${operationId}] 📁 Using normalized path for IDs: ${normalizedFilePath}`);
 
             // RECONCILIATION WORKFLOW: Step 1 - Get existing embeddings for this file
             console.log(`[${operationId}] 🔍 Starting reconciliation workflow...`);
@@ -585,7 +590,7 @@ export class PolarisController {
             const existingIds = await this.executeWithErrorRecovery(
                 'Query existing embeddings',
                 async () => {
-                    return await vectorStoreService.getIdsByFilePath(relativePath);
+                    return await vectorStoreService.getIdsByFilePath(normalizedFilePath);
                 },
                 operationId,
                 {
@@ -689,7 +694,7 @@ export class PolarisController {
                         console.log(`[${operationId}] ✅ Generated embedding for ${symbol.name} (${embeddingDuration}ms, ${embedding.length} dimensions)`);
 
                         // Generate unique ID for vector storage
-                        const uniqueId = VectorStoreService.generateUniqueId(relativePath, symbol.name);
+                        const uniqueId = VectorStoreService.generateUniqueId(normalizedFilePath, symbol.name);
 
                         // Store embedding in vector database with filePath
                         const storageStartTime = Date.now();
@@ -698,7 +703,7 @@ export class PolarisController {
                             vectorDimensions: embedding.length
                         });
                         
-                        await vectorStoreService.upsert(uniqueId, docstringContent, embedding, relativePath);
+                        await vectorStoreService.upsert(uniqueId, docstringContent, embedding, normalizedFilePath);
                         
                         PerformanceMonitor.stopTimer(`${operationId}-${symbol.name}`, PerformanceMonitor.MetricTypes.VECTOR_STORAGE, true);
                         
@@ -1026,8 +1031,12 @@ export class PolarisController {
         console.log(`[${operationId}] 📊 Existing IDs: ${existingIds.length}, New symbols: ${newSymbols.length}`);
 
         try {
-            // Get relative path for consistent ID generation
-            const relativePath = this.getRelativeFilePath(filePath);
+            // Get relative path for consistent ID generation using centralized utility
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!workspaceRoot) {
+                throw new Error('No workspace folder found');
+            }
+            const relativePath = normalizePath(filePath, workspaceRoot);
             
             // Generate expected IDs for new symbols
             const newSymbolIds = new Set<string>();
@@ -1184,29 +1193,6 @@ export class PolarisController {
     }
 
     /**
-     * Convert absolute file path to relative path for consistent ID generation
-     * @param filePath - The absolute file path
-     * @returns string The relative file path
-     */
-    private getRelativeFilePath(filePath: string): string {
-        try {
-            // Get workspace root from VS Code workspace
-            const workspaceFolders = vscode.workspace.workspaceFolders;
-            if (workspaceFolders && workspaceFolders.length > 0) {
-                const workspaceRoot = workspaceFolders[0].uri.fsPath;
-                const relativePath = path.relative(workspaceRoot, filePath);
-                return relativePath.replace(/\\/g, '/'); // Normalize to forward slashes
-            }
-
-            // Fallback: use filename if no workspace
-            return path.basename(filePath);
-        } catch (error) {
-            console.error('Failed to get relative file path:', error);
-            return path.basename(filePath);
-        }
-    }
-
-    /**
      * Handles file deletion events to synchronize documentation files
      * @param event - The file deletion event containing deleted files
      */
@@ -1237,7 +1223,11 @@ export class PolarisController {
                         
                         // Also delete embeddings from vector store
                         try {
-                            const relativePath = this.getRelativeFilePath(deletedFilePath);
+                            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                            if (!workspaceRoot) {
+                                throw new Error('No workspace folder found');
+                            }
+                            const relativePath = normalizePath(deletedFilePath, workspaceRoot);
                             console.log(`[${operationId}] 🧠 Deleting vector embeddings for file: ${relativePath}`);
                             const vectorStoreService = VectorStoreService.getInstance();
                             await vectorStoreService.deleteFileEmbeddings(relativePath);
