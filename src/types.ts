@@ -83,3 +83,36 @@ export interface Manifest {
     /** Map of file paths to their extracted symbols */
     files: Record<string, CodeSymbol[]>;
 }
+
+/**
+ * Performance and error metrics for monitoring service initialization
+ */
+export interface ServiceMetrics {
+    embeddingService: {
+        initializationTime: number;
+        initializationSuccess: boolean;
+        errorCategory?: string;
+        errorMessage?: string;
+    };
+    vectorStoreService: {
+        initializationTime: number;
+        initializationSuccess: boolean;
+        errorCategory?: string;
+        errorMessage?: string;
+    };
+    totalInitializationTime: number;
+}
+
+/**
+ * Container for initialized services and metrics
+ */
+export interface ServiceContainer {
+    /** Embedding service instance */
+    embeddingService: any; // Will be typed properly when we import the actual service types
+    /** Vector store service instance */
+    vectorStoreService: any; // Will be typed properly when we import the actual service types
+    /** VSCode service instance for user interactions */
+    vscodeService: any; // Will be typed properly when we import the actual service types
+    /** Service initialization metrics */
+    metrics: ServiceMetrics;
+}
