@@ -4,7 +4,10 @@ import { shouldProcessDocument, DEFAULT_CONFIG } from '../documentFilter';
 import { processDocument } from '../contentProcessor';
 import { CodeParserService } from '../services/CodeParserService';
 import { DocGeneratorService } from '../services/DocGeneratorService';
+import { EmbeddingService } from '../services/EmbeddingService';
+import { VectorStoreService } from '../services/VectorStoreService';
 import { CodeSymbol, ParsedJSDoc } from '../types';
+import { ErrorHandler } from '../utils/ErrorHandler';
 
 /**
  * Controller responsible for handling file save events and documentation processing
@@ -35,6 +38,7 @@ export class PolarisController {
             symbolParsing: 0,
             symbolClassification: 0,
             aiDocumentation: 0,
+            embeddingProcessing: 0,
             markdownGeneration: 0,
             fileWriting: 0
         };
@@ -123,7 +127,50 @@ export class PolarisController {
                 console.log(`[${operationId}] ℹ️ No undocumented symbols found, skipping AI documentation generation`);
             }
 
-            // Step 5: Create documentation directory structure and generate markdown
+            // Step 5: Process embeddings for symbols with docstrings (non-blocking)
+            const embeddingStart = Date.now();
+            let embeddingMetrics = {
+                processed: 0,
+                successful: 0,
+                failed: 0,
+                skipped: 0
+            };
+
+            embeddingMetrics = await ErrorHandler.measureAndHandle(
+                operationId,
+                'Embedding workflow',
+                async () => {
+                    console.log(`[${operationId}] 🔍 Starting embedding workflow for processed symbols...`);
+                    return await this.processEmbeddingsForSymbols(processedSymbols, filePath, operationId);
+                },
+                {
+                    allowFailure: true,
+                    fallbackValue: embeddingMetrics,
+                    additionalMetrics: {
+                        symbolCount: processedSymbols.length,
+                        fileSize: fileSize
+                    },
+                    onError: (error, errorInfo) => {
+                        // Show user notification for embedding failures
+                        if (errorInfo.severity === 'error') {
+                            vscode.window.showWarningMessage(
+                                `Embedding processing failed: ${errorInfo.userMessage}. Documentation will continue without semantic features.`,
+                                'Details'
+                            ).then(selection => {
+                                if (selection === 'Details') {
+                                    const errorMsg = error instanceof Error ? error.message : String(error);
+                                    vscode.window.showErrorMessage(`Embedding error (${errorInfo.category}): ${errorMsg}`);
+                                }
+                            });
+                        }
+                    }
+                }
+            ) || embeddingMetrics;
+
+            performanceMetrics.embeddingProcessing = Date.now() - embeddingStart;
+            console.log(`[${operationId}] ✅ Embedding workflow completed (${performanceMetrics.embeddingProcessing}ms): ${embeddingMetrics.successful} successful, ${embeddingMetrics.failed} failed, ${embeddingMetrics.skipped} skipped`);
+
+            // Step 6: Create documentation directory structure and generate markdown
             const generationStart = Date.now();
             let markdownContent = '';
             try {
@@ -138,7 +185,7 @@ export class PolarisController {
                 throw generationError; // This is critical, can't continue without content
             }
 
-            // Step 6: Write documentation file
+            // Step 7: Write documentation file
             const writingStart = Date.now();
             try {
                 const docGeneratorService = new DocGeneratorService();
@@ -169,6 +216,7 @@ export class PolarisController {
             console.log(`[${operationId}]   - Symbol parsing: ${performanceMetrics.symbolParsing}ms`);
             console.log(`[${operationId}]   - Symbol classification: ${performanceMetrics.symbolClassification}ms`);
             console.log(`[${operationId}]   - AI documentation: ${performanceMetrics.aiDocumentation}ms`);
+            console.log(`[${operationId}]   - Embedding processing: ${performanceMetrics.embeddingProcessing}ms`);
             console.log(`[${operationId}]   - Markdown generation: ${performanceMetrics.markdownGeneration}ms`);
             console.log(`[${operationId}]   - File writing: ${performanceMetrics.fileWriting}ms`);
 
@@ -201,6 +249,7 @@ export class PolarisController {
             console.log(`[${operationId}]   - Symbol parsing: ${performanceMetrics.symbolParsing}ms`);
             console.log(`[${operationId}]   - Symbol classification: ${performanceMetrics.symbolClassification}ms`);
             console.log(`[${operationId}]   - AI documentation: ${performanceMetrics.aiDocumentation}ms`);
+            console.log(`[${operationId}]   - Embedding processing: ${performanceMetrics.embeddingProcessing}ms`);
             console.log(`[${operationId}]   - Markdown generation: ${performanceMetrics.markdownGeneration}ms`);
             console.log(`[${operationId}]   - File writing: ${performanceMetrics.fileWriting}ms`);
 
@@ -486,6 +535,203 @@ export class PolarisController {
     }
 
     /**
+     * Process embeddings for symbols with docstrings
+     * @param symbols - Array of code symbols to process for embeddings
+     * @param filePath - The file path for generating unique IDs
+     * @param operationId - Unique identifier for this operation
+     * @returns Promise<EmbeddingMetrics> Metrics about the embedding processing
+     */
+    private async processEmbeddingsForSymbols(
+        symbols: CodeSymbol[],
+        filePath: string,
+        operationId: string
+    ): Promise<{ processed: number; successful: number; failed: number; skipped: number }> {
+        const startTime = Date.now();
+        const metrics = {
+            processed: 0,
+            successful: 0,
+            failed: 0,
+            skipped: 0
+        };
+
+        console.log(`[${operationId}] 🔍 Processing embeddings for ${symbols.length} symbols...`);
+
+        // Check if embedding services are available
+        if (!EmbeddingService.isServiceInitialized() || !VectorStoreService.isServiceInitialized()) {
+            console.warn(`[${operationId}] ⚠️ Embedding services not initialized, skipping embedding processing`);
+            metrics.skipped = symbols.length;
+            return metrics;
+        }
+
+        try {
+            // Get service instances
+            const embeddingService = EmbeddingService.getInstance();
+            const vectorStoreService = VectorStoreService.getInstance();
+
+            // Convert file path to relative path for consistent ID generation
+            const relativePath = this.getRelativeFilePath(filePath);
+            console.log(`[${operationId}] 📁 Using relative path for IDs: ${relativePath}`);
+
+            // Clean up existing embeddings for this file to prevent accumulation
+            try {
+                console.log(`[${operationId}] 🧹 Cleaning up existing embeddings for file: ${relativePath}`);
+                await vectorStoreService.deleteFileEmbeddings(relativePath);
+                console.log(`[${operationId}] ✅ Existing embeddings cleaned up successfully`);
+            } catch (cleanupError) {
+                console.warn(`[${operationId}] ⚠️ Failed to clean up existing embeddings (continuing anyway):`, cleanupError);
+                // Continue processing even if cleanup fails
+            }
+
+            // Process each symbol with docstring content
+            for (const symbol of symbols) {
+                metrics.processed++;
+                const symbolStartTime = Date.now();
+
+                try {
+                    // Extract docstring content from symbol
+                    const docstringContent = this.extractDocstringContent(symbol, operationId);
+
+                    if (!docstringContent) {
+                        console.log(`[${operationId}] ⏭️ Skipping symbol ${symbol.name}: no docstring content`);
+                        metrics.skipped++;
+                        continue;
+                    }
+
+                    console.log(`[${operationId}] 🔄 Processing embedding for symbol: ${symbol.name} (${docstringContent.length} chars)`);
+
+                    // Generate embedding for docstring content
+                    const embeddingStartTime = Date.now();
+                    const embedding = await embeddingService.generateEmbedding(docstringContent);
+                    const embeddingDuration = Date.now() - embeddingStartTime;
+
+                    console.log(`[${operationId}] ✅ Generated embedding for ${symbol.name} (${embeddingDuration}ms, ${embedding.length} dimensions)`);
+
+                    // Generate unique ID for vector storage
+                    const uniqueId = VectorStoreService.generateUniqueId(relativePath, symbol.name);
+
+                    // Store embedding in vector database
+                    const storageStartTime = Date.now();
+                    await vectorStoreService.upsert(uniqueId, docstringContent, embedding);
+                    const storageDuration = Date.now() - storageStartTime;
+
+                    const symbolDuration = Date.now() - symbolStartTime;
+                    console.log(`[${operationId}] ✅ Stored embedding for ${symbol.name} (storage: ${storageDuration}ms, total: ${symbolDuration}ms)`);
+
+                    metrics.successful++;
+
+                } catch (symbolError) {
+                    const symbolDuration = Date.now() - symbolStartTime;
+                    console.error(`[${operationId}] ❌ Failed to process embedding for symbol ${symbol.name} (${symbolDuration}ms):`, symbolError);
+
+                    // Log detailed error information
+                    if (symbolError instanceof Error) {
+                        console.error(`[${operationId}] Error type: ${symbolError.constructor.name}`);
+                        console.error(`[${operationId}] Error message: ${symbolError.message}`);
+                    }
+
+                    metrics.failed++;
+                    // Continue processing other symbols
+                }
+            }
+
+            const totalDuration = Date.now() - startTime;
+            console.log(`[${operationId}] 📊 Embedding processing completed (${totalDuration}ms):`);
+            console.log(`[${operationId}]   - Processed: ${metrics.processed}`);
+            console.log(`[${operationId}]   - Successful: ${metrics.successful}`);
+            console.log(`[${operationId}]   - Failed: ${metrics.failed}`);
+            console.log(`[${operationId}]   - Skipped: ${metrics.skipped}`);
+            console.log(`[${operationId}]   - Success rate: ${metrics.processed > 0 ? Math.round((metrics.successful / metrics.processed) * 100) : 0}%`);
+
+            return metrics;
+
+        } catch (error) {
+            const totalDuration = Date.now() - startTime;
+            console.error(`[${operationId}] ❌ Critical error in embedding processing (${totalDuration}ms):`, error);
+
+            // Log detailed error information
+            if (error instanceof Error) {
+                console.error(`[${operationId}] Error type: ${error.constructor.name}`);
+                console.error(`[${operationId}] Error message: ${error.message}`);
+                if (error.stack) {
+                    console.error(`[${operationId}] Error stack:`, error.stack);
+                }
+            }
+
+            // Mark all remaining symbols as failed
+            metrics.failed = metrics.processed;
+            metrics.successful = 0;
+
+            // Don't rethrow - embedding failures should not block documentation generation
+            return metrics;
+        }
+    }
+
+    /**
+     * Extract docstring content from a code symbol
+     * @param symbol - The code symbol to extract docstring from
+     * @param operationId - Operation ID for logging
+     * @returns string | null The extracted docstring content or null if none
+     */
+    private extractDocstringContent(symbol: CodeSymbol, operationId: string): string | null {
+        // Check if symbol has documentation
+        if (!symbol.documentation || symbol.documentation.trim().length === 0) {
+            return null;
+        }
+
+        try {
+            // Clean up JSDoc comment format to extract plain text content
+            let content = symbol.documentation.trim();
+
+            // Remove JSDoc comment markers (/** */)
+            content = content.replace(/^\/\*\*/, '').replace(/\*\/$/, '');
+
+            // Remove leading asterisks and whitespace from each line
+            content = content
+                .split('\n')
+                .map(line => line.replace(/^\s*\*\s?/, '').trim())
+                .filter(line => line.length > 0)
+                .join(' ');
+
+            // Remove JSDoc tags for cleaner embedding content
+            content = content.replace(/@\w+\s+[^@]*/g, '').trim();
+
+            if (content.length === 0) {
+                return null;
+            }
+
+            console.log(`[${operationId}] 📝 Extracted docstring content for ${symbol.name}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`);
+            return content;
+
+        } catch (error) {
+            console.error(`[${operationId}] ❌ Failed to extract docstring content for ${symbol.name}:`, error);
+            return null;
+        }
+    }
+
+    /**
+     * Convert absolute file path to relative path for consistent ID generation
+     * @param filePath - The absolute file path
+     * @returns string The relative file path
+     */
+    private getRelativeFilePath(filePath: string): string {
+        try {
+            // Get workspace root from VS Code workspace
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (workspaceFolders && workspaceFolders.length > 0) {
+                const workspaceRoot = workspaceFolders[0].uri.fsPath;
+                const relativePath = path.relative(workspaceRoot, filePath);
+                return relativePath.replace(/\\/g, '/'); // Normalize to forward slashes
+            }
+
+            // Fallback: use filename if no workspace
+            return path.basename(filePath);
+        } catch (error) {
+            console.error('Failed to get relative file path:', error);
+            return path.basename(filePath);
+        }
+    }
+
+    /**
      * Handles file deletion events to synchronize documentation files
      * @param event - The file deletion event containing deleted files
      */
@@ -513,6 +759,19 @@ export class PolarisController {
                     if (shouldProcessDocument(document, DEFAULT_CONFIG)) {
                         console.log(`[${operationId}] 📝 File passed filtering, attempting documentation deletion`);
                         await this.deleteCorrespondingDocumentationFile(deletedFilePath, operationId);
+                        
+                        // Also delete embeddings from vector store
+                        try {
+                            const relativePath = this.getRelativeFilePath(deletedFilePath);
+                            console.log(`[${operationId}] 🧠 Deleting vector embeddings for file: ${relativePath}`);
+                            const vectorStoreService = VectorStoreService.getInstance();
+                            await vectorStoreService.deleteFileEmbeddings(relativePath);
+                            console.log(`[${operationId}] ✅ Vector embeddings deleted successfully`);
+                        } catch (vectorError) {
+                            console.error(`[${operationId}] ⚠️ Failed to delete vector embeddings (continuing anyway):`, vectorError);
+                            // Don't fail the entire operation if vector cleanup fails
+                        }
+                        
                         successCount++;
                     } else {
                         console.log(`[${operationId}] 📋 Skipped documentation deletion for filtered file: ${fileName}`);
