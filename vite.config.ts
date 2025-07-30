@@ -8,7 +8,25 @@ export default defineConfig({
       fileName: "extension",
     },
     rollupOptions: {
-      external: ["vscode", "path", "fs", "os", "crypto"],
+      external: [
+        "vscode",
+        "path",
+        "fs",
+        "os",
+        "crypto",
+        "@lancedb/lancedb",
+        "@xenova/transformers",
+        "child_process",
+        "util",
+        "stream",
+        "buffer",
+        "events",
+        "url",
+        "http",
+        "https",
+        "zlib",
+        "querystring"
+      ],
       output: {
         entryFileNames: "extension.cjs"
       }
