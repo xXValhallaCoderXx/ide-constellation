@@ -24,7 +24,7 @@ export class EmbeddingService {
      */
     public static async initialize(): Promise<void> {
         const startTime = Date.now();
-        const initId = `init-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const initId = `init-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
         console.log(`[${initId}] 🔧 EmbeddingService: Starting initialization process...`);
 
@@ -165,7 +165,7 @@ export class EmbeddingService {
      */
     public async generateEmbedding(text: string): Promise<number[]> {
         const startTime = Date.now();
-        const requestId = `embed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `embed-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
         console.log(`[${requestId}] 🔧 EmbeddingService: Starting embedding generation...`);
         console.log(`[${requestId}] 📝 EmbeddingService: Text length: ${text.length} characters`);

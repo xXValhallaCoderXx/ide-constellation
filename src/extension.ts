@@ -8,6 +8,7 @@ import { PolarisController } from './controllers/PolarisController';
 import { CommandController } from './controllers/CommandController';
 import { EmbeddingService } from './services/EmbeddingService';
 import { VectorStoreService } from './services/VectorStoreService';
+import { ErrorHandler } from './utils/ErrorHandler';
 
 /**
  * Singleton controllers for the extension
@@ -21,7 +22,60 @@ let commandController: CommandController;
 let embeddingServicesAvailable = false;
 
 /**
- * Initialize embedding and vector storage services with proper error handling
+ * Performance and error metrics for monitoring
+ */
+interface ServiceMetrics {
+	embeddingService: {
+		initializationTime: number;
+		initializationSuccess: boolean;
+		errorCategory?: string;
+		errorMessage?: string;
+	};
+	vectorStoreService: {
+		initializationTime: number;
+		initializationSuccess: boolean;
+		errorCategory?: string;
+		errorMessage?: string;
+	};
+	totalInitializationTime: number;
+}
+
+let serviceMetrics: ServiceMetrics = {
+	embeddingService: {
+		initializationTime: 0,
+		initializationSuccess: false
+	},
+	vectorStoreService: {
+		initializationTime: 0,
+		initializationSuccess: false
+	},
+	totalInitializationTime: 0
+};
+
+
+
+/**
+ * Log performance metrics for monitoring and debugging
+ * @param initId Initialization ID for logging
+ * @param metrics Service metrics to log
+ */
+function logServiceMetrics(initId: string, metrics: ServiceMetrics): void {
+	console.log(`[${initId}] 📊 Extension: Service initialization metrics:`);
+	console.log(`[${initId}]   - Total time: ${metrics.totalInitializationTime}ms`);
+	console.log(`[${initId}]   - EmbeddingService: ${metrics.embeddingService.initializationTime}ms (${metrics.embeddingService.initializationSuccess ? 'SUCCESS' : 'FAILED'})`);
+	console.log(`[${initId}]   - VectorStoreService: ${metrics.vectorStoreService.initializationTime}ms (${metrics.vectorStoreService.initializationSuccess ? 'SUCCESS' : 'FAILED'})`);
+
+	if (!metrics.embeddingService.initializationSuccess) {
+		console.log(`[${initId}]   - EmbeddingService error: ${metrics.embeddingService.errorCategory} - ${metrics.embeddingService.errorMessage}`);
+	}
+
+	if (!metrics.vectorStoreService.initializationSuccess) {
+		console.log(`[${initId}]   - VectorStoreService error: ${metrics.vectorStoreService.errorCategory} - ${metrics.vectorStoreService.errorMessage}`);
+	}
+}
+
+/**
+ * Initialize embedding and vector storage services with comprehensive error handling
  * Implements graceful degradation if services fail to initialize
  */
 async function initializeServices(): Promise<void> {
@@ -30,9 +84,25 @@ async function initializeServices(): Promise<void> {
 
 	console.log(`[${initId}] 🚀 Extension: Starting service initialization...`);
 
+	// Reset metrics
+	serviceMetrics = {
+		embeddingService: {
+			initializationTime: 0,
+			initializationSuccess: false
+		},
+		vectorStoreService: {
+			initializationTime: 0,
+			initializationSuccess: false
+		},
+		totalInitializationTime: 0
+	};
+
 	// Get workspace root for proper path resolution
 	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
 	console.log(`[${initId}] 📁 Extension: Using workspace root: ${workspaceRoot}`);
+
+	let criticalFailures: string[] = [];
+	let warnings: string[] = [];
 
 	try {
 		// Initialize EmbeddingService
@@ -41,25 +111,40 @@ async function initializeServices(): Promise<void> {
 
 		try {
 			await EmbeddingService.initialize();
-			const embeddingDuration = Date.now() - embeddingStartTime;
-			console.log(`[${initId}] ✅ Extension: EmbeddingService initialized successfully (${embeddingDuration}ms)`);
+			serviceMetrics.embeddingService.initializationTime = Date.now() - embeddingStartTime;
+			serviceMetrics.embeddingService.initializationSuccess = true;
+			console.log(`[${initId}] ✅ Extension: EmbeddingService initialized successfully (${serviceMetrics.embeddingService.initializationTime}ms)`);
 		} catch (embeddingError) {
-			const embeddingDuration = Date.now() - embeddingStartTime;
-			console.error(`[${initId}] ❌ Extension: EmbeddingService initialization failed (${embeddingDuration}ms):`, embeddingError);
+			serviceMetrics.embeddingService.initializationTime = Date.now() - embeddingStartTime;
+			serviceMetrics.embeddingService.initializationSuccess = false;
+
+			const errorInfo = ErrorHandler.categorizeError(embeddingError);
+			serviceMetrics.embeddingService.errorCategory = errorInfo.category;
+			serviceMetrics.embeddingService.errorMessage = embeddingError instanceof Error ? embeddingError.message : String(embeddingError);
+
+			console.error(`[${initId}] ❌ Extension: EmbeddingService initialization failed (${serviceMetrics.embeddingService.initializationTime}ms):`, embeddingError);
+			console.error(`[${initId}] 🏷️ Extension: Error category: ${errorInfo.category}, Retryable: ${errorInfo.isRetryable}`);
 
 			// Log detailed error information
-			if (embeddingError instanceof Error) {
-				console.error(`[${initId}] 📋 Extension: EmbeddingService error: ${embeddingError.message}`);
+			if (embeddingError instanceof Error && embeddingError.stack) {
+				console.error(`[${initId}] 📚 Extension: EmbeddingService error stack:`, embeddingError.stack);
 			}
 
+			criticalFailures.push(`Embedding service: ${errorInfo.userMessage}`);
+
 			// Show user notification for embedding service failure
+			const message = `Embedding service failed to initialize: ${errorInfo.userMessage}`;
 			vscode.window.showWarningMessage(
-				'Embedding service failed to initialize. Semantic search features will be unavailable.',
-				'Details'
-			).then(selection => {
+				message,
+				'Details', 'Retry'
+			).then(async selection => {
 				if (selection === 'Details') {
 					const errorMsg = embeddingError instanceof Error ? embeddingError.message : String(embeddingError);
-					vscode.window.showErrorMessage(`Embedding service error: ${errorMsg}`);
+					vscode.window.showErrorMessage(`Embedding service error (${errorInfo.category}): ${errorMsg}`);
+				} else if (selection === 'Retry' && errorInfo.isRetryable) {
+					console.log(`[${initId}] 🔄 Extension: User requested retry for EmbeddingService`);
+					// Note: In a real implementation, you might want to implement retry logic here
+					vscode.window.showInformationMessage('Please reload the extension to retry initialization.');
 				}
 			});
 
@@ -72,25 +157,40 @@ async function initializeServices(): Promise<void> {
 
 		try {
 			await VectorStoreService.initialize(workspaceRoot);
-			const vectorDuration = Date.now() - vectorStartTime;
-			console.log(`[${initId}] ✅ Extension: VectorStoreService initialized successfully (${vectorDuration}ms)`);
+			serviceMetrics.vectorStoreService.initializationTime = Date.now() - vectorStartTime;
+			serviceMetrics.vectorStoreService.initializationSuccess = true;
+			console.log(`[${initId}] ✅ Extension: VectorStoreService initialized successfully (${serviceMetrics.vectorStoreService.initializationTime}ms)`);
 		} catch (vectorError) {
-			const vectorDuration = Date.now() - vectorStartTime;
-			console.error(`[${initId}] ❌ Extension: VectorStoreService initialization failed (${vectorDuration}ms):`, vectorError);
+			serviceMetrics.vectorStoreService.initializationTime = Date.now() - vectorStartTime;
+			serviceMetrics.vectorStoreService.initializationSuccess = false;
+
+			const errorInfo = ErrorHandler.categorizeError(vectorError);
+			serviceMetrics.vectorStoreService.errorCategory = errorInfo.category;
+			serviceMetrics.vectorStoreService.errorMessage = vectorError instanceof Error ? vectorError.message : String(vectorError);
+
+			console.error(`[${initId}] ❌ Extension: VectorStoreService initialization failed (${serviceMetrics.vectorStoreService.initializationTime}ms):`, vectorError);
+			console.error(`[${initId}] 🏷️ Extension: Error category: ${errorInfo.category}, Retryable: ${errorInfo.isRetryable}`);
 
 			// Log detailed error information
-			if (vectorError instanceof Error) {
-				console.error(`[${initId}] 📋 Extension: VectorStoreService error: ${vectorError.message}`);
+			if (vectorError instanceof Error && vectorError.stack) {
+				console.error(`[${initId}] 📚 Extension: VectorStoreService error stack:`, vectorError.stack);
 			}
 
+			criticalFailures.push(`Vector storage service: ${errorInfo.userMessage}`);
+
 			// Show user notification for vector store service failure
+			const message = `Vector storage service failed to initialize: ${errorInfo.userMessage}`;
 			vscode.window.showWarningMessage(
-				'Vector storage service failed to initialize. Embedding storage will be unavailable.',
-				'Details'
-			).then(selection => {
+				message,
+				'Details', 'Retry'
+			).then(async selection => {
 				if (selection === 'Details') {
 					const errorMsg = vectorError instanceof Error ? vectorError.message : String(vectorError);
-					vscode.window.showErrorMessage(`Vector storage error: ${errorMsg}`);
+					vscode.window.showErrorMessage(`Vector storage error (${errorInfo.category}): ${errorMsg}`);
+				} else if (selection === 'Retry' && errorInfo.isRetryable) {
+					console.log(`[${initId}] 🔄 Extension: User requested retry for VectorStoreService`);
+					// Note: In a real implementation, you might want to implement retry logic here
+					vscode.window.showInformationMessage('Please reload the extension to retry initialization.');
 				}
 			});
 
@@ -99,41 +199,45 @@ async function initializeServices(): Promise<void> {
 
 		// Mark services as available
 		embeddingServicesAvailable = true;
+		serviceMetrics.totalInitializationTime = Date.now() - startTime;
 
-		const totalDuration = Date.now() - startTime;
-		console.log(`[${initId}] 🎉 Extension: All services initialized successfully (${totalDuration}ms)`);
+		// Log success metrics
+		logServiceMetrics(initId, serviceMetrics);
+		console.log(`[${initId}] 🎉 Extension: All services initialized successfully (${serviceMetrics.totalInitializationTime}ms)`);
 
-		// Show success notification
-		vscode.window.showInformationMessage('Embedding and vector storage services initialized successfully!');
+		// Show success notification with performance info
+		const successMessage = `Embedding services initialized successfully! (${serviceMetrics.totalInitializationTime}ms)`;
+		vscode.window.showInformationMessage(successMessage);
 
 	} catch (error) {
-		const totalDuration = Date.now() - startTime;
-		console.error(`[${initId}] ❌ Extension: Service initialization failed (${totalDuration}ms):`, error);
-
-		// Mark services as unavailable
+		serviceMetrics.totalInitializationTime = Date.now() - startTime;
 		embeddingServicesAvailable = false;
+
+		console.error(`[${initId}] ❌ Extension: Service initialization failed (${serviceMetrics.totalInitializationTime}ms):`, error);
+
+		// Log comprehensive metrics even on failure
+		logServiceMetrics(initId, serviceMetrics);
 
 		// Log graceful degradation
 		console.log(`[${initId}] 🔄 Extension: Continuing with graceful degradation - embedding features disabled`);
 		console.log(`[${initId}] ✅ Extension: Main documentation workflow will continue without embedding support`);
 
 		// Enhanced error categorization for monitoring
-		let errorCategory = 'unknown';
-		if (error instanceof Error) {
-			if (error.message.includes('network') || error.message.includes('fetch')) {
-				errorCategory = 'network';
-			} else if (error.message.includes('memory') || error.message.includes('allocation')) {
-				errorCategory = 'memory';
-			} else if (error.message.includes('permission') || error.message.includes('access')) {
-				errorCategory = 'permission';
-			} else if (error.message.includes('model') || error.message.includes('transformer')) {
-				errorCategory = 'model';
-			} else if (error.message.includes('database') || error.message.includes('vector')) {
-				errorCategory = 'database';
-			}
-		}
+		const errorInfo = ErrorHandler.categorizeError(error);
+		console.error(`[${initId}] 🏷️ Extension: Service initialization error category: ${errorInfo.category}`);
 
-		console.error(`[${initId}] 🏷️ Extension: Service initialization error category: ${errorCategory}`);
+		// Show comprehensive user notification about degraded functionality
+		if (criticalFailures.length > 0) {
+			const failureMessage = `Some services failed to initialize:\n${criticalFailures.join('\n')}\n\nDocumentation generation will continue without semantic search features.`;
+			vscode.window.showWarningMessage(
+				'Extension running in degraded mode',
+				'Details', 'Continue'
+			).then(selection => {
+				if (selection === 'Details') {
+					vscode.window.showErrorMessage(failureMessage);
+				}
+			});
+		}
 
 		// Don't throw the error - allow extension to continue with graceful degradation
 		// The main documentation workflow should continue to work
@@ -149,6 +253,14 @@ export function areEmbeddingServicesAvailable(): boolean {
 }
 
 /**
+ * Get service metrics for monitoring and debugging
+ * @returns ServiceMetrics Current service metrics
+ */
+export function getServiceMetrics(): ServiceMetrics {
+	return { ...serviceMetrics };
+}
+
+/**
  * Handles document save events with filtering and processing
  * @param document - The saved text document
  */
@@ -156,22 +268,73 @@ async function handleDocumentSave(document: vscode.TextDocument): Promise<void> 
 	const startTime = Date.now();
 	const filePath = document.fileName;
 	const operationId = `save-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+	const fileName = path.basename(filePath);
+	const fileSize = document.getText().length;
 	
-	console.log(`[${operationId}] HANDLE DOCUMENT SAVE: ${filePath}`);
+	console.log(`[${operationId}] 📄 HANDLE DOCUMENT SAVE: ${fileName} (${fileSize} bytes)`);
 	
 	try {
 		// Apply document filtering to determine if we should process this file
 		if (shouldProcessDocument(document, DEFAULT_CONFIG)) {
-			console.log(`[${operationId}] Document passed filtering, proceeding with processing`);
+			console.log(`[${operationId}] ✅ Document passed filtering, proceeding with processing`);
+
+			// Log embedding service availability
+			if (embeddingServicesAvailable) {
+				console.log(`[${operationId}] 🔍 Embedding services available - full processing enabled`);
+			} else {
+				console.log(`[${operationId}] ⚠️ Embedding services unavailable - processing without semantic features`);
+			}
 			
 			// Delegate to PolarisController for processing
 			await polarisController.processFileDocumentation(document, startTime, operationId);
+
+			const totalDuration = Date.now() - startTime;
+			console.log(`[${operationId}] ✅ Document save processing completed (${totalDuration}ms)`);
+
 		} else {
-			console.log(`[${operationId}] Document filtered out, skipping processing: ${filePath}`);
+			console.log(`[${operationId}] 🚫 Document filtered out, skipping processing: ${fileName}`);
 		}
 	} catch (error) {
-		console.error(`[${operationId}] Error in handleDocumentSave for ${filePath}:`, error);
-		vscode.window.showErrorMessage(`Failed to process document save for ${path.basename(filePath)}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+		const totalDuration = Date.now() - startTime;
+		console.error(`[${operationId}] ❌ Error in handleDocumentSave for ${fileName} (${totalDuration}ms):`, error);
+
+		// Enhanced error logging
+		if (error instanceof Error) {
+			console.error(`[${operationId}] 📋 Error type: ${error.constructor.name}`);
+			console.error(`[${operationId}] 📋 Error message: ${error.message}`);
+			if (error.stack) {
+				console.error(`[${operationId}] 📚 Error stack:`, error.stack);
+			}
+		}
+
+		// Categorize error for better user feedback
+		const errorInfo = ErrorHandler.categorizeError(error);
+		console.error(`[${operationId}] 🏷️ Error category: ${errorInfo.category}`);
+
+		// Show user-friendly error message
+		const userMessage = `Failed to process ${fileName}: ${errorInfo.userMessage}`;
+		if (errorInfo.isRetryable) {
+			vscode.window.showWarningMessage(
+				userMessage,
+				'Retry', 'Details'
+			).then(selection => {
+				if (selection === 'Retry') {
+					console.log(`[${operationId}] 🔄 User requested retry for document processing`);
+					// Trigger another save event or manual processing
+					vscode.window.showInformationMessage('Please save the file again to retry processing.');
+				} else if (selection === 'Details') {
+					const errorMsg = error instanceof Error ? error.message : String(error);
+					vscode.window.showErrorMessage(`Document processing error (${errorInfo.category}): ${errorMsg}`);
+				}
+			});
+		} else {
+			vscode.window.showErrorMessage(userMessage, 'Details').then(selection => {
+				if (selection === 'Details') {
+					const errorMsg = error instanceof Error ? error.message : String(error);
+					vscode.window.showErrorMessage(`Document processing error (${errorInfo.category}): ${errorMsg}`);
+				}
+			});
+		}
 	}
 }
 

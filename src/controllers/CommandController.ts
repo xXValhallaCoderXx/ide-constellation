@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { EmbeddingService } from '../services/EmbeddingService';
 import { VectorStoreService } from '../services/VectorStoreService';
+import { ErrorHandler } from '../utils/ErrorHandler';
 
 /**
  * Controller responsible for managing all VSCode command registrations
@@ -31,7 +32,7 @@ export class CommandController {
      */
     private async handleTestVectorQuery(): Promise<void> {
         const startTime = Date.now();
-        const testId = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const testId = ErrorHandler.createOperationId('vector-search-test');
 
         console.log(`[${testId}] 🧪 CommandController: Starting vector search test...`);
 
@@ -127,29 +128,21 @@ export class CommandController {
 
         } catch (error) {
             const totalDuration = Date.now() - startTime;
-            console.error(`[${testId}] ❌ CommandController: Vector search test failed (${totalDuration}ms):`, error);
+            const errorInfo = ErrorHandler.logError(testId, 'Vector search test', error, totalDuration);
 
-            // Enhanced error logging
-            if (error instanceof Error) {
-                console.error(`[${testId}] ⚠️ CommandController: Error type: ${error.constructor.name}`);
-                console.error(`[${testId}] 📋 CommandController: Error message: ${error.message}`);
-
-                if (error.stack) {
-                    console.error(`[${testId}] 📚 CommandController: Error stack:`, error.stack);
+            // Show user-friendly error notification
+            await ErrorHandler.showUserNotification(
+                'Vector Search Test',
+                errorInfo,
+                error,
+                {
+                    customMessage: `Vector search test failed: ${errorInfo.userMessage}`,
+                    onRetry: () => {
+                        console.log(`[${testId}] 🔄 CommandController: User requested retry for vector search test`);
+                        vscode.commands.executeCommand('constellation.testVectorQuery');
+                    }
                 }
-
-                // Show user-friendly error message
-                vscode.window.showErrorMessage(
-                    `Vector Search Test Failed: ${error.message}. Check debug console for details.`
-                );
-            } else {
-                console.error(`[${testId}] ❓ CommandController: Unknown error type: ${typeof error}`);
-                console.error(`[${testId}] 📋 CommandController: Error details: ${String(error)}`);
-
-                vscode.window.showErrorMessage(
-                    `Vector Search Test Failed: Unknown error occurred. Check debug console for details.`
-                );
-            }
+            );
         }
     }
 }

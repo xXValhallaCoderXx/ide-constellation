@@ -61,7 +61,7 @@
   - Display search results in debug console with text and similarity scores
   - _Requirements: 4.1, 4.4_
 
-- [ ] 10. Add comprehensive error handling and logging
+- [x] 10. Add comprehensive error handling and logging
   - Implement detailed error logging for all service operations
   - Add user notifications for critical failures (model loading, database connection)
   - Ensure main documentation workflow continues despite embedding failures
@@ -75,14 +75,14 @@
   - Mock transformer model for consistent test results
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 12. Write unit tests for VectorStoreService
+- [x] 12. Write unit tests for VectorStoreService
   - Create test file for VectorStoreService with database operation tests
   - Test upsert operations with valid and invalid data scenarios
   - Test search functionality with different query vectors and limits
   - Mock LanceDB for database testing and error simulation
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 13. Write integration tests for complete workflow
+- [x] 13. Write integration tests for complete workflow
   - Create end-to-end test for file save to vector storage pipeline
   - Test debug command execution and result verification
   - Test error recovery and graceful degradation scenarios

@@ -7,6 +7,7 @@ import { DocGeneratorService } from '../services/DocGeneratorService';
 import { EmbeddingService } from '../services/EmbeddingService';
 import { VectorStoreService } from '../services/VectorStoreService';
 import { CodeSymbol, ParsedJSDoc } from '../types';
+import { ErrorHandler } from '../utils/ErrorHandler';
 
 /**
  * Controller responsible for handling file save events and documentation processing
@@ -134,17 +135,40 @@ export class PolarisController {
                 failed: 0,
                 skipped: 0
             };
-            try {
-                console.log(`[${operationId}] 🔍 Starting embedding workflow for processed symbols...`);
-                embeddingMetrics = await this.processEmbeddingsForSymbols(processedSymbols, filePath, operationId);
-                performanceMetrics.embeddingProcessing = Date.now() - embeddingStart;
-                console.log(`[${operationId}] ✅ Embedding workflow completed (${performanceMetrics.embeddingProcessing}ms): ${embeddingMetrics.successful} successful, ${embeddingMetrics.failed} failed, ${embeddingMetrics.skipped} skipped`);
-            } catch (embeddingError) {
-                performanceMetrics.embeddingProcessing = Date.now() - embeddingStart;
-                console.error(`[${operationId}] ❌ Embedding workflow failed (${performanceMetrics.embeddingProcessing}ms):`, embeddingError);
-                // Don't throw - embedding failures should not block documentation generation
-                console.log(`[${operationId}] 🔄 Continuing with documentation generation despite embedding failures`);
-            }
+
+            embeddingMetrics = await ErrorHandler.measureAndHandle(
+                operationId,
+                'Embedding workflow',
+                async () => {
+                    console.log(`[${operationId}] 🔍 Starting embedding workflow for processed symbols...`);
+                    return await this.processEmbeddingsForSymbols(processedSymbols, filePath, operationId);
+                },
+                {
+                    allowFailure: true,
+                    fallbackValue: embeddingMetrics,
+                    additionalMetrics: {
+                        symbolCount: processedSymbols.length,
+                        fileSize: fileSize
+                    },
+                    onError: (error, errorInfo) => {
+                        // Show user notification for embedding failures
+                        if (errorInfo.severity === 'error') {
+                            vscode.window.showWarningMessage(
+                                `Embedding processing failed: ${errorInfo.userMessage}. Documentation will continue without semantic features.`,
+                                'Details'
+                            ).then(selection => {
+                                if (selection === 'Details') {
+                                    const errorMsg = error instanceof Error ? error.message : String(error);
+                                    vscode.window.showErrorMessage(`Embedding error (${errorInfo.category}): ${errorMsg}`);
+                                }
+                            });
+                        }
+                    }
+                }
+            ) || embeddingMetrics;
+
+            performanceMetrics.embeddingProcessing = Date.now() - embeddingStart;
+            console.log(`[${operationId}] ✅ Embedding workflow completed (${performanceMetrics.embeddingProcessing}ms): ${embeddingMetrics.successful} successful, ${embeddingMetrics.failed} failed, ${embeddingMetrics.skipped} skipped`);
 
             // Step 6: Create documentation directory structure and generate markdown
             const generationStart = Date.now();

@@ -51,7 +51,7 @@ export class VectorStoreService {
      */
     public static async initialize(workspaceRoot?: string): Promise<void> {
         const startTime = Date.now();
-        const initId = `init-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const initId = `init-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
         console.log(`[${initId}] 🔧 VectorStoreService: Starting initialization process...`);
 
@@ -335,7 +335,7 @@ export class VectorStoreService {
      */
     public async upsert(id: string, text: string, vector: number[]): Promise<void> {
         const startTime = Date.now();
-        const requestId = `upsert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `upsert-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
         console.log(`[${requestId}] 🔧 VectorStoreService: Starting upsert operation...`);
         console.log(`[${requestId}] 🆔 VectorStoreService: ID: ${id}`);
@@ -477,7 +477,7 @@ export class VectorStoreService {
      */
     public async search(queryVector: number[], limit: number = 5): Promise<SearchResult[]> {
         const startTime = Date.now();
-        const requestId = `search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const requestId = `search-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
         console.log(`[${requestId}] 🔧 VectorStoreService: Starting search operation...`);
         console.log(`[${requestId}] 📊 VectorStoreService: Query vector dimensions: ${queryVector.length}`);
