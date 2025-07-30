@@ -8,6 +8,8 @@ import { EmbeddingService } from '../services/EmbeddingService';
 import { VectorStoreService } from '../services/VectorStoreService';
 import { CodeSymbol, ParsedJSDoc } from '../types';
 import { ErrorHandler } from '../utils/ErrorHandler';
+import { PerformanceMonitor } from '../utils/PerformanceMonitor';
+import { normalizePath } from '../utils/pathUtils';
 
 /**
  * Controller responsible for handling file save events and documentation processing
@@ -535,7 +537,7 @@ export class PolarisController {
     }
 
     /**
-     * Process embeddings for symbols with docstrings
+     * Process embeddings for symbols with docstrings using reconciliation workflow
      * @param symbols - Array of code symbols to process for embeddings
      * @param filePath - The file path for generating unique IDs
      * @param operationId - Unique identifier for this operation
@@ -554,7 +556,13 @@ export class PolarisController {
             skipped: 0
         };
 
-        console.log(`[${operationId}] 🔍 Processing embeddings for ${symbols.length} symbols...`);
+        console.log(`[${operationId}] 🔍 Processing embeddings with reconciliation for ${symbols.length} symbols...`);
+
+        // Start overall reconciliation performance monitoring
+        PerformanceMonitor.startTimer(operationId, PerformanceMonitor.MetricTypes.RECONCILIATION, {
+            symbolCount: symbols.length,
+            filePath: filePath
+        });
 
         // Check if embedding services are available
         if (!EmbeddingService.isServiceInitialized() || !VectorStoreService.isServiceInitialized()) {
@@ -568,101 +576,577 @@ export class PolarisController {
             const embeddingService = EmbeddingService.getInstance();
             const vectorStoreService = VectorStoreService.getInstance();
 
-            // Convert file path to relative path for consistent ID generation
-            const relativePath = this.getRelativeFilePath(filePath);
-            console.log(`[${operationId}] 📁 Using relative path for IDs: ${relativePath}`);
+            // Convert file path to relative path for consistent ID generation using centralized utility
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!workspaceRoot) {
+                throw new Error('No workspace folder found');
+            }
+            const normalizedFilePath = normalizePath(filePath, workspaceRoot);
+            console.log(`[${operationId}] 📁 Using normalized path for IDs: ${normalizedFilePath}`);
 
-            // Clean up existing embeddings for this file to prevent accumulation
-            try {
-                console.log(`[${operationId}] 🧹 Cleaning up existing embeddings for file: ${relativePath}`);
-                await vectorStoreService.deleteFileEmbeddings(relativePath);
-                console.log(`[${operationId}] ✅ Existing embeddings cleaned up successfully`);
-            } catch (cleanupError) {
-                console.warn(`[${operationId}] ⚠️ Failed to clean up existing embeddings (continuing anyway):`, cleanupError);
-                // Continue processing even if cleanup fails
+            // RECONCILIATION WORKFLOW: Step 1 - Get existing embeddings for this file
+            console.log(`[${operationId}] 🔍 Starting reconciliation workflow...`);
+            
+            const existingIds = await this.executeWithErrorRecovery(
+                'Query existing embeddings',
+                async () => {
+                    return await vectorStoreService.getIdsByFilePath(normalizedFilePath);
+                },
+                operationId,
+                {
+                    maxRetries: 3,
+                    allowFailure: true,
+                    fallbackValue: [],
+                    retryableErrorTypes: ['connection', 'timeout', 'database'],
+                    onError: (error, attempt) => {
+                        console.warn(`[${operationId}] ⚠️ Query attempt ${attempt} failed: ${error.message}`);
+                    }
+                }
+            );
+            
+            console.log(`[${operationId}] ✅ Retrieved ${existingIds.length} existing embeddings`);
+
+            // RECONCILIATION WORKFLOW: Step 2 - Calculate reconciliation state
+            const reconciliationState = await this.executeWithErrorRecovery(
+                'Calculate reconciliation state',
+                async () => {
+                    return await this.calculateReconciliationState(
+                        existingIds,
+                        symbols,
+                        filePath,
+                        operationId
+                    );
+                },
+                operationId,
+                {
+                    maxRetries: 2,
+                    allowFailure: false, // This is critical for the workflow
+                    retryableErrorTypes: ['temporary']
+                }
+            );
+            
+            console.log(`[${operationId}] ✅ Reconciliation state calculated`);
+            
+            // Log reconciliation metrics
+            const reconciliationMetrics = reconciliationState.reconciliationMetrics;
+            console.log(`[${operationId}] 📊 Reconciliation plan: delete ${reconciliationMetrics.toDelete}, upsert ${reconciliationMetrics.toUpsert}, unchanged ${reconciliationMetrics.unchanged}`);
+
+            // RECONCILIATION WORKFLOW: Step 3 - Execute delete operations first
+            if (reconciliationState.idsToDelete.length > 0) {
+                await this.executeWithErrorRecovery(
+                    'Delete obsolete embeddings',
+                    async () => {
+                        console.log(`[${operationId}] 🗑️ Deleting ${reconciliationState.idsToDelete.length} obsolete embeddings...`);
+                        await vectorStoreService.delete(reconciliationState.idsToDelete);
+                        console.log(`[${operationId}] ✅ Successfully deleted ${reconciliationState.idsToDelete.length} obsolete embeddings`);
+                        return true;
+                    },
+                    operationId,
+                    {
+                        maxRetries: 3,
+                        allowFailure: true, // Deletion failures shouldn't stop upserts
+                        retryableErrorTypes: ['connection', 'timeout', 'lock', 'busy'],
+                        onError: (error, attempt) => {
+                            console.warn(`[${operationId}] ⚠️ Delete attempt ${attempt} failed: ${error.message}`);
+                        }
+                    }
+                );
+            } else {
+                console.log(`[${operationId}] ℹ️ No obsolete embeddings to delete`);
             }
 
-            // Process each symbol with docstring content
-            for (const symbol of symbols) {
-                metrics.processed++;
-                const symbolStartTime = Date.now();
+            // RECONCILIATION WORKFLOW: Step 4 - Execute upsert operations for symbols with documentation
+            if (reconciliationState.symbolsToUpsert.length > 0) {
+                console.log(`[${operationId}] ⬆️ Upserting embeddings for ${reconciliationState.symbolsToUpsert.length} symbols...`);
+                
+                // Process each symbol with docstring content
+                for (const symbol of reconciliationState.symbolsToUpsert) {
+                    metrics.processed++;
+                    const symbolStartTime = Date.now();
 
-                try {
-                    // Extract docstring content from symbol
-                    const docstringContent = this.extractDocstringContent(symbol, operationId);
+                    try {
+                        // Extract docstring content from symbol
+                        const docstringContent = this.extractDocstringContent(symbol, operationId);
 
-                    if (!docstringContent) {
-                        console.log(`[${operationId}] ⏭️ Skipping symbol ${symbol.name}: no docstring content`);
-                        metrics.skipped++;
-                        continue;
+                        if (!docstringContent) {
+                            console.log(`[${operationId}] ⏭️ Skipping symbol ${symbol.name}: no docstring content`);
+                            metrics.skipped++;
+                            continue;
+                        }
+
+                        console.log(`[${operationId}] 🔄 Processing embedding for symbol: ${symbol.name} (${docstringContent.length} chars)`);
+
+                        // Generate embedding for docstring content
+                        const embeddingStartTime = Date.now();
+                        PerformanceMonitor.startTimer(`${operationId}-${symbol.name}`, PerformanceMonitor.MetricTypes.EMBEDDING_GENERATION, {
+                            symbolName: symbol.name,
+                            contentLength: docstringContent.length
+                        });
+                        
+                        const embedding = await embeddingService.generateEmbedding(docstringContent);
+                        
+                        PerformanceMonitor.stopTimer(`${operationId}-${symbol.name}`, PerformanceMonitor.MetricTypes.EMBEDDING_GENERATION, true, {
+                            vectorDimensions: embedding.length
+                        });
+                        
+                        const embeddingDuration = Date.now() - embeddingStartTime;
+
+                        console.log(`[${operationId}] ✅ Generated embedding for ${symbol.name} (${embeddingDuration}ms, ${embedding.length} dimensions)`);
+
+                        // Generate unique ID for vector storage
+                        const uniqueId = VectorStoreService.generateUniqueId(normalizedFilePath, symbol.name);
+
+                        // Store embedding in vector database with filePath
+                        const storageStartTime = Date.now();
+                        PerformanceMonitor.startTimer(`${operationId}-${symbol.name}`, PerformanceMonitor.MetricTypes.VECTOR_STORAGE, {
+                            symbolName: symbol.name,
+                            vectorDimensions: embedding.length
+                        });
+                        
+                        await vectorStoreService.upsert(uniqueId, docstringContent, embedding, normalizedFilePath);
+                        
+                        PerformanceMonitor.stopTimer(`${operationId}-${symbol.name}`, PerformanceMonitor.MetricTypes.VECTOR_STORAGE, true);
+                        
+                        const storageDuration = Date.now() - storageStartTime;
+
+                        const symbolDuration = Date.now() - symbolStartTime;
+                        console.log(`[${operationId}] ✅ Stored embedding for ${symbol.name} (storage: ${storageDuration}ms, total: ${symbolDuration}ms)`);
+
+                        metrics.successful++;
+
+                    } catch (symbolError) {
+                        const symbolDuration = Date.now() - symbolStartTime;
+                        console.error(`[${operationId}] ❌ Failed to process embedding for symbol ${symbol.name} (${symbolDuration}ms):`, symbolError);
+
+                        // Log detailed error information
+                        if (symbolError instanceof Error) {
+                            console.error(`[${operationId}] Error type: ${symbolError.constructor.name}`);
+                            console.error(`[${operationId}] Error message: ${symbolError.message}`);
+                        }
+
+                        metrics.failed++;
+                        
+                        // For individual symbol failures, continue processing other symbols
+                        // Only abort if it's a critical infrastructure failure
+                        if (symbolError instanceof Error && 
+                            (symbolError.message.includes('service unavailable') || 
+                             symbolError.message.includes('connection'))) {
+                            console.error(`[${operationId}] 🚫 Critical infrastructure failure detected, aborting remaining symbols`);
+                            break;
+                        }
                     }
-
-                    console.log(`[${operationId}] 🔄 Processing embedding for symbol: ${symbol.name} (${docstringContent.length} chars)`);
-
-                    // Generate embedding for docstring content
-                    const embeddingStartTime = Date.now();
-                    const embedding = await embeddingService.generateEmbedding(docstringContent);
-                    const embeddingDuration = Date.now() - embeddingStartTime;
-
-                    console.log(`[${operationId}] ✅ Generated embedding for ${symbol.name} (${embeddingDuration}ms, ${embedding.length} dimensions)`);
-
-                    // Generate unique ID for vector storage
-                    const uniqueId = VectorStoreService.generateUniqueId(relativePath, symbol.name);
-
-                    // Store embedding in vector database
-                    const storageStartTime = Date.now();
-                    await vectorStoreService.upsert(uniqueId, docstringContent, embedding);
-                    const storageDuration = Date.now() - storageStartTime;
-
-                    const symbolDuration = Date.now() - symbolStartTime;
-                    console.log(`[${operationId}] ✅ Stored embedding for ${symbol.name} (storage: ${storageDuration}ms, total: ${symbolDuration}ms)`);
-
-                    metrics.successful++;
-
-                } catch (symbolError) {
-                    const symbolDuration = Date.now() - symbolStartTime;
-                    console.error(`[${operationId}] ❌ Failed to process embedding for symbol ${symbol.name} (${symbolDuration}ms):`, symbolError);
-
-                    // Log detailed error information
-                    if (symbolError instanceof Error) {
-                        console.error(`[${operationId}] Error type: ${symbolError.constructor.name}`);
-                        console.error(`[${operationId}] Error message: ${symbolError.message}`);
-                    }
-
-                    metrics.failed++;
-                    // Continue processing other symbols
                 }
+            } else {
+                console.log(`[${operationId}] ℹ️ No new symbols to upsert (all symbols already exist in database)`);
             }
 
             const totalDuration = Date.now() - startTime;
-            console.log(`[${operationId}] 📊 Embedding processing completed (${totalDuration}ms):`);
-            console.log(`[${operationId}]   - Processed: ${metrics.processed}`);
+            
+            // Final reconciliation report
+            console.log(`[${operationId}] 📊 Reconciliation workflow completed (${totalDuration}ms):`);
+            console.log(`[${operationId}]   - Existing embeddings: ${reconciliationState.reconciliationMetrics.existing}`);
+            console.log(`[${operationId}]   - Deleted embeddings: ${reconciliationState.idsToDelete.length}`);
+            console.log(`[${operationId}]   - Processed symbols: ${metrics.processed}`);
             console.log(`[${operationId}]   - Successful: ${metrics.successful}`);
             console.log(`[${operationId}]   - Failed: ${metrics.failed}`);
             console.log(`[${operationId}]   - Skipped: ${metrics.skipped}`);
             console.log(`[${operationId}]   - Success rate: ${metrics.processed > 0 ? Math.round((metrics.successful / metrics.processed) * 100) : 0}%`);
 
+            // Stop performance monitoring and log metrics
+            PerformanceMonitor.stopTimer(operationId, PerformanceMonitor.MetricTypes.RECONCILIATION, true, {
+                existingEmbeddings: reconciliationState.reconciliationMetrics.existing,
+                deletedEmbeddings: reconciliationState.idsToDelete.length,
+                processedSymbols: metrics.processed,
+                successfulEmbeddings: metrics.successful,
+                failedEmbeddings: metrics.failed,
+                skippedSymbols: metrics.skipped,
+                successRate: metrics.processed > 0 ? Math.round((metrics.successful / metrics.processed) * 100) : 0
+            });
+
+            // Log performance summary
+            PerformanceMonitor.logSummary(operationId);
+
             return metrics;
 
         } catch (error) {
             const totalDuration = Date.now() - startTime;
-            console.error(`[${operationId}] ❌ Critical error in embedding processing (${totalDuration}ms):`, error);
+            console.error(`[${operationId}] ❌ Critical error in reconciliation workflow (${totalDuration}ms):`, error);
 
-            // Log detailed error information
+            // Enhanced error handling with categorization
             if (error instanceof Error) {
-                console.error(`[${operationId}] Error type: ${error.constructor.name}`);
-                console.error(`[${operationId}] Error message: ${error.message}`);
+                console.error(`[${operationId}] ⚠️ Error type: ${error.constructor.name}`);
+                console.error(`[${operationId}] 📋 Error message: ${error.message}`);
                 if (error.stack) {
-                    console.error(`[${operationId}] Error stack:`, error.stack);
+                    console.error(`[${operationId}] 📚 Error stack:`, error.stack);
                 }
+                
+                // Categorize error types
+                let errorCategory = 'unknown';
+                if (error.message.includes('reconciliation')) {
+                    errorCategory = 'reconciliation';
+                } else if (error.message.includes('connection') || error.message.includes('database')) {
+                    errorCategory = 'database';
+                } else if (error.message.includes('service')) {
+                    errorCategory = 'service';
+                }
+                
+                console.error(`[${operationId}] 🏷️ Error category: ${errorCategory}`);
+                
+                // Stop performance monitoring with failure  
+                PerformanceMonitor.stopTimer(operationId, PerformanceMonitor.MetricTypes.RECONCILIATION, false, {
+                    symbolCount: symbols.length
+                });
             }
 
-            // Mark all remaining symbols as failed
-            metrics.failed = metrics.processed;
+            // Mark all symbols as failed for this critical error
+            metrics.failed = symbols.length;
             metrics.successful = 0;
 
             // Don't rethrow - embedding failures should not block documentation generation
             return metrics;
+        }
+    }
+
+    /**
+     * Enhanced error handling and recovery for reconciliation operations
+     * @param operationName Name of the operation for logging
+     * @param operation The operation to execute with error handling
+     * @param recoveryOptions Options for error recovery
+     * @returns Promise<T> Result of the operation or fallback value
+     */
+    private async executeWithErrorRecovery<T>(
+        operationName: string,
+        operation: () => Promise<T>,
+        operationId: string,
+        recoveryOptions: {
+            maxRetries?: number;
+            retryDelayMs?: number;
+            fallbackValue?: T;
+            allowFailure?: boolean;
+            retryableErrorTypes?: string[];
+            onError?: (error: Error, attempt: number) => void;
+        } = {}
+    ): Promise<T> {
+        const {
+            maxRetries = 3,
+            retryDelayMs = 1000,
+            fallbackValue,
+            allowFailure = false,
+            retryableErrorTypes = ['connection', 'timeout', 'temporary', 'lock', 'busy'],
+            onError
+        } = recoveryOptions;
+
+        let lastError: Error | null = null;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`[${operationId}] 🔄 Executing ${operationName} (attempt ${attempt}/${maxRetries})...`);
+                const startTime = Date.now();
+                
+                const result = await operation();
+                
+                const duration = Date.now() - startTime;
+                if (attempt > 1) {
+                    console.log(`[${operationId}] ✅ ${operationName} succeeded on retry attempt ${attempt} (${duration}ms)`);
+                }
+                
+                return result;
+                
+            } catch (error) {
+                lastError = error instanceof Error ? error : new Error(String(error));
+                
+                // Call error callback if provided
+                if (onError) {
+                    onError(lastError, attempt);
+                }
+                
+                console.error(`[${operationId}] ❌ ${operationName} failed on attempt ${attempt}/${maxRetries}:`, lastError.message);
+                
+                // Categorize error to determine if it's retryable
+                const isRetryable = this.isErrorRetryable(lastError, retryableErrorTypes);
+                
+                // If this is the last attempt or error is not retryable, handle final failure
+                if (attempt === maxRetries || !isRetryable) {
+                    console.error(`[${operationId}] 🚫 ${operationName} failed permanently after ${attempt} attempts`);
+                    
+                    // Log error categorization
+                    const errorCategory = this.categorizeError(lastError);
+                    console.error(`[${operationId}] 🏷️ Error category: ${errorCategory}, Retryable: ${isRetryable}`);
+                    
+                    // Handle final failure
+                    if (allowFailure && fallbackValue !== undefined) {
+                        console.log(`[${operationId}] 🔄 Using fallback value for ${operationName}`);
+                        return fallbackValue;
+                    } else if (allowFailure) {
+                        console.log(`[${operationId}] ⚠️ Operation ${operationName} failed but marked as non-critical`);
+                        throw lastError;
+                    } else {
+                        // Critical failure - create user notification
+                        this.notifyUserOfCriticalError(operationName, lastError, operationId);
+                        throw new Error(`Critical failure in ${operationName}: ${lastError.message}`);
+                    }
+                }
+                
+                // Wait before retry if this isn't the last attempt
+                if (attempt < maxRetries) {
+                    const delay = retryDelayMs * Math.pow(2, attempt - 1); // Exponential backoff
+                    console.log(`[${operationId}] ⏳ Retrying ${operationName} in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+        
+        // This should never be reached, but TypeScript requires it
+        throw lastError || new Error(`Unexpected error in ${operationName}`);
+    }
+
+    /**
+     * Determine if an error is retryable based on error message patterns
+     * @param error The error to check
+     * @param retryableTypes Array of retryable error type keywords
+     * @returns boolean True if the error is retryable
+     */
+    private isErrorRetryable(error: Error, retryableTypes: string[]): boolean {
+        const errorMessage = error.message.toLowerCase();
+        return retryableTypes.some(type => errorMessage.includes(type));
+    }
+
+    /**
+     * Categorize an error for better monitoring and debugging
+     * @param error The error to categorize
+     * @returns string The error category
+     */
+    private categorizeError(error: Error): string {
+        const message = error.message.toLowerCase();
+        
+        if (message.includes('connection') || message.includes('network')) {
+            return 'connection';
+        } else if (message.includes('timeout')) {
+            return 'timeout';
+        } else if (message.includes('permission') || message.includes('access')) {
+            return 'permission';
+        } else if (message.includes('memory') || message.includes('allocation')) {
+            return 'memory';
+        } else if (message.includes('schema') || message.includes('type')) {
+            return 'schema';
+        } else if (message.includes('lock') || message.includes('busy')) {
+            return 'lock';
+        } else if (message.includes('service') || message.includes('unavailable')) {
+            return 'service';
+        } else if (message.includes('validation') || message.includes('input')) {
+            return 'validation';
+        } else {
+            return 'unknown';
+        }
+    }
+
+    /**
+     * Notify user of critical errors that require attention
+     * @param operationName The operation that failed
+     * @param error The error that occurred
+     * @param operationId Operation ID for logging
+     */
+    private notifyUserOfCriticalError(operationName: string, error: Error, operationId: string): void {
+        const errorCategory = this.categorizeError(error);
+        
+        // Create user-friendly error messages based on category
+        let userMessage = `${operationName} failed: ${error.message}`;
+        let actionSuggestion = '';
+        
+        switch (errorCategory) {
+            case 'connection':
+                userMessage = `Database connection error during ${operationName}`;
+                actionSuggestion = 'Check your network connection and try again.';
+                break;
+            case 'permission':
+                userMessage = `Permission error during ${operationName}`;
+                actionSuggestion = 'Check file permissions for the workspace directory.';
+                break;
+            case 'memory':
+                userMessage = `Memory error during ${operationName}`;
+                actionSuggestion = 'Close other applications to free up memory.';
+                break;
+            case 'service':
+                userMessage = `Service unavailable during ${operationName}`;
+                actionSuggestion = 'AI services may be temporarily unavailable. Try again later.';
+                break;
+            default:
+                userMessage = `Unexpected error during ${operationName}`;
+                actionSuggestion = 'Check the output panel for detailed error information.';
+        }
+        
+        console.error(`[${operationId}] 📢 Notifying user of critical error: ${userMessage}`);
+        
+        // Show notification with action button
+        vscode.window.showErrorMessage(
+            `${userMessage}. ${actionSuggestion}`,
+            'Show Details',
+            'Retry'
+        ).then(selection => {
+            if (selection === 'Show Details') {
+                // Show detailed error in output panel
+                console.error(`[${operationId}] 📋 User requested error details:`);
+                console.error(`[${operationId}] Operation: ${operationName}`);
+                console.error(`[${operationId}] Error: ${error.message}`);
+                console.error(`[${operationId}] Category: ${errorCategory}`);
+                console.error(`[${operationId}] Stack: ${error.stack || 'Not available'}`);
+                
+                vscode.window.showInformationMessage(
+                    'Detailed error information has been logged to the output panel. Use View > Output and select "IDE Constellation" channel.'
+                );
+            } else if (selection === 'Retry') {
+                vscode.window.showInformationMessage(
+                    'Save the file again to retry the operation.'
+                );
+            }
+        });
+    }
+
+    /**
+     * Calculate reconciliation differences between old database state and new parsed symbols
+     * @param existingIds Array of existing embedding IDs in the database for this file
+     * @param newSymbols Array of newly parsed symbols from the file
+     * @param filePath The file path for logging and ID generation
+     * @param operationId Operation ID for logging
+     * @returns Object containing IDs to delete and symbols to upsert
+     */
+    private async calculateReconciliationState(
+        existingIds: string[],
+        newSymbols: CodeSymbol[],
+        filePath: string,
+        operationId: string
+    ): Promise<{
+        idsToDelete: string[];
+        symbolsToUpsert: CodeSymbol[];
+        reconciliationMetrics: {
+            existing: number;
+            new: number;
+            toDelete: number;
+            toUpsert: number;
+            unchanged: number;
+        }
+    }> {
+        const startTime = Date.now();
+        console.log(`[${operationId}] 🔍 Calculating reconciliation state for file: ${filePath}`);
+        console.log(`[${operationId}] 📊 Existing IDs: ${existingIds.length}, New symbols: ${newSymbols.length}`);
+
+        try {
+            // Get relative path for consistent ID generation using centralized utility
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!workspaceRoot) {
+                throw new Error('No workspace folder found');
+            }
+            const relativePath = normalizePath(filePath, workspaceRoot);
+            
+            // Generate expected IDs for new symbols
+            const newSymbolIds = new Set<string>();
+            const symbolIdMap = new Map<string, CodeSymbol>();
+            
+            for (const symbol of newSymbols) {
+                const expectedId = VectorStoreService.generateUniqueId(relativePath, symbol.name);
+                newSymbolIds.add(expectedId);
+                symbolIdMap.set(expectedId, symbol);
+                console.log(`[${operationId}] 🆔 Generated ID for symbol ${symbol.name}: ${expectedId}`);
+            }
+            
+            // Convert existing IDs to Set for efficient lookup
+            const existingIdSet = new Set(existingIds);
+            
+            // Calculate IDs to delete (exist in database but not in new symbols)
+            const idsToDelete = existingIds.filter(id => !newSymbolIds.has(id));
+            
+            // Calculate symbols to upsert (only new symbols that don't already exist)
+            // This prevents creating duplicates for unchanged symbols
+            const newSymbolsOnly = newSymbols.filter(symbol => {
+                const expectedId = VectorStoreService.generateUniqueId(relativePath, symbol.name);
+                return !existingIdSet.has(expectedId);
+            });
+            const symbolsToUpsert = newSymbolsOnly;
+            
+            // Calculate unchanged symbols (exist in both old and new)
+            const unchangedIds = existingIds.filter(id => newSymbolIds.has(id));
+            
+            // Prepare reconciliation metrics
+            const reconciliationMetrics = {
+                existing: existingIds.length,
+                new: newSymbols.length,
+                toDelete: idsToDelete.length,
+                toUpsert: symbolsToUpsert.length,
+                unchanged: unchangedIds.length
+            };
+            
+            const duration = Date.now() - startTime;
+            
+            // Log reconciliation analysis
+            console.log(`[${operationId}] 📊 Reconciliation analysis completed (${duration}ms):`);
+            console.log(`[${operationId}]   - Existing embeddings: ${reconciliationMetrics.existing}`);
+            console.log(`[${operationId}]   - New symbols: ${reconciliationMetrics.new}`);
+            console.log(`[${operationId}]   - IDs to delete: ${reconciliationMetrics.toDelete}`);
+            console.log(`[${operationId}]   - Symbols to upsert: ${reconciliationMetrics.toUpsert}`);
+            console.log(`[${operationId}]   - Unchanged symbols: ${reconciliationMetrics.unchanged}`);
+            
+            // Log details of changes for debugging
+            if (idsToDelete.length > 0) {
+                console.log(`[${operationId}] 🗑️ IDs to delete (obsolete symbols): ${idsToDelete.slice(0, 5).join(', ')}${idsToDelete.length > 5 ? '...' : ''}`);
+            }
+            
+            if (symbolsToUpsert.length > 0) {
+                const symbolNames = symbolsToUpsert.slice(0, 5).map(s => s.name);
+                console.log(`[${operationId}] ⬆️ Symbols to upsert (new symbols only): ${symbolNames.join(', ')}${symbolsToUpsert.length > 5 ? '...' : ''}`);
+            }
+            
+            if (unchangedIds.length > 0) {
+                console.log(`[${operationId}] ✅ Unchanged symbols (will be preserved): ${unchangedIds.length} symbols`);
+            }
+            
+            // Detect potential issues
+            if (reconciliationMetrics.existing > 0 && reconciliationMetrics.new === 0) {
+                console.warn(`[${operationId}] ⚠️ Potential issue: File has existing embeddings but no new symbols (file might be empty or parsing failed)`);
+            }
+            
+            if (reconciliationMetrics.toDelete === reconciliationMetrics.existing && reconciliationMetrics.new > 0) {
+                console.log(`[${operationId}] 🔄 Full replacement: All existing embeddings will be replaced with new symbols`);
+            }
+            
+            return {
+                idsToDelete,
+                symbolsToUpsert,
+                reconciliationMetrics
+            };
+            
+        } catch (error) {
+            const duration = Date.now() - startTime;
+            console.error(`[${operationId}] ❌ Reconciliation state calculation failed (${duration}ms):`, error);
+            
+            // Enhanced error handling with categorization
+            if (error instanceof Error) {
+                console.error(`[${operationId}] ⚠️ Error type: ${error.constructor.name}`);
+                console.error(`[${operationId}] 📋 Error message: ${error.message}`);
+                
+                // Log stack trace for debugging
+                if (error.stack) {
+                    console.error(`[${operationId}] 📚 Error stack:`, error.stack);
+                }
+                
+                // Categorize error types for better monitoring
+                let errorCategory = 'unknown';
+                if (error.message.includes('ID') || error.message.includes('generation')) {
+                    errorCategory = 'id_generation';
+                } else if (error.message.includes('symbol') || error.message.includes('parsing')) {
+                    errorCategory = 'symbol_processing';
+                } else if (error.message.includes('path') || error.message.includes('file')) {
+                    errorCategory = 'path_resolution';
+                }
+                
+                console.error(`[${operationId}] 🏷️ Error category: ${errorCategory}`);
+                
+                // Re-throw with enhanced error message
+                throw new Error(`Reconciliation state calculation failed (${errorCategory}): ${error.message}`);
+            } else {
+                console.error(`[${operationId}] ❓ Unknown error type: ${typeof error}`);
+                console.error(`[${operationId}] 📋 Error details: ${String(error)}`);
+                throw new Error(`Reconciliation state calculation failed with unknown error: ${String(error)}`);
+            }
         }
     }
 
@@ -709,29 +1193,6 @@ export class PolarisController {
     }
 
     /**
-     * Convert absolute file path to relative path for consistent ID generation
-     * @param filePath - The absolute file path
-     * @returns string The relative file path
-     */
-    private getRelativeFilePath(filePath: string): string {
-        try {
-            // Get workspace root from VS Code workspace
-            const workspaceFolders = vscode.workspace.workspaceFolders;
-            if (workspaceFolders && workspaceFolders.length > 0) {
-                const workspaceRoot = workspaceFolders[0].uri.fsPath;
-                const relativePath = path.relative(workspaceRoot, filePath);
-                return relativePath.replace(/\\/g, '/'); // Normalize to forward slashes
-            }
-
-            // Fallback: use filename if no workspace
-            return path.basename(filePath);
-        } catch (error) {
-            console.error('Failed to get relative file path:', error);
-            return path.basename(filePath);
-        }
-    }
-
-    /**
      * Handles file deletion events to synchronize documentation files
      * @param event - The file deletion event containing deleted files
      */
@@ -762,7 +1223,11 @@ export class PolarisController {
                         
                         // Also delete embeddings from vector store
                         try {
-                            const relativePath = this.getRelativeFilePath(deletedFilePath);
+                            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                            if (!workspaceRoot) {
+                                throw new Error('No workspace folder found');
+                            }
+                            const relativePath = normalizePath(deletedFilePath, workspaceRoot);
                             console.log(`[${operationId}] 🧠 Deleting vector embeddings for file: ${relativePath}`);
                             const vectorStoreService = VectorStoreService.getInstance();
                             await vectorStoreService.deleteFileEmbeddings(relativePath);

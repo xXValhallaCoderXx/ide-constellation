@@ -24,6 +24,12 @@ export class CommandController {
             await this.handleTestVectorQuery();
         });
         this.context.subscriptions.push(testVectorQueryDisposable);
+
+        // Register debug vector database command
+        const debugVectorDbDisposable = vscode.commands.registerCommand('constellation.debugVectorDb', async () => {
+            await this.handleDebugVectorDb();
+        });
+        this.context.subscriptions.push(debugVectorDbDisposable);
     }
 
     /**
@@ -140,6 +146,149 @@ export class CommandController {
                     onRetry: () => {
                         console.log(`[${testId}] 🔄 CommandController: User requested retry for vector search test`);
                         vscode.commands.executeCommand('constellation.testVectorQuery');
+                    }
+                }
+            );
+        }
+    }
+
+    /**
+     * Handle the debug vector database command
+     * Shows debugging information about vector database state
+     */
+    private async handleDebugVectorDb(): Promise<void> {
+        const debugId = `debug-${Date.now()}`;
+
+        try {
+            console.log(`[${debugId}] 🐛 CommandController: Starting vector database debug...`);
+
+            // Get the active file if available
+            const activeEditor = vscode.window.activeTextEditor;
+            let targetFilePath: string | undefined;
+
+            if (activeEditor) {
+                targetFilePath = activeEditor.document.uri.fsPath;
+                console.log(`[${debugId}] 📂 Using active file: ${targetFilePath}`);
+            } else {
+                console.log(`[${debugId}] ℹ️ No active file, will show all records`);
+            }
+
+            // Initialize vector store service
+            const vectorStoreInstance = VectorStoreService.getInstance();
+            await VectorStoreService.initialize();
+
+            // Get ALL records first to see what's in the database
+            console.log(`[${debugId}] 🔍 Getting ALL records in database...`);
+            const allRecords = await vectorStoreInstance.debugGetAllRecords();
+
+            console.log(`[${debugId}] 📊 Total records in database: ${allRecords.length}`);
+
+            // If we have a target file, also check path normalization
+            let normalizedPath: string | undefined;
+            let recordsForFile: any[] = [];
+
+            if (targetFilePath) {
+                // Test path normalization
+                try {
+                    normalizedPath = vectorStoreInstance.validateAndNormalizeFilePath(targetFilePath, debugId);
+                    console.log(`[${debugId}] 🔧 Normalized path: ${normalizedPath}`);
+
+                    // Get records for the specific file
+                    recordsForFile = await vectorStoreInstance.debugGetAllRecords(normalizedPath);
+                    console.log(`[${debugId}] 📁 Records for normalized path: ${recordsForFile.length}`);
+                } catch (error) {
+                    console.error(`[${debugId}] ❌ Error normalizing path:`, error);
+                }
+            }
+
+            // Show detailed results
+            let message = `📊 Database Status:\n`;
+            message += `Total Records: ${allRecords.length}\n`;
+
+            if (targetFilePath) {
+                message += `\n📂 Active File: ${targetFilePath}\n`;
+                if (normalizedPath) {
+                    message += `🔧 Normalized: ${normalizedPath}\n`;
+                }
+                message += `📁 Records for file: ${recordsForFile.length}\n`;
+            }
+
+            if (allRecords.length > 0) {
+                message += `\n📋 All Records:\n`;
+                allRecords.slice(0, 10).forEach((r, i) => {
+                    message += `${i + 1}. ID: ${r.id}\n`;
+                    message += `   Path: ${r.filePath}\n`;
+                    message += `   Hash: ${r.contentHash.substring(0, 12)}...\n\n`;
+                });
+
+                if (allRecords.length > 10) {
+                    message += `... and ${allRecords.length - 10} more records\n`;
+                }
+
+                // Check for path mismatches
+                if (targetFilePath && normalizedPath) {
+                    const pathVariations = allRecords.map(r => r.filePath).filter((path, index, self) => self.indexOf(path) === index);
+                    message += `\n🔍 Unique file paths in database:\n`;
+                    pathVariations.slice(0, 5).forEach(path => {
+                        message += `- ${path}\n`;
+                    });
+
+                    if (pathVariations.length > 5) {
+                        message += `... and ${pathVariations.length - 5} more paths\n`;
+                    }
+                }
+            } else {
+                message += `\n❌ No records found in database!`;
+            }
+
+            // Show in information message with option to copy to clipboard
+            const action = await vscode.window.showInformationMessage(
+                message,
+                'Copy Debug Info',
+                'Show in Console',
+                'OK'
+            );
+
+            if (action === 'Copy Debug Info') {
+                const debugInfo = {
+                    timestamp: new Date().toISOString(),
+                    targetFile: targetFilePath || 'ALL_FILES',
+                    normalizedPath: normalizedPath,
+                    totalRecords: allRecords.length,
+                    recordsForFile: recordsForFile.length,
+                    allRecords: allRecords,
+                    uniquePaths: allRecords.map(r => r.filePath).filter((path, index, self) => self.indexOf(path) === index)
+                };
+
+                await vscode.env.clipboard.writeText(JSON.stringify(debugInfo, null, 2));
+                vscode.window.showInformationMessage('Debug information copied to clipboard!');
+            } else if (action === 'Show in Console') {
+                console.log(`[${debugId}] 📊 DETAILED DEBUG INFO:`, {
+                    targetFile: targetFilePath,
+                    normalizedPath,
+                    totalRecords: allRecords.length,
+                    recordsForFile: recordsForFile.length,
+                    allRecords,
+                    uniquePaths: allRecords.map(r => r.filePath).filter((path, index, self) => self.indexOf(path) === index)
+                });
+                vscode.window.showInformationMessage('Debug information logged to console - check Developer Tools');
+            }
+
+            console.log(`[${debugId}] ✅ CommandController: Vector database debug completed`);
+
+        } catch (error) {
+            console.error(`[${debugId}] ❌ CommandController: Vector database debug failed:`, error);
+
+            const errorInfo = ErrorHandler.categorizeError(error);
+            await ErrorHandler.showUserNotification(
+                'Vector Database Debug',
+                errorInfo,
+                error,
+                {
+                    customMessage: `Debug failed: ${errorInfo.userMessage}`,
+                    onRetry: () => {
+                        console.log(`[${debugId}] 🔄 CommandController: User requested retry for vector database debug`);
+                        vscode.commands.executeCommand('constellation.debugVectorDb');
                     }
                 }
             );

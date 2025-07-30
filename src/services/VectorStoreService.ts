@@ -2,6 +2,8 @@
 import type { Connection, Table } from '@lancedb/lancedb';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
+import { PerformanceMonitor } from '../utils/PerformanceMonitor';
 
 /**
  * Interface for embedding records stored in the vector database
@@ -10,6 +12,8 @@ export interface EmbeddingRecord {
     id: string;        // Format: "src/services/utils.ts:myFunction"
     text: string;      // The original docstring text
     vector: number[];  // 384-dimensional embedding vector
+    filePath: string;  // The file path for reconciliation (e.g., "src/services/utils.ts")
+    contentHash: string; // SHA-256 hash of the content for change detection
 }
 
 /**
@@ -35,6 +39,7 @@ export class VectorStoreService {
     private static readonly DB_PATH = '.constellation/vector-store';
     private static workspaceRoot: string = '';
     private static readonly TABLE_NAME = 'embeddings';
+    private static readonly SCHEMA_VERSION = 2; // Schema version for migration tracking
 
     /**
      * Private constructor to enforce singleton pattern
@@ -203,7 +208,7 @@ export class VectorStoreService {
     }
 
     /**
-     * Initialize the embeddings table with proper schema
+     * Initialize the embeddings table with proper schema and migration logic
      * @param initId Initialization ID for logging
      */
     private static async initializeTable(initId: string): Promise<void> {
@@ -219,40 +224,221 @@ export class VectorStoreService {
             const tableExists = tableNames.includes(VectorStoreService.TABLE_NAME);
 
             if (tableExists) {
-                console.log(`[${initId}] ✅ VectorStoreService: Embeddings table already exists, connecting...`);
-                VectorStoreService.table = await VectorStoreService.db.openTable(VectorStoreService.TABLE_NAME);
-                console.log(`[${initId}] ✅ VectorStoreService: Connected to existing embeddings table`);
+                console.log(`[${initId}] ✅ VectorStoreService: Embeddings table exists, checking schema...`);
+                
+                // Check schema compatibility and migrate if necessary
+                const migrationNeeded = await VectorStoreService.checkSchemaCompatibility(initId);
+                
+                if (migrationNeeded) {
+                    console.log(`[${initId}] 🔄 VectorStoreService: Schema migration required, recreating table...`);
+                    await VectorStoreService.performSchemaMigration(initId);
+                } else {
+                    console.log(`[${initId}] ✅ VectorStoreService: Schema is compatible, connecting to existing table...`);
+                    VectorStoreService.table = await VectorStoreService.db.openTable(VectorStoreService.TABLE_NAME);
+                    console.log(`[${initId}] ✅ VectorStoreService: Connected to existing embeddings table`);
+                }
             } else {
-                console.log(`[${initId}] 🔨 VectorStoreService: Creating new embeddings table with schema...`);
-                console.log(`[${initId}] 📋 VectorStoreService: Schema - id: string, text: string, vector: float[]`);
-
-                // Create table with a dummy record to establish schema, then delete it
-                const dummyData: EmbeddingRecord[] = [{
-                    id: '__dummy__',
-                    text: 'dummy text',
-                    vector: new Array(384).fill(0)
-                }];
-
-                VectorStoreService.table = await VectorStoreService.db.createTable(
-                    VectorStoreService.TABLE_NAME,
-                    dummyData as any
-                );
-
-                // Delete the dummy record
-                await VectorStoreService.table.delete("id = '__dummy__'");
-                console.log(`[${initId}] ✅ VectorStoreService: Embeddings table created successfully`);
+                console.log(`[${initId}] 🔨 VectorStoreService: Creating new embeddings table with schema v${VectorStoreService.SCHEMA_VERSION}...`);
+                await VectorStoreService.createNewTable(initId);
             }
 
             // Verify table is accessible
             if (VectorStoreService.table) {
                 const tableInfo = await VectorStoreService.table.schema;
-                console.log(`[${initId}] 📊 VectorStoreService: Table schema verified:`, tableInfo);
+                console.log(`[${initId}] � VectorStoreService: Table schema verified:`, tableInfo);
             }
 
         } catch (error) {
             console.error(`[${initId}] ❌ VectorStoreService: Failed to initialize embeddings table:`, error);
             throw new Error(`Failed to initialize embeddings table: ${error instanceof Error ? error.message : String(error)}`);
         }
+    }
+
+    /**
+     * Check if existing table schema is compatible with current version
+     * @param initId Initialization ID for logging
+     * @returns Promise<boolean> True if migration is needed, false otherwise
+     */
+    private static async checkSchemaCompatibility(initId: string): Promise<boolean> {
+        try {
+            console.log(`[${initId}] 🔍 VectorStoreService: Checking schema compatibility...`);
+            
+            // Open existing table to inspect schema
+            const existingTable = await VectorStoreService.db!.openTable(VectorStoreService.TABLE_NAME);
+            
+            console.log(`[${initId}] 📋 VectorStoreService: Checking for filePath field compatibility...`);
+            
+            // Check if table has the required schema by examining its structure
+            try {
+                // Try to count records - if successful, table is accessible
+                const count = await existingTable.countRows();
+                console.log(`[${initId}] 📊 VectorStoreService: Table has ${count} records`);
+                
+                // Get table schema to check for required fields
+                const schema = await existingTable.schema();
+                const fieldNames = schema.fields.map((field: any) => field.name);
+                console.log(`[${initId}] 📋 VectorStoreService: Table fields:`, fieldNames);
+
+                // Check if table has all required fields for current schema
+                const requiredFields = ['id', 'text', 'vector', 'filePath'];
+                const hasAllFields = requiredFields.every(field => fieldNames.includes(field));
+
+                if (hasAllFields) {
+                    console.log(`[${initId}] ✅ VectorStoreService: Schema is compatible (has all required fields)`);
+                    return false; // No migration needed
+                } else {
+                    const missingFields = requiredFields.filter(field => !fieldNames.includes(field));
+                    console.log(`[${initId}] ⚠️ VectorStoreService: Schema migration needed, missing fields:`, missingFields);
+                    return true; // Migration needed
+                }
+                
+            } catch (accessError) {
+                console.log(`[${initId}] ❌ VectorStoreService: Cannot access existing table:`, accessError);
+                return true; // Migration needed if we can't access the table
+            }
+            
+        } catch (error) {
+            console.error(`[${initId}] ❌ VectorStoreService: Error checking schema compatibility:`, error);
+            // If we can't check the schema, assume migration is needed for safety
+            console.log(`[${initId}] ⚠️ VectorStoreService: Cannot verify schema, assuming migration needed`);
+            return true;
+        }
+    }
+
+    /**
+     * Perform schema migration by recreating the table
+     * @param initId Initialization ID for logging
+     */
+    private static async performSchemaMigration(initId: string): Promise<void> {
+        try {
+            console.log(`[${initId}] 🚀 VectorStoreService: Starting schema migration process...`);
+            
+            // Backup existing data if table has records
+            let backupData: any[] = [];
+            try {
+                console.log(`[${initId}] 💾 VectorStoreService: Attempting to backup existing data...`);
+                const existingTable = await VectorStoreService.db!.openTable(VectorStoreService.TABLE_NAME);
+                
+                // Try to read existing data (this may fail if schema is incompatible)
+                try {
+                    // For LanceDB, we cannot easily read all data if schema is incompatible
+                    // So we'll skip backup for now and just recreate the table
+                    console.log(`[${initId}] ⚠️ VectorStoreService: Skipping data backup due to potential schema incompatibility`);
+                    console.log(`[${initId}] 📝 VectorStoreService: Proceeding with clean migration (existing data will be lost)`);
+                    backupData = []; // No backup data
+                } catch (readError) {
+                    console.warn(`[${initId}] ⚠️ VectorStoreService: Could not read existing data for backup (schema incompatible):`, readError);
+                    console.log(`[${initId}] 📝 VectorStoreService: Proceeding with clean migration (data will be lost)`);
+                }
+                
+            } catch (backupError) {
+                console.warn(`[${initId}] ⚠️ VectorStoreService: Could not backup existing data:`, backupError);
+            }
+            
+            // Drop existing table
+            console.log(`[${initId}] 🗑️ VectorStoreService: Dropping existing table...`);
+            await VectorStoreService.db!.dropTable(VectorStoreService.TABLE_NAME);
+            console.log(`[${initId}] ✅ VectorStoreService: Existing table dropped`);
+            
+            // Create new table with updated schema
+            console.log(`[${initId}] 🔨 VectorStoreService: Creating new table with updated schema...`);
+            await VectorStoreService.createNewTable(initId);
+            
+            // Migrate compatible data if any exists
+            if (backupData.length > 0) {
+                console.log(`[${initId}] 🔄 VectorStoreService: Migrating ${backupData.length} existing records...`);
+                
+                let migratedCount = 0;
+                let skippedCount = 0;
+                
+                for (const record of backupData) {
+                    try {
+                        // Transform old record format to new format
+                        const migratedRecord: EmbeddingRecord = {
+                            id: record.id || '',
+                            text: record.text || '',
+                            vector: record.vector || [],
+                            filePath: VectorStoreService.extractFilePathFromId(record.id || ''), // Extract from ID
+                            contentHash: VectorStoreService.generateContentHash(record.text || '') // Generate hash for old records
+                        };
+                        
+                        // Validate migrated record
+                        if (migratedRecord.id && migratedRecord.text && migratedRecord.vector.length > 0) {
+                            await VectorStoreService.table!.add([migratedRecord as any]);
+                            migratedCount++;
+                        } else {
+                            console.warn(`[${initId}] ⚠️ VectorStoreService: Skipping invalid record: ${JSON.stringify(record)}`);
+                            skippedCount++;
+                        }
+                    } catch (recordError) {
+                        console.warn(`[${initId}] ⚠️ VectorStoreService: Failed to migrate record ${record.id}:`, recordError);
+                        skippedCount++;
+                    }
+                }
+                
+                console.log(`[${initId}] ✅ VectorStoreService: Migration completed - ${migratedCount} records migrated, ${skippedCount} skipped`);
+            }
+            
+            console.log(`[${initId}] 🎉 VectorStoreService: Schema migration completed successfully`);
+            
+        } catch (error) {
+            console.error(`[${initId}] ❌ VectorStoreService: Schema migration failed:`, error);
+            throw new Error(`Schema migration failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
+     * Create a new table with the latest schema
+     * @param initId Initialization ID for logging
+     */
+    private static async createNewTable(initId: string): Promise<void> {
+        console.log(`[${initId}] 📋 VectorStoreService: Schema v${VectorStoreService.SCHEMA_VERSION} - id: string, text: string, vector: float[], filePath: string`);
+
+        // Create table with a dummy record to establish schema, then delete it
+        const dummyData: EmbeddingRecord[] = [{
+            id: '__dummy__',
+            text: 'dummy text',
+            vector: new Array(384).fill(0),
+            filePath: '__dummy_path__',
+            contentHash: VectorStoreService.generateContentHash('dummy text')
+        }];
+
+        VectorStoreService.table = await VectorStoreService.db!.createTable(
+            VectorStoreService.TABLE_NAME,
+            dummyData as any
+        );
+
+        // Delete the dummy record
+        await VectorStoreService.table.delete("id = '__dummy__'");
+        console.log(`[${initId}] ✅ VectorStoreService: Embeddings table created successfully with schema v${VectorStoreService.SCHEMA_VERSION}`);
+    }
+
+    /**
+     * Extract file path from a record ID
+     * @param id The record ID in format "filePath:symbolName"
+     * @returns string The extracted file path
+     */
+    private static extractFilePathFromId(id: string): string {
+        if (!id || typeof id !== 'string') {
+            return '';
+        }
+        
+        const lastColonIndex = id.lastIndexOf(':');
+        if (lastColonIndex === -1) {
+            // No colon found, treat entire string as file path
+            return id;
+        }
+        
+        return id.substring(0, lastColonIndex);
+    }
+
+    /**
+     * Generate SHA-256 hash of content for change detection
+     * @param content The content to hash
+     * @returns string The SHA-256 hash
+     */
+    public static generateContentHash(content: string): string {
+        return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
     }
 
     /**
@@ -330,15 +516,17 @@ export class VectorStoreService {
      * @param id Unique identifier for the embedding (format: filePath:symbolName)
      * @param text The original docstring text
      * @param vector The embedding vector (384 dimensions)
+     * @param filePath The file path for reconciliation (e.g., "src/services/utils.ts")
      * @returns Promise<void> Resolves when upsert operation completes
      * @throws Error if service is not initialized or upsert operation fails
      */
-    public async upsert(id: string, text: string, vector: number[]): Promise<void> {
+    public async upsert(id: string, text: string, vector: number[], filePath: string): Promise<void> {
         const startTime = Date.now();
         const requestId = `upsert-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
         console.log(`[${requestId}] 🔧 VectorStoreService: Starting upsert operation...`);
         console.log(`[${requestId}] 🆔 VectorStoreService: ID: ${id}`);
+        console.log(`[${requestId}] 📁 VectorStoreService: FilePath: ${filePath}`);
         console.log(`[${requestId}] 📝 VectorStoreService: Text length: ${text.length} characters`);
         console.log(`[${requestId}] 📊 VectorStoreService: Vector dimensions: ${vector.length}`);
 
@@ -349,10 +537,10 @@ export class VectorStoreService {
         }
 
         // Validate inputs
-        this.validateUpsertInputs(id, text, vector, requestId);
+        this.validateUpsertInputs(id, text, vector, filePath, requestId);
 
         // Perform upsert with retry logic
-        await this.performUpsertWithRetry(id, text, vector, requestId, startTime);
+        await this.performUpsertWithRetry(id, text, vector, filePath, requestId, startTime);
     }
 
     /**
@@ -360,6 +548,7 @@ export class VectorStoreService {
      * @param id Unique identifier for the embedding
      * @param text The original docstring text
      * @param vector The embedding vector
+     * @param filePath The file path for reconciliation
      * @param requestId Request ID for logging
      * @param startTime Start time for performance tracking
      * @returns Promise<void> Resolves when upsert operation completes
@@ -368,6 +557,7 @@ export class VectorStoreService {
         id: string,
         text: string,
         vector: number[],
+        filePath: string,
         requestId: string,
         startTime: number
     ): Promise<void> {
@@ -383,7 +573,9 @@ export class VectorStoreService {
                 const record: EmbeddingRecord = {
                     id: id.trim(),
                     text: text.trim(),
-                    vector: vector
+                    vector: vector,
+                    filePath: filePath.trim(),
+                    contentHash: VectorStoreService.generateContentHash(text.trim())
                 };
 
                 console.log(`[${requestId}] 💾 VectorStoreService: Upserting record to database...`);
@@ -478,6 +670,399 @@ export class VectorStoreService {
                 await new Promise(resolve => setTimeout(resolve, delayMs));
             }
         }
+    }
+
+    /**
+     * Get all embedding IDs associated with a specific file path
+     * @param filePath The path of the file to query
+     * @returns Promise<string[]> Array of embedding IDs for the specified file
+     * @throws Error if service is not initialized or query operation fails
+     */
+    public async getIdsByFilePath(filePath: string): Promise<string[]> {
+        const startTime = Date.now();
+        const requestId = `getIds-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+        console.log(`[${requestId}] 🔧 VectorStoreService: Starting getIdsByFilePath operation...`);
+        console.log(`[${requestId}] 📁 VectorStoreService: FilePath: ${filePath}`);
+
+        // Start performance monitoring
+        PerformanceMonitor.startTimer(requestId, PerformanceMonitor.MetricTypes.QUERY_EXISTING, {
+            filePath: filePath,
+            operation: 'getIdsByFilePath'
+        });
+
+        // Validate service initialization
+        if (!VectorStoreService.isInitialized || !VectorStoreService.table) {
+            console.error(`[${requestId}] ❌ VectorStoreService: Service not initialized`);
+            throw new Error('VectorStoreService is not initialized. Call initialize() first.');
+        }
+
+        // The filePath should already be normalized by the caller (PolarisController)
+        // No need to normalize again here - just use it directly
+        console.log(`[${requestId}] 📁 VectorStoreService: Using normalized filePath: ${filePath}`);
+
+        try {
+            console.log(`[${requestId}] 🔍 VectorStoreService: Querying embeddings for file: ${filePath}`);
+
+            // For LanceDB, we need to get records that match the filePath
+            // Since we can't do SELECT queries easily, we'll use the existing search functionality
+            // and filter results by filePath. This is a workaround for LanceDB limitations.
+            
+            const queryStartTime = Date.now();
+            const allIds: string[] = [];
+            
+            // We'll try to find records by searching for a pattern in the ID field
+            // Since IDs are in format "filePath:symbolName", we can filter by filePath prefix
+            
+            try {
+                // For LanceDB, we need to work around the lack of direct filter/select methods
+                // We'll iterate through records and match the filePath field
+                // This is not efficient for large datasets, but works for our use case
+                
+                console.log(`[${requestId}] 🔍 VectorStoreService: Searching for records with filePath: ${filePath}`);
+                
+                // Since we can't directly query by filePath, we'll use a workaround:
+                // Try multiple vector search strategies to ensure we get all records
+                // This is more reliable than a single dummy vector
+
+                let searchResults: any[] = [];
+
+                // Try table scan first if available (most reliable)
+                try {
+                    console.log(`[${requestId}] 📊 VectorStoreService: Attempting table scan...`);
+                    searchResults = await (VectorStoreService.table as any).scan().toArray();
+                    console.log(`[${requestId}] ✅ VectorStoreService: Table scan found ${searchResults.length} records`);
+                } catch (scanError) {
+                    console.log(`[${requestId}] ⚠️ VectorStoreService: Table scan not available, using vector search fallback`);
+
+                    // Fallback to multiple vector search strategies
+                    const strategies = [
+                        new Array(384).fill(0),           // All zeros
+                        new Array(384).fill(0.001),       // Small positive values
+                        new Array(384).fill(-0.001),      // Small negative values
+                        Array.from({ length: 384 }, () => Math.random() * 0.01 - 0.005), // Random small values
+                    ];
+
+                    for (let i = 0; i < strategies.length; i++) {
+                        try {
+                            console.log(`[${requestId}] 🔍 VectorStoreService: Trying vector strategy ${i + 1}/4...`);
+                            const results = await VectorStoreService.table
+                                .search(strategies[i])
+                                .limit(10000) // Large limit to get all records
+                                .toArray();
+
+                            console.log(`[${requestId}] 📊 VectorStoreService: Strategy ${i + 1} found ${results.length} records`);
+
+                            // Merge results, avoiding duplicates
+                            for (const result of results) {
+                                if (!searchResults.find((existing: any) => existing.id === result.id)) {
+                                    searchResults.push(result);
+                                }
+                            }
+
+                            // If we found records, we can stop
+                            if (searchResults.length > 0) {
+                                console.log(`[${requestId}] ✅ VectorStoreService: Found records with strategy ${i + 1}, stopping search`);
+                                break;
+                            }
+
+                        } catch (strategyError) {
+                            console.warn(`[${requestId}] ⚠️ VectorStoreService: Strategy ${i + 1} failed:`, strategyError);
+                        }
+                    }
+                }
+
+                console.log(`[${requestId}] 📊 VectorStoreService: Total records retrieved: ${searchResults.length}`);
+
+                // Debug: Log all unique file paths found in the database
+                const allFoundPaths = [...new Set(searchResults.map((r: any) => r.filePath))];
+                console.log(`[${requestId}] 🔍 VectorStoreService: All file paths in database: [${allFoundPaths.join(', ')}]`);
+                console.log(`[${requestId}] 🎯 VectorStoreService: Looking for specific path: "${filePath}"`);
+
+                // Filter results by filePath
+                for (const record of searchResults) {
+                    console.log(`[${requestId}] 🔍 VectorStoreService: Checking record - ID: ${record.id}, FilePath: ${record.filePath}`);
+                    if (record.filePath === filePath && record.id && typeof record.id === 'string') {
+                        allIds.push(record.id);
+                    }
+                }
+                
+                const queryDuration = Date.now() - queryStartTime;
+                console.log(`[${requestId}] ✅ VectorStoreService: Search and filter completed (${queryDuration}ms)`);
+                console.log(`[${requestId}] 📊 VectorStoreService: Found ${allIds.length} embedding IDs for file: ${filePath}`);
+                
+                if (allIds.length > 0) {
+                    console.log(`[${requestId}] 📋 VectorStoreService: Sample IDs: ${allIds.slice(0, 3).join(', ')}${allIds.length > 3 ? '...' : ''}`);
+                }
+                
+            } catch (queryError) {
+                console.error(`[${requestId}] ❌ VectorStoreService: Query failed:`, queryError);
+                throw new Error(`Failed to query embeddings for file ${filePath}: ${queryError instanceof Error ? queryError.message : String(queryError)}`);
+            }
+
+            const totalDuration = Date.now() - startTime;
+            console.log(`[${requestId}] 🎉 VectorStoreService: getIdsByFilePath operation completed (${totalDuration}ms)`);
+
+            return allIds;
+
+        } catch (error) {
+            const totalDuration = Date.now() - startTime;
+            console.error(`[${requestId}] ❌ VectorStoreService: getIdsByFilePath operation failed (${totalDuration}ms):`, error);
+
+            // Enhanced error handling with categorization
+            if (error instanceof Error) {
+                console.error(`[${requestId}] ⚠️ VectorStoreService: Error type: ${error.constructor.name}`);
+                console.error(`[${requestId}] 📋 VectorStoreService: Error message: ${error.message}`);
+
+                // Log stack trace for debugging
+                if (error.stack) {
+                    console.error(`[${requestId}] 📚 VectorStoreService: Error stack:`, error.stack);
+                }
+
+                // Categorize error types for better monitoring
+                let errorCategory = 'unknown';
+                if (error.message.includes('filter') || error.message.includes('query')) {
+                    errorCategory = 'query';
+                } else if (error.message.includes('connection') || error.message.includes('database')) {
+                    errorCategory = 'database';
+                } else if (error.message.includes('timeout')) {
+                    errorCategory = 'timeout';
+                } else if (error.message.includes('validation') || error.message.includes('input')) {
+                    errorCategory = 'validation';
+                }
+
+                console.error(`[${requestId}] 🏷️ VectorStoreService: Error category: ${errorCategory}`);
+
+                // Re-throw with enhanced error message
+                throw new Error(`getIdsByFilePath operation failed (${errorCategory}): ${error.message}`);
+            } else {
+                console.error(`[${requestId}] ❓ VectorStoreService: Unknown error type: ${typeof error}`);
+                console.error(`[${requestId}] 📋 VectorStoreService: Error details: ${String(error)}`);
+                throw new Error(`getIdsByFilePath operation failed with unknown error: ${String(error)}`);
+            }
+        }
+    }
+
+    /**
+     * Validate and normalize file path input for queries
+     * @param filePath The file path to validate and normalize
+     * @param requestId Request ID for logging
+     * @returns string The normalized file path
+     */
+    public validateAndNormalizeFilePath(filePath: string, requestId: string): string {
+        // Validate filePath input
+        if (!filePath || typeof filePath !== 'string') {
+            console.error(`[${requestId}] ❌ VectorStoreService: Invalid filePath - must be a non-empty string`);
+            throw new Error('Invalid input: filePath must be a non-empty string');
+        }
+
+        if (filePath.trim().length === 0) {
+            console.error(`[${requestId}] ❌ VectorStoreService: Invalid filePath - cannot be empty or whitespace only`);
+            throw new Error('Invalid input: filePath cannot be empty or whitespace only');
+        }
+
+        // Normalize file path (remove leading slash if present, use forward slashes)
+        const normalizedFilePath = filePath
+            .trim()
+            .replace(/^\/+/, '') // Remove leading slashes
+            .replace(/\\/g, '/'); // Convert backslashes to forward slashes
+
+        // Validate normalized path
+        if (normalizedFilePath.length === 0) {
+            console.error(`[${requestId}] ❌ VectorStoreService: Invalid filePath - cannot be empty after normalization`);
+            throw new Error('Invalid input: filePath cannot be empty after normalization');
+        }
+
+        console.log(`[${requestId}] 🔧 VectorStoreService: Normalized filePath: ${filePath} -> ${normalizedFilePath}`);
+
+        return normalizedFilePath;
+    }
+
+    /**
+     * Delete multiple embedding records by their IDs
+     * @param ids Array of embedding IDs to delete
+     * @returns Promise<void> Resolves when all specified embeddings are deleted
+     * @throws Error if service is not initialized or delete operation fails
+     */
+    public async delete(ids: string[]): Promise<void> {
+        const startTime = Date.now();
+        const requestId = `DEL-BATCH-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+
+        console.log(`[${requestId}] 🔧 VectorStoreService: Starting batch delete operation...`);
+        console.log(`[${requestId}] 📊 VectorStoreService: Number of IDs to delete: ${ids.length}`);
+
+        // Start performance monitoring
+        PerformanceMonitor.startTimer(requestId, PerformanceMonitor.MetricTypes.BATCH_DELETE, {
+            idCount: ids.length,
+            operation: 'batchDelete'
+        });
+
+        // Validate service initialization
+        if (!VectorStoreService.isInitialized || !VectorStoreService.table) {
+            console.error(`[${requestId}] ❌ VectorStoreService: Service not initialized`);
+            throw new Error('VectorStoreService is not initialized. Call initialize() first.');
+        }
+
+        // Validate inputs
+        this.validateBatchDeleteInputs(ids, requestId);
+
+        if (ids.length === 0) {
+            console.log(`[${requestId}] ℹ️ VectorStoreService: No IDs provided for deletion, operation completed`);
+            return;
+        }
+
+        try {
+            console.log(`[${requestId}] 🗑️ VectorStoreService: Preparing batch deletion...`);
+            
+            // Log sample IDs for debugging
+            if (ids.length > 0) {
+                const sampleIds = ids.slice(0, 3);
+                console.log(`[${requestId}] 📋 VectorStoreService: Sample IDs to delete: ${sampleIds.join(', ')}${ids.length > 3 ? '...' : ''}`);
+            }
+
+            const deleteStartTime = Date.now();
+            let deletedCount = 0;
+            let failedCount = 0;
+            const failedIds: string[] = [];
+
+            // Process deletions in batches for better performance and error handling
+            const batchSize = 100; // Process in smaller batches to avoid overwhelming the database
+            const totalBatches = Math.ceil(ids.length / batchSize);
+
+            console.log(`[${requestId}] 📊 VectorStoreService: Processing ${totalBatches} batches of ${batchSize} IDs each`);
+
+            for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+                const batchStart = batchIndex * batchSize;
+                const batchEnd = Math.min(batchStart + batchSize, ids.length);
+                const batchIds = ids.slice(batchStart, batchEnd);
+                
+                console.log(`[${requestId}] 🔄 VectorStoreService: Processing batch ${batchIndex + 1}/${totalBatches} (${batchIds.length} IDs)...`);
+
+                try {
+                    // Build batch delete filter using SQL IN clause
+                    // Escape single quotes for SQL safety
+                    const escapedIds = batchIds.map(id => `'${id.replace(/'/g, "''")}'`);
+                    const deleteFilter = `id IN (${escapedIds.join(', ')})`;
+                    
+                    console.log(`[${requestId}] 📝 VectorStoreService: Batch ${batchIndex + 1} delete filter: ${deleteFilter.substring(0, 100)}${deleteFilter.length > 100 ? '...' : ''}`);
+                    
+                    // Execute batch delete
+                    const batchStartTime = Date.now();
+                    await VectorStoreService.table.delete(deleteFilter);
+                    const batchDuration = Date.now() - batchStartTime;
+                    
+                    deletedCount += batchIds.length;
+                    console.log(`[${requestId}] ✅ VectorStoreService: Batch ${batchIndex + 1} completed successfully (${batchDuration}ms) - ${batchIds.length} records processed`);
+                    
+                } catch (batchError) {
+                    console.error(`[${requestId}] ❌ VectorStoreService: Batch ${batchIndex + 1} failed:`, batchError);
+                    
+                    // Track failed IDs for reporting
+                    failedIds.push(...batchIds);
+                    failedCount += batchIds.length;
+                    
+                    // Decide whether to continue or abort based on error type
+                    if (batchError instanceof Error && batchError.message.includes('connection')) {
+                        // Connection errors might be transient, but abort to avoid further issues
+                        console.error(`[${requestId}] 🚫 VectorStoreService: Connection error detected, aborting remaining batches`);
+                        break;
+                    }
+                    
+                    // For other errors, continue with next batch
+                    console.log(`[${requestId}] ⏭️ VectorStoreService: Continuing with next batch despite error`);
+                }
+            }
+
+            const deleteDuration = Date.now() - deleteStartTime;
+            
+            // Report final results
+            if (failedCount === 0) {
+                console.log(`[${requestId}] ✅ VectorStoreService: Batch delete completed successfully`);
+                console.log(`[${requestId}] 📊 VectorStoreService: ${deletedCount} records deleted (${deleteDuration}ms)`);
+            } else {
+                console.warn(`[${requestId}] ⚠️ VectorStoreService: Batch delete completed with errors`);
+                console.warn(`[${requestId}] 📊 VectorStoreService: ${deletedCount} records deleted, ${failedCount} failed (${deleteDuration}ms)`);
+                console.warn(`[${requestId}] 📋 VectorStoreService: Failed IDs sample: ${failedIds.slice(0, 5).join(', ')}${failedIds.length > 5 ? '...' : ''}`);
+                
+                // Throw error if any deletions failed
+                throw new Error(`Batch delete partially failed: ${deletedCount} deleted, ${failedCount} failed. First failed ID: ${failedIds[0] || 'unknown'}`);
+            }
+
+            const totalDuration = Date.now() - startTime;
+            console.log(`[${requestId}] 🎉 VectorStoreService: Batch delete operation completed (${totalDuration}ms)`);
+
+        } catch (error) {
+            const totalDuration = Date.now() - startTime;
+            console.error(`[${requestId}] ❌ VectorStoreService: Batch delete operation failed (${totalDuration}ms):`, error);
+
+            // Enhanced error handling with categorization
+            if (error instanceof Error) {
+                console.error(`[${requestId}] ⚠️ VectorStoreService: Error type: ${error.constructor.name}`);
+                console.error(`[${requestId}] 📋 VectorStoreService: Error message: ${error.message}`);
+
+                // Log stack trace for debugging
+                if (error.stack) {
+                    console.error(`[${requestId}] 📚 VectorStoreService: Error stack:`, error.stack);
+                }
+
+                // Categorize error types for better monitoring
+                let errorCategory = 'unknown';
+                if (error.message.includes('delete') || error.message.includes('filter')) {
+                    errorCategory = 'delete';
+                } else if (error.message.includes('connection') || error.message.includes('database')) {
+                    errorCategory = 'database';
+                } else if (error.message.includes('timeout')) {
+                    errorCategory = 'timeout';
+                } else if (error.message.includes('validation') || error.message.includes('input')) {
+                    errorCategory = 'validation';
+                } else if (error.message.includes('partial')) {
+                    errorCategory = 'partial';
+                }
+
+                console.error(`[${requestId}] 🏷️ VectorStoreService: Error category: ${errorCategory}`);
+
+                // Re-throw with enhanced error message
+                throw new Error(`Batch delete operation failed (${errorCategory}): ${error.message}`);
+            } else {
+                console.error(`[${requestId}] ❓ VectorStoreService: Unknown error type: ${typeof error}`);
+                console.error(`[${requestId}] 📋 VectorStoreService: Error details: ${String(error)}`);
+                throw new Error(`Batch delete operation failed with unknown error: ${String(error)}`);
+            }
+        }
+    }
+
+    /**
+     * Validate inputs for batch delete operation
+     * @param ids Array of IDs to delete
+     * @param requestId Request ID for logging
+     */
+    private validateBatchDeleteInputs(ids: string[], requestId: string): void {
+        // Validate ids array
+        if (!Array.isArray(ids)) {
+            console.error(`[${requestId}] ❌ VectorStoreService: Invalid ids - must be an array`);
+            throw new Error('Invalid input: ids must be an array');
+        }
+
+        // Validate array elements
+        const invalidIds = ids.filter(id => !id || typeof id !== 'string' || id.trim().length === 0);
+        if (invalidIds.length > 0) {
+            console.error(`[${requestId}] ❌ VectorStoreService: Invalid IDs - contains ${invalidIds.length} invalid elements`);
+            throw new Error(`Invalid input: ids array contains ${invalidIds.length} invalid elements (must be non-empty strings)`);
+        }
+
+        // Check for duplicates
+        const uniqueIds = new Set(ids);
+        if (uniqueIds.size !== ids.length) {
+            const duplicateCount = ids.length - uniqueIds.size;
+            console.warn(`[${requestId}] ⚠️ VectorStoreService: Duplicate IDs detected - ${duplicateCount} duplicates will be ignored`);
+        }
+
+        // Warn about large batch sizes
+        if (ids.length > 1000) {
+            console.warn(`[${requestId}] ⚠️ VectorStoreService: Large batch detected - ${ids.length} IDs (consider processing in smaller chunks for better performance)`);
+        }
+
+        console.log(`[${requestId}] ✅ VectorStoreService: Validation passed for ${ids.length} IDs (${uniqueIds.size} unique)`);
     }
 
     /**
@@ -637,9 +1222,10 @@ export class VectorStoreService {
      * @param id The record ID
      * @param text The text content
      * @param vector The embedding vector
+     * @param filePath The file path
      * @param requestId Request ID for logging
      */
-    private validateUpsertInputs(id: string, text: string, vector: number[], requestId: string): void {
+    private validateUpsertInputs(id: string, text: string, vector: number[], filePath: string, requestId: string): void {
         // Validate ID
         if (!id || typeof id !== 'string') {
             console.error(`[${requestId}] ❌ VectorStoreService: Invalid ID - must be a non-empty string`);
@@ -684,6 +1270,17 @@ export class VectorStoreService {
         const expectedDimensions = 384;
         if (vector.length !== expectedDimensions) {
             console.warn(`[${requestId}] ⚠️ VectorStoreService: Unexpected vector dimensions: ${vector.length} (expected ${expectedDimensions})`);
+        }
+
+        // Validate filePath
+        if (!filePath || typeof filePath !== 'string') {
+            console.error(`[${requestId}] ❌ VectorStoreService: Invalid filePath - must be a non-empty string`);
+            throw new Error('Invalid input: filePath must be a non-empty string');
+        }
+
+        if (filePath.trim().length === 0) {
+            console.error(`[${requestId}] ❌ VectorStoreService: Invalid filePath - cannot be empty or whitespace only`);
+            throw new Error('Invalid input: filePath cannot be empty or whitespace only');
         }
     }
 
@@ -731,6 +1328,67 @@ export class VectorStoreService {
         const expectedDimensions = 384;
         if (queryVector.length !== expectedDimensions) {
             console.warn(`[${requestId}] ⚠️ VectorStoreService: Unexpected query vector dimensions: ${queryVector.length} (expected ${expectedDimensions})`);
+        }
+    }
+
+    /**
+     * Debug method to get all records from the database
+     * @param filePath Optional file path to filter records
+     * @returns Promise<any[]> Array of all records (or filtered by file path)
+     */
+    public async debugGetAllRecords(filePath?: string): Promise<any[]> {
+        const debugId = `debug-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        try {
+            console.log(`[${debugId}] 🐛 VectorStoreService: Starting debugGetAllRecords...`);
+
+            if (!VectorStoreService.table) {
+                console.error(`[${debugId}] ❌ VectorStoreService: Table not initialized`);
+                throw new Error('VectorStoreService not initialized');
+            }
+
+            console.log(`[${debugId}] 🔍 VectorStoreService: Retrieving all records from database...`);
+
+            let records: any[] = [];
+
+            // Try table scan first (more reliable)
+            try {
+                if (typeof (VectorStoreService.table as any).scan === 'function') {
+                    console.log(`[${debugId}] 📊 VectorStoreService: Using table scan for debug retrieval...`);
+                    records = await (VectorStoreService.table as any).scan().toArray();
+                    console.log(`[${debugId}] ✅ VectorStoreService: Table scan retrieved ${records.length} records`);
+                } else {
+                    console.log(`[${debugId}] ⚠️ VectorStoreService: Table scan not available, using vector search fallback...`);
+                    // Fallback to vector search with dummy vector
+                    const dummyVector = new Array(384).fill(0);
+                    const searchResults = await VectorStoreService.table.search(dummyVector).limit(1000).toArray();
+                    records = searchResults.map((result: any) => ({
+                        id: result.id,
+                        text: result.text,
+                        vector: result.vector,
+                        filePath: result.filePath,
+                        contentHash: result.contentHash || 'unknown'
+                    }));
+                    console.log(`[${debugId}] ✅ VectorStoreService: Vector search fallback retrieved ${records.length} records`);
+                }
+            } catch (retrievalError) {
+                console.error(`[${debugId}] ❌ VectorStoreService: Failed to retrieve records:`, retrievalError);
+                throw retrievalError;
+            }
+
+            // Filter by file path if provided
+            if (filePath) {
+                const originalCount = records.length;
+                records = records.filter((record: any) => record.filePath === filePath);
+                console.log(`[${debugId}] 🔍 VectorStoreService: Filtered ${originalCount} records to ${records.length} for filePath: ${filePath}`);
+            }
+
+            console.log(`[${debugId}] 📊 VectorStoreService: debugGetAllRecords completed - returning ${records.length} records`);
+            return records;
+
+        } catch (error) {
+            console.error(`[${debugId}] ❌ VectorStoreService: debugGetAllRecords failed:`, error);
+            throw new Error(`Failed to retrieve debug records: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 }
