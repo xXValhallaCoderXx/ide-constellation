@@ -388,8 +388,20 @@ export class VectorStoreService {
 
                 console.log(`[${requestId}] 💾 VectorStoreService: Upserting record to database...`);
 
-                // Perform upsert operation
+                // Perform proper upsert operation: delete existing record first, then add new one
                 const upsertStartTime = Date.now();
+                
+                // First, try to delete any existing record with the same ID
+                try {
+                    console.log(`[${requestId}] 🗑️ VectorStoreService: Removing existing record with ID: ${id}`);
+                    await VectorStoreService.table!.delete(`id = '${id.replace(/'/g, "''")}'`);
+                    console.log(`[${requestId}] ✅ VectorStoreService: Existing record deleted (if it existed)`);
+                } catch (deleteError) {
+                    // It's okay if the delete fails (record might not exist)
+                    console.log(`[${requestId}] ℹ️ VectorStoreService: No existing record to delete (this is normal for new records)`);
+                }
+                
+                // Then add the new record
                 await VectorStoreService.table!.add([record as any]);
                 const upsertDuration = Date.now() - upsertStartTime;
 
@@ -465,6 +477,56 @@ export class VectorStoreService {
                 // Wait before retrying
                 await new Promise(resolve => setTimeout(resolve, delayMs));
             }
+        }
+    }
+
+    /**
+     * Delete all embeddings associated with a specific file path
+     * @param filePath The path of the file whose embeddings should be deleted
+     * @returns Promise<void> Resolves when all embeddings for the file are deleted
+     * @throws Error if service is not initialized or delete operation fails
+     */
+    public async deleteFileEmbeddings(filePath: string): Promise<void> {
+        if (!VectorStoreService.table) {
+            throw new Error('VectorStoreService is not initialized. Call initialize() first.');
+        }
+
+        const requestId = `DEL-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+        const startTime = Date.now();
+
+        console.log(`[${requestId}] 🗑️ VectorStoreService: Starting deletion of all embeddings for file: ${filePath}`);
+
+        try {
+            // Normalize the file path to match how IDs are generated
+            const normalizedFilePath = filePath
+                .replace(/^\/+/, '') // Remove leading slashes
+                .replace(/\\/g, '/'); // Convert backslashes to forward slashes
+
+            // Escape single quotes for SQL safety
+            const escapedFilePath = normalizedFilePath.replace(/'/g, "''");
+            
+            // First, let's see what records exist before deletion
+            console.log(`[${requestId}] 🔍 VectorStoreService: Preparing to delete embeddings for file: ${normalizedFilePath}`);
+            // Skip the record checking since LanceDB search() requires vectors
+            // Just proceed directly to deletion
+            
+            // Delete all records where the ID starts with the normalized file path
+            // IDs are in format "filePath:symbolName", so we match the prefix + colon
+            const deleteFilter = `id LIKE '${escapedFilePath}:%'`;
+            
+            console.log(`[${requestId}] �️ VectorStoreService: Using delete filter: ${deleteFilter}`);
+            const deleteResult = await VectorStoreService.table.delete(deleteFilter);
+            console.log(`[${requestId}] 📋 VectorStoreService: Delete operation completed`);
+
+            // Deletion completed - no need to verify since we can't query without vectors
+
+            const duration = Date.now() - startTime;
+            console.log(`[${requestId}] ✅ VectorStoreService: Successfully deleted all embeddings for file: ${filePath} (${duration}ms)`);
+
+        } catch (error) {
+            const duration = Date.now() - startTime;
+            console.error(`[${requestId}] ❌ VectorStoreService: Failed to delete embeddings for file ${filePath} (${duration}ms):`, error);
+            throw new Error(`Failed to delete embeddings for file ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 

@@ -572,6 +572,16 @@ export class PolarisController {
             const relativePath = this.getRelativeFilePath(filePath);
             console.log(`[${operationId}] 📁 Using relative path for IDs: ${relativePath}`);
 
+            // Clean up existing embeddings for this file to prevent accumulation
+            try {
+                console.log(`[${operationId}] 🧹 Cleaning up existing embeddings for file: ${relativePath}`);
+                await vectorStoreService.deleteFileEmbeddings(relativePath);
+                console.log(`[${operationId}] ✅ Existing embeddings cleaned up successfully`);
+            } catch (cleanupError) {
+                console.warn(`[${operationId}] ⚠️ Failed to clean up existing embeddings (continuing anyway):`, cleanupError);
+                // Continue processing even if cleanup fails
+            }
+
             // Process each symbol with docstring content
             for (const symbol of symbols) {
                 metrics.processed++;
@@ -749,6 +759,19 @@ export class PolarisController {
                     if (shouldProcessDocument(document, DEFAULT_CONFIG)) {
                         console.log(`[${operationId}] 📝 File passed filtering, attempting documentation deletion`);
                         await this.deleteCorrespondingDocumentationFile(deletedFilePath, operationId);
+                        
+                        // Also delete embeddings from vector store
+                        try {
+                            const relativePath = this.getRelativeFilePath(deletedFilePath);
+                            console.log(`[${operationId}] 🧠 Deleting vector embeddings for file: ${relativePath}`);
+                            const vectorStoreService = VectorStoreService.getInstance();
+                            await vectorStoreService.deleteFileEmbeddings(relativePath);
+                            console.log(`[${operationId}] ✅ Vector embeddings deleted successfully`);
+                        } catch (vectorError) {
+                            console.error(`[${operationId}] ⚠️ Failed to delete vector embeddings (continuing anyway):`, vectorError);
+                            // Don't fail the entire operation if vector cleanup fails
+                        }
+                        
                         successCount++;
                     } else {
                         console.log(`[${operationId}] 📋 Skipped documentation deletion for filtered file: ${fileName}`);
