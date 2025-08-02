@@ -1,2 +1,6 @@
 node_modules
 dist
+.github/prompts
+.env
+tasks
+out
