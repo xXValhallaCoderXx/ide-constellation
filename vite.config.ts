@@ -28,11 +28,11 @@ export default defineConfig({
         "querystring"
       ],
       output: {
-        entryFileNames: "extension.cjs"
+        entryFileNames: "extension.js"
       }
     },
     sourcemap: true,
-    outDir: "out",
+    outDir: "dist",
   },
   plugins: [],
 });
