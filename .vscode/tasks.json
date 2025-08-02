@@ -4,70 +4,26 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-            "label": "watch",
-            "dependsOn": [
-                "npm: watch:tsc",
-                "npm: watch:esbuild"
-            ],
-            "presentation": {
-                "reveal": "never"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
-        },
-        {
-            "type": "npm",
-            "script": "watch:esbuild",
-            "group": "build",
-            "problemMatcher": [
-                {
-                    "base": "$tsc",
-                    "background": {
-                        "activeOnStart": true,
-                        "beginsPattern": "^\\[watch\\] build started",
-                        "endsPattern": "^\\[watch\\] build finished"
-                    }
-                }
-            ],
-            "isBackground": true,
-            "label": "npm: watch:esbuild",
-            "presentation": {
-                "group": "watch",
-                "reveal": "never"
-            }
-        },
-		{
-            "type": "npm",
-            "script": "watch:tsc",
-            "group": "build",
-            "problemMatcher": "$tsc-watch",
-            "isBackground": true,
-            "label": "npm: watch:tsc",
-            "presentation": {
-                "group": "watch",
-                "reveal": "never"
-            }
-        },
-		{
 			"type": "npm",
-			"script": "watch-tests",
-			"problemMatcher": "$tsc-watch",
+			"script": "watch",
+			"problemMatcher": [
+				{
+					"base": "$tsc",
+					"background": {
+						"activeOnStart": true,
+						"beginsPattern": "^vite v.* building",
+						"endsPattern": "built in \\d+ms\\.|✓ built in \\d+ms"
+					}
+				}
+			],
 			"isBackground": true,
 			"presentation": {
-				"reveal": "never",
-				"group": "watchers"
+				"reveal": "never"
 			},
-			"group": "build"
-		},
-		{
-			"label": "tasks: watch-tests",
-			"dependsOn": [
-				"npm: watch",
-				"npm: watch-tests"
-			],
-			"problemMatcher": []
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
 		}
 	]
 }
