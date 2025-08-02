@@ -18,7 +18,9 @@
 	"exclude": [
 		"vite.config.ts",
 		"vite.config.js",
+		"vite.config.mjs",
 		"*.config.ts",
-		"*.config.js"
+		"*.config.js",
+		"*.config.mjs"
 	]
 }
