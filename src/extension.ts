@@ -8,18 +8,27 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "kiro-constellation" is now active!');
+	console.log('🚀 KIRO-CONSTELLATION: Extension is activating...');
+	console.log('🚀 KIRO-CONSTELLATION: VS Code version:', vscode.version);
+	console.log('🚀 KIRO-CONSTELLATION: Extension context:', context.extensionPath);
+	console.log('🚀 KIRO-CONSTELLATION: Extension is now active!');
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('kiro-constellation.helloWorld', () => {
+	try {
+		const disposable = vscode.commands.registerCommand('kiro-constellation.helloWorld', () => {
 		// The code you place here will be executed every time your command is executed
 		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from Kiro Constellation!');
-	});
+			console.log('🚀 KIRO-CONSTELLATION: Hello World command executed!');
+			vscode.window.showInformationMessage('Hello World from Kiro Constellation!');
+		});
 
-	context.subscriptions.push(disposable);
+		context.subscriptions.push(disposable);
+		console.log('🚀 KIRO-CONSTELLATION: Command registered successfully!');
+	} catch (error) {
+		console.error('🚀 KIRO-CONSTELLATION: Error registering command:', error);
+	}
 }
 
 // This method is called when your extension is deactivated
