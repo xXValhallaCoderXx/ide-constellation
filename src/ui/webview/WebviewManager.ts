@@ -37,8 +37,8 @@ export class WebviewManager {
                     enableScripts: true,
                     retainContextWhenHidden: true,
                     localResourceRoots: [
-                        vscode.Uri.joinPath(this.extensionUri, 'dist', 'src', 'webview'),
-                        vscode.Uri.joinPath(this.extensionUri, 'src', 'webview'),
+                        vscode.Uri.joinPath(this.extensionUri, 'dist', 'src', 'ui', 'webview'),
+                        vscode.Uri.joinPath(this.extensionUri, 'src', 'ui', 'webview'),
                         vscode.Uri.joinPath(this.extensionUri, 'media')
                     ]
                 }
@@ -70,7 +70,7 @@ export class WebviewManager {
             }
 
             // Get paths to resources on disk - use dist folder for compiled assets
-            const webviewPath = vscode.Uri.joinPath(this.extensionUri, 'dist', 'src', 'webview');
+            const webviewPath = vscode.Uri.joinPath(this.extensionUri, 'dist', 'src', 'ui', 'webview');
             const htmlFilePath = vscode.Uri.joinPath(webviewPath, 'webview.html');
 
             // Read the HTML file

@@ -1,5 +1,5 @@
 // Sidebar TypeScript for VS Code Webview
-import type { Message, VSCodeApi } from '../types/webview.types';
+import type { Message, VSCodeApi } from '../shared/types';
 
 const vscodeSidebar: VSCodeApi = acquireVsCodeApi();
 

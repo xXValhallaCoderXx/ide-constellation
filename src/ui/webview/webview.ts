@@ -1,5 +1,5 @@
 // Webview TypeScript for VS Code Architecture Map
-import type { Message, VSCodeApi } from '../types/webview.types';
+import type { Message, VSCodeApi } from '../shared/types';
 
 const vscodeWebview: VSCodeApi = acquireVsCodeApi();
 

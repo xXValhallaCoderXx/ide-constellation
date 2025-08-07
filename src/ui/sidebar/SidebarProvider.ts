@@ -21,8 +21,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             // Allow scripts in the webview
             enableScripts: true,
             localResourceRoots: [
-                vscode.Uri.joinPath(this._extensionUri, 'dist', 'src', 'sidebar'),
-                vscode.Uri.joinPath(this._extensionUri, 'src', 'sidebar'),
+                vscode.Uri.joinPath(this._extensionUri, 'dist', 'src', 'ui', 'sidebar'),
+                vscode.Uri.joinPath(this._extensionUri, 'src', 'ui', 'sidebar'),
                 vscode.Uri.joinPath(this._extensionUri, 'media')
             ]
         };
@@ -63,8 +63,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         console.log('🚀 KIRO-CONSTELLATION: Generating HTML for webview');
         
         // Get resource URIs - point to dist folder for compiled assets
-        const stylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'dist', 'src', 'sidebar', 'sidebar.css'));
-        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'dist', 'src', 'sidebar', 'sidebar.js'));
+        const stylesUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'dist', 'src', 'ui', 'sidebar', 'sidebar.css'));
+        const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'dist', 'src', 'ui', 'sidebar', 'sidebar.js'));
         
         console.log('🚀 KIRO-CONSTELLATION: Styles URI:', stylesUri.toString());
         console.log('🚀 KIRO-CONSTELLATION: Script URI:', scriptUri.toString());

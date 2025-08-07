@@ -7,14 +7,14 @@ const copyAssetsPlugin = () => ({
   name: 'copy-assets',
   writeBundle() {
     // Copy webview static files
-    const webviewDest = 'dist/src/webview';
+    const webviewDest = 'dist/src/ui/webview';
     if (!existsSync(webviewDest)) {
       mkdirSync(webviewDest, { recursive: true });
     }
     
     try {
-      copyFileSync('src/webview/webview.html', join(webviewDest, 'webview.html'));
-      copyFileSync('src/webview/webview.css', join(webviewDest, 'webview.css'));
+      copyFileSync('src/ui/webview/webview.html', join(webviewDest, 'webview.html'));
+      copyFileSync('src/ui/webview/webview.css', join(webviewDest, 'webview.css'));
       // Compile TypeScript to JavaScript manually for webview
       const webviewTs = `// Compiled from webview.ts
 const vscodeWebview = acquireVsCodeApi();
@@ -70,14 +70,14 @@ function initializeArchitectureMap() {
     }
 
     // Copy sidebar static files
-    const sidebarDest = 'dist/src/sidebar';
+    const sidebarDest = 'dist/src/ui/sidebar';
     if (!existsSync(sidebarDest)) {
       mkdirSync(sidebarDest, { recursive: true });
     }
     
     try {
-      copyFileSync('src/sidebar/sidebar.html', join(sidebarDest, 'sidebar.html'));
-      copyFileSync('src/sidebar/sidebar.css', join(sidebarDest, 'sidebar.css'));
+      copyFileSync('src/ui/sidebar/sidebar.html', join(sidebarDest, 'sidebar.html'));
+      copyFileSync('src/ui/sidebar/sidebar.css', join(sidebarDest, 'sidebar.css'));
       // Compile TypeScript to JavaScript manually for sidebar
       const sidebarTs = `// Compiled from sidebar.ts
 const vscodeSidebar = acquireVsCodeApi();
