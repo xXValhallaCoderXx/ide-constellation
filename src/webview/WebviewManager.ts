@@ -37,7 +37,8 @@ export class WebviewManager {
                     enableScripts: true,
                     retainContextWhenHidden: true,
                     localResourceRoots: [
-                        vscode.Uri.joinPath(this.extensionUri, 'webview'),
+                        vscode.Uri.joinPath(this.extensionUri, 'dist', 'src', 'webview'),
+                        vscode.Uri.joinPath(this.extensionUri, 'src', 'webview'),
                         vscode.Uri.joinPath(this.extensionUri, 'media')
                     ]
                 }
@@ -68,8 +69,8 @@ export class WebviewManager {
                 throw new Error('No panel available for content generation');
             }
 
-            // Get paths to resources on disk
-            const webviewPath = vscode.Uri.joinPath(this.extensionUri, 'webview');
+            // Get paths to resources on disk - use dist folder for compiled assets
+            const webviewPath = vscode.Uri.joinPath(this.extensionUri, 'dist', 'src', 'webview');
             const htmlFilePath = vscode.Uri.joinPath(webviewPath, 'webview.html');
 
             // Read the HTML file
@@ -83,16 +84,16 @@ export class WebviewManager {
 
             // Convert resource paths to webview URIs
             const stylesUri = this.panel.webview.asWebviewUri(
-                vscode.Uri.joinPath(webviewPath, 'styles.css')
+                vscode.Uri.joinPath(webviewPath, 'webview.css')
             );
             const scriptUri = this.panel.webview.asWebviewUri(
-                vscode.Uri.joinPath(webviewPath, 'main.js')
+                vscode.Uri.joinPath(webviewPath, 'webview.js')
             );
 
             // Replace placeholder paths with proper URIs
             htmlContent = htmlContent
-                .replace(/href="styles.css"/g, `href="${stylesUri}"`)
-                .replace(/src="main.js"/g, `src="${scriptUri}"`);
+                .replace(/href="webview.css"/g, `href="${stylesUri}"`)
+                .replace(/src="webview.js"/g, `src="${scriptUri}"`);
 
             console.log('🚀 KIRO-CONSTELLATION: Webview content generated with proper resource URIs');
             return htmlContent;

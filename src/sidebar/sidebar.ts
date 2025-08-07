@@ -1,14 +1,16 @@
-// VS Code API available as acquireVsCodeApi()
-const vscode = acquireVsCodeApi();
+// Sidebar TypeScript for VS Code Webview
+import type { Message, VSCodeApi } from '../types/webview.types';
 
-console.log('🚀 KIRO-CONSTELLATION: Sidebar JavaScript loaded');
+const vscodeSidebar: VSCodeApi = acquireVsCodeApi();
+
+console.log('🚀 KIRO-CONSTELLATION: Sidebar TypeScript loaded');
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 KIRO-CONSTELLATION: Sidebar DOM ready');
     
     // Get button elements
-    const showMapBtn = document.getElementById('showMapBtn');
-    const refreshBtn = document.getElementById('refreshBtn');
+    const showMapBtn = document.getElementById('showMapBtn') as HTMLButtonElement;
+    const refreshBtn = document.getElementById('refreshBtn') as HTMLButtonElement;
     
     // Show Architecture Map button
     if (showMapBtn) {
@@ -16,9 +18,10 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('🚀 KIRO-CONSTELLATION: Show Map button clicked in sidebar');
             
             // Send message to the extension
-            vscode.postMessage({
+            const message: Message = {
                 type: 'showMap'
-            });
+            };
+            vscodeSidebar.postMessage(message);
             
             // Provide visual feedback
             showMapBtn.textContent = '🔄 Opening...';
@@ -36,10 +39,11 @@ document.addEventListener('DOMContentLoaded', function() {
         refreshBtn.addEventListener('click', function() {
             console.log('🚀 KIRO-CONSTELLATION: Refresh button clicked in sidebar');
             
-            vscode.postMessage({
+            const message: Message = {
                 type: 'log',
                 data: 'Sidebar refreshed by user'
-            });
+            };
+            vscodeSidebar.postMessage(message);
             
             // Animate refresh button
             refreshBtn.style.transform = 'rotate(360deg)';
@@ -58,38 +62,39 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeSidebar();
 });
 
-function initializeSidebar() {
+function initializeSidebar(): void {
     console.log('🚀 KIRO-CONSTELLATION: Initializing sidebar interface');
     
     // Send initial log message
-    vscode.postMessage({
+    const message: Message = {
         type: 'log',
         data: 'Sidebar interface initialized'
-    });
+    };
+    vscodeSidebar.postMessage(message);
     
     // Load initial stats
     updateStats();
 }
 
-function updateStats() {
+function updateStats(): void {
     // Placeholder function to update project statistics
     // In a real implementation, this would fetch actual project data
     const componentCount = Math.floor(Math.random() * 10) + 1;
     const connectionCount = Math.floor(Math.random() * 20) + 1;
     
-    const componentStat = document.querySelector('.stat-item:first-child .stat-number');
-    const connectionStat = document.querySelector('.stat-item:last-child .stat-number');
+    const componentStat = document.querySelector('.stat-item:first-child .stat-number') as HTMLElement;
+    const connectionStat = document.querySelector('.stat-item:last-child .stat-number') as HTMLElement;
     
     if (componentStat) {
-        animateNumber(componentStat, parseInt(componentStat.textContent) || 0, componentCount);
+        animateNumber(componentStat, parseInt(componentStat.textContent || '0'), componentCount);
     }
     
     if (connectionStat) {
-        animateNumber(connectionStat, parseInt(connectionStat.textContent) || 0, connectionCount);
+        animateNumber(connectionStat, parseInt(connectionStat.textContent || '0'), connectionCount);
     }
 }
 
-function animateNumber(element, from, to) {
+function animateNumber(element: HTMLElement, from: number, to: number): void {
     const duration = 500;
     const steps = 20;
     const stepValue = (to - from) / steps;
@@ -101,11 +106,11 @@ function animateNumber(element, from, to) {
     const timer = setInterval(() => {
         step++;
         current += stepValue;
-        element.textContent = Math.round(current);
+        element.textContent = Math.round(current).toString();
         
         if (step >= steps) {
             clearInterval(timer);
-            element.textContent = to;
+            element.textContent = to.toString();
         }
     }, stepDuration);
 }
