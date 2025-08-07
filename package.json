@@ -47,20 +47,26 @@
     "watch": "vite build --watch",
     "package": "vite build --mode production",
     "lint": "eslint src",
-    "compile-tests": "tsc -p tsconfig.test.json",
-    "pretest": "npm run compile-tests",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest"
   },
   "devDependencies": {
-    "@types/vscode": "^1.102.0",
     "@types/node": "20.x",
+    "@types/vscode": "^1.102.0",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
+    "@vitest/ui": "^3.2.4",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.25.1",
-    "typescript": "^5.8.3",
     "ts-loader": "^9.5.2",
-    "vite": "^7.0.6"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.6",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "dependency-cruiser": "^17.0.1"
   }
 }
