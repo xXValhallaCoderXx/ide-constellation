@@ -1,0 +1,11 @@
+{
+  "name": "sample-project",
+  "version": "1.0.0",
+  "description": "Sample project for testing dependency analysis",
+  "main": "a.js",
+  "scripts": {
+    "start": "node a.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

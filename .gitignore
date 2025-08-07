@@ -4,3 +4,5 @@ dist
 .env
 tasks
 out
+.vscode-test
+.kiro-spec-original
