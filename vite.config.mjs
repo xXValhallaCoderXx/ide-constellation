@@ -1,18 +1,36 @@
 import { defineConfig } from "vite";
 import { copyFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
-import { execSync } from "child_process";
+import { spawn } from "child_process";
 
 // Plugin to copy static assets to dist
 const copyAssetsPlugin = () => ({
   name: 'copy-assets',
-  writeBundle() {
-    // First, compile the webview TypeScript files
+  async writeBundle() {
+    // First, compile the webview TypeScript files asynchronously
     try {
       console.log('🔧 Compiling webview TypeScript files...');
-      execSync('npx tsc -p tsconfig.webview.json', { stdio: 'inherit' });
+      await new Promise((resolve, reject) => {
+        const tsc = spawn('npx', ['tsc', '-p', 'tsconfig.webview.json'], {
+          stdio: 'inherit'
+        });
+        
+        tsc.on('close', (code) => {
+          if (code === 0) {
+            console.log('✅ Webview TypeScript compilation successful');
+            resolve();
+          } else {
+            reject(new Error(`TypeScript compilation failed with exit code ${code}`));
+          }
+        });
+        
+        tsc.on('error', (error) => {
+          reject(new Error(`Failed to start TypeScript compiler: ${error.message}`));
+        });
+      });
     } catch (error) {
-      console.error('Failed to compile webview TypeScript:', error.message);
+      console.error('❌ Failed to compile webview TypeScript:', error.message);
+      throw error; // This will fail the build
     }
 
     // Copy webview static files

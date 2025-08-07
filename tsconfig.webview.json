@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "ES2020",
+    "module": "None",
     "moduleResolution": "node",
     "strict": true,
     "esModuleInterop": true,
@@ -10,8 +10,18 @@
     "outDir": "./dist/src/ui",
     "rootDir": "./src/ui",
     "declaration": false,
-    "sourceMap": false
+    "sourceMap": false,
+    "noEmitOnError": true
   },
-  "include": ["src/ui/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/ui/webview/webview.ts",
+    "src/ui/sidebar/sidebar.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "src/ui/webview/WebviewManager.ts",
+    "src/ui/sidebar/SidebarProvider.ts"
+  ]
 }
