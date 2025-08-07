@@ -35,6 +35,7 @@
         {
           "id": "kiro-constellation.mapView",
           "name": "Architecture Map",
+          "type": "webview",
           "when": "true"
         }
       ]

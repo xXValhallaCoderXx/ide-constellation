@@ -21,6 +21,21 @@ const copyAssetsPlugin = () => ({
       console.warn('Warning: Could not copy webview assets:', error.message);
     }
 
+    // Copy sidebar folder
+    const sidebarSrc = 'sidebar';
+    const sidebarDest = 'dist/sidebar';
+    if (!existsSync(sidebarDest)) {
+      mkdirSync(sidebarDest, { recursive: true });
+    }
+    
+    try {
+      copyFileSync(join(sidebarSrc, 'sidebar.html'), join(sidebarDest, 'sidebar.html'));
+      copyFileSync(join(sidebarSrc, 'styles.css'), join(sidebarDest, 'styles.css'));
+      copyFileSync(join(sidebarSrc, 'main.js'), join(sidebarDest, 'main.js'));
+    } catch (error) {
+      console.warn('Warning: Could not copy sidebar assets:', error.message);
+    }
+
     // Copy media folder
     const mediaSrc = 'media';
     const mediaDest = 'dist/media';
