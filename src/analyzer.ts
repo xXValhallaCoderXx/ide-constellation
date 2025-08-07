@@ -6,7 +6,6 @@
  * dependency graphs within a workspace.
  */
 
-import { cruise } from 'dependency-cruiser';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -409,6 +408,25 @@ export async function generateDependencyGraph(workspacePath: string): Promise<De
       // Wrap dependency-cruiser call in comprehensive try-catch
       let cruiseResult: any;
       try {
+        // Dynamically import dependency-cruiser to handle module loading issues
+        // This approach ensures the module is loaded at runtime when needed
+        let cruise: any;
+        try {
+          const dependencyCruiserModule = await import('dependency-cruiser');
+          cruise = dependencyCruiserModule.cruise;
+        } catch (importError) {
+          logger.error('Failed to import dependency-cruiser module', 
+            importError instanceof Error ? importError : new Error(String(importError)),
+            { workspacePath: normalizedWorkspacePath }
+          );
+          
+          return createFallbackGraph(
+            `Dependency analysis module not available: ${importError instanceof Error ? importError.message : 'Module import failed'}. Please ensure dependency-cruiser is properly installed.`,
+            'library',
+            normalizedWorkspacePath
+          );
+        }
+        
         // Use relative path pattern for dependency-cruiser when working with absolute paths
         // dependency-cruiser works better when analyzing from within the target directory
         const originalCwd = process.cwd();
