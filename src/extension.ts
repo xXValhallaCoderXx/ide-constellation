@@ -5,6 +5,28 @@ import { WebviewManager } from './ui/webview/WebviewManager';
 import { SidebarProvider } from './ui/sidebar/SidebarProvider';
 import { generateDependencyGraph } from './analyzer';
 
+/**
+ * Lightweight debounce function to prevent excessive analysis calls
+ * @param func - Function to debounce
+ * @param delay - Delay in milliseconds
+ * @returns Debounced function
+ */
+function debounce<T extends (...args: any[]) => any>(func: T, delay: number): T {
+	let timeoutId: NodeJS.Timeout | undefined;
+	
+	return ((...args: Parameters<T>) => {
+		// Clear existing timeout
+		if (timeoutId) {
+			clearTimeout(timeoutId);
+		}
+		
+		// Set new timeout
+		timeoutId = setTimeout(() => {
+			func.apply(null, args);
+		}, delay);
+	}) as T;
+}
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
@@ -19,20 +41,11 @@ export function activate(context: vscode.ExtensionContext) {
 	// Create WebviewManager instance
 	const webviewManager = new WebviewManager(context);
 
-	// Set up file save event listener
-	const fileSaveDisposable = vscode.workspace.onDidSaveTextDocument(async (document) => {
-		console.log('🚀 KIRO-CONSTELLATION: File save event detected:', document.fileName);
-		
-		// Validate workspace folder availability
-		const workspaceFolders = vscode.workspace.workspaceFolders;
-		if (!workspaceFolders || workspaceFolders.length === 0) {
-			console.log('🚀 KIRO-CONSTELLATION: No workspace folder open, skipping analysis');
-			return;
-		}
-
-		const workspaceRoot = workspaceFolders[0].uri.fsPath;
-		console.log('🚀 KIRO-CONSTELLATION: Workspace root path:', workspaceRoot);
-		
+	/**
+	 * Performs dependency analysis for the given workspace
+	 * @param workspaceRoot - Path to the workspace root
+	 */
+	async function performDependencyAnalysis(workspaceRoot: string): Promise<void> {
 		try {
 			console.log('🚀 KIRO-CONSTELLATION: Starting dependency analysis...');
 			const dependencyGraph = await generateDependencyGraph(workspaceRoot);
@@ -61,6 +74,28 @@ export function activate(context: vscode.ExtensionContext) {
 				workspaceRoot
 			});
 		}
+	}
+
+	// Create debounced analysis function with 500ms delay as specified in requirements
+	const debouncedAnalysis = debounce(performDependencyAnalysis, 500);
+
+	// Set up file save event listener
+	const fileSaveDisposable = vscode.workspace.onDidSaveTextDocument(async (document) => {
+		console.log('🚀 KIRO-CONSTELLATION: File save event detected:', document.fileName);
+		
+		// Validate workspace folder availability
+		const workspaceFolders = vscode.workspace.workspaceFolders;
+		if (!workspaceFolders || workspaceFolders.length === 0) {
+			console.log('🚀 KIRO-CONSTELLATION: No workspace folder open, skipping analysis');
+			return;
+		}
+
+		const workspaceRoot = workspaceFolders[0].uri.fsPath;
+		console.log('🚀 KIRO-CONSTELLATION: Workspace root path:', workspaceRoot);
+		console.log('🚀 KIRO-CONSTELLATION: Triggering debounced analysis...');
+		
+		// Use debounced analysis function to prevent excessive calls
+		debouncedAnalysis(workspaceRoot);
 		
 		console.log('🚀 KIRO-CONSTELLATION: File save event handling complete');
 	});

@@ -39,14 +39,14 @@
   - Handle different message types with switch statement structure
   - _Requirements: 3.2, 4.3_
 
-- [ ] 6. Add Lodash dependency for debouncing
+- [x] 6. Add Lodash dependency for debouncing
   - Install lodash package using npm install lodash
   - Install TypeScript types with npm install --save-dev @types/lodash
   - Update package.json to include lodash in dependencies
   - Verify installation by importing debounce function in extension.ts
   - _Requirements: 2.1_
 
-- [ ] 7. Implement debounced analysis trigger
+- [x] 7. Implement debounced analysis trigger
   - Import debounce function from lodash in extension.ts
   - Create debounced function that wraps analysis and message sending logic
   - Set debounce delay to 500ms as specified in requirements
