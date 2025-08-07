@@ -1,6 +1,59 @@
 // Webview TypeScript for VS Code Architecture Map
-import cytoscape from 'cytoscape';
-import { DependencyGraphData, GraphUpdateMessage, GraphStatusMessage, GraphErrorMessage } from '../shared/types';
+
+// Declare cytoscape as a global variable (loaded from CDN)
+declare const cytoscape: any;
+
+// Type definitions for webview messages (inline to avoid imports)
+interface DependencyGraphData {
+    modules: Array<{
+        source: string;
+        dependencies: Array<{
+            resolved: string;
+            coreModule: boolean;
+            followable: boolean;
+            dynamic: boolean;
+        }>;
+        dependents: string[];
+    }>;
+    summary: {
+        violations: any[];
+        error?: string;
+        warn?: any[];
+        info?: any[];
+        totalDependencies: number;
+        totalModules: number;
+    };
+}
+
+interface GraphUpdateMessage {
+    command: 'updateGraph';
+    data: DependencyGraphData;
+    timestamp: string;
+    metadata: {
+        source: string;
+        version: string;
+    };
+}
+
+interface GraphStatusMessage {
+    command: 'status';
+    status: 'initializing' | 'analyzing' | 'ready' | 'warning' | 'error';
+    message: string;
+    timestamp: string;
+    metadata: {
+        source: string;
+    };
+}
+
+interface GraphErrorMessage {
+    command: 'error';
+    error: string;
+    details?: any;
+    timestamp: string;
+    metadata: {
+        source: string;
+    };
+}
 
 // Type declarations for webview context
 interface VSCodeApi {
@@ -17,12 +70,30 @@ declare function acquireVsCodeApi(): VSCodeApi;
 const vscodeWebview: VSCodeApi = acquireVsCodeApi();
 
 // Module-level Cytoscape instance holder
-let cy: cytoscape.Core | undefined;
+let cy: any;
 
 console.log('🚀 KIRO-CONSTELLATION: Webview TypeScript loaded');
 
+// Wait for both DOM and cytoscape to be ready
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 KIRO-CONSTELLATION: Webview DOM ready');
+    
+    // Wait for cytoscape to be available
+    const waitForCytoscape = () => {
+        if (typeof cytoscape !== 'undefined' && cytoscape) {
+            console.log('🚀 KIRO-CONSTELLATION: Cytoscape is available');
+            initializeWebview();
+        } else {
+            console.log('🚀 KIRO-CONSTELLATION: Waiting for Cytoscape to load...');
+            setTimeout(waitForCytoscape, 100);
+        }
+    };
+    
+    waitForCytoscape();
+});
+
+function initializeWebview(): void {
+    console.log('🚀 KIRO-CONSTELLATION: Initializing webview');
     
     // Get the main container
     const cyContainer = document.getElementById('cy') as HTMLElement;
@@ -45,7 +116,7 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         console.error('🚀 KIRO-CONSTELLATION: Could not find cytoscape container');
     }
-});
+}
 
 function initializeArchitectureMap(): void {
     console.log('🚀 KIRO-CONSTELLATION: Initializing architecture map visualization');
@@ -78,11 +149,15 @@ function initializeArchitectureMap(): void {
 
 // Transform dependency graph data to Cytoscape elements format
 function transformGraphData(graphData: DependencyGraphData | null | undefined): { nodes: any[], edges: any[] } {
+    console.log('🚀 KIRO-CONSTELLATION: transformGraphData called with:', graphData);
+    
     // Handle malformed or empty input
     if (!graphData || !Array.isArray(graphData.modules)) {
         console.warn('🚀 KIRO-CONSTELLATION: transformGraphData received invalid or empty graph data');
         return { nodes: [], edges: [] };
     }
+
+    console.log('🚀 KIRO-CONSTELLATION: transformGraphData processing', graphData.modules.length, 'modules');
 
     try {
         const nodes: any[] = [];
@@ -167,6 +242,8 @@ function transformGraphData(graphData: DependencyGraphData | null | undefined): 
 
 // Render graph with destroy-and-recreate pattern
 function renderGraph(elements: { nodes: any[], edges: any[] }): void {
+    console.log('🚀 KIRO-CONSTELLATION: renderGraph called with:', elements.nodes.length, 'nodes and', elements.edges.length, 'edges');
+    
     const container = document.getElementById('cy');
     if (!container) {
         console.error('🚀 KIRO-CONSTELLATION: Cannot find #cy container for graph rendering');
@@ -346,7 +423,7 @@ function addTooltipSupport(): void {
     }
 
     // Node hover: show complete file path
-    cy.on('mouseover', 'node', (event) => {
+    cy.on('mouseover', 'node', (event: any) => {
         const node = event.target;
         const fullPath = node.data('fullPath') || node.id();
         const isExternal = node.data('external');
@@ -359,7 +436,7 @@ function addTooltipSupport(): void {
     });
 
     // Edge hover: show dependency type
-    cy.on('mouseover', 'edge', (event) => {
+    cy.on('mouseover', 'edge', (event: any) => {
         const edge = event.target;
         const dependencyType = edge.data('dependencyType');
         const isCore = edge.data('coreModule');
@@ -376,7 +453,7 @@ function addTooltipSupport(): void {
     });
 
     // Update tooltip position on mouse move
-    cy.on('mousemove', (event) => {
+    cy.on('mousemove', (event: any) => {
         if (tooltip!.style.display === 'block' && cy) {
             const container = cy.container();
             if (container) {
@@ -401,9 +478,13 @@ function addTooltipSupport(): void {
 
 // Message handling for communication with extension
 function setupMessageHandling(): void {
+    console.log('🚀 KIRO-CONSTELLATION: Setting up message handling');
+    
     // Listen for messages from the extension
     window.addEventListener('message', (event) => {
         const message = event.data;
+        
+        console.log('🚀 KIRO-CONSTELLATION: Raw message received:', message);
         
         // Validate message structure
         if (!message || typeof message !== 'object') {
@@ -411,26 +492,31 @@ function setupMessageHandling(): void {
             return;
         }
 
-        console.log('🚀 KIRO-CONSTELLATION: Received message:', message.command || message.type);
+        console.log('🚀 KIRO-CONSTELLATION: Processing message command:', message.command || message.type);
 
         switch (message.command) {
             case 'updateGraph':
+                console.log('🚀 KIRO-CONSTELLATION: Handling updateGraph message');
                 handleGraphUpdate(message as GraphUpdateMessage);
                 break;
             case 'status':
+                console.log('🚀 KIRO-CONSTELLATION: Handling status message');
                 handleStatusMessage(message as GraphStatusMessage);
                 break;
             case 'error':
+                console.log('🚀 KIRO-CONSTELLATION: Handling error message');
                 handleErrorMessage(message as GraphErrorMessage);
                 break;
             default:
+                console.log('🚀 KIRO-CONSTELLATION: Unknown command, checking legacy format');
                 // Handle legacy message format for backwards compatibility
                 if (message.type === 'updateGraph' && message.data) {
+                    console.log('🚀 KIRO-CONSTELLATION: Handling legacy updateGraph format');
                     const graphData = message.data as DependencyGraphData;
                     const elements = transformGraphData(graphData);
                     renderGraph(elements);
                 } else {
-                    console.log('🚀 KIRO-CONSTELLATION: Unknown message type:', message.command || message.type);
+                    console.warn('🚀 KIRO-CONSTELLATION: Unknown message format:', message);
                 }
                 break;
         }

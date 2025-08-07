@@ -2,18 +2,19 @@
 
 body {
     margin: 0;
-    padding: 16px;
+    padding: 0;
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
     color: var(--vscode-foreground);
     background-color: var(--vscode-editor-background);
+    height: 100vh;
+    overflow: hidden;
 }
 
 .container {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 16px;
+    height: 100vh;
 }
 
 h1 {
@@ -21,24 +22,160 @@ h1 {
     font-size: 18px;
     font-weight: 600;
     margin: 0;
+    padding: 16px;
     text-align: center;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-sideBar-background);
 }
 
+/* Main graph container - now takes full available space */
 #cy {
-    width: 300px;
-    height: 300px;
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 4px;
+    flex: 1;
+    width: 100%;
+    border: none;
     background-color: var(--vscode-editor-background);
+    position: relative;
+    min-height: 400px;
+}
+
+/* Remove the ::before content since we handle empty states in JavaScript */
+#cy::before {
+    display: none;
+}
+
+/* Status message containers */
+.status-container {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    position: relative;
+    height: 100%;
+    text-align: center;
+    padding: 16px;
 }
 
-#cy::before {
-    content: "Map container ready";
-    color: var(--vscode-descriptionForeground);
+.status-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    display: block;
+}
+
+.status-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+}
+
+.status-message {
+    font-size: 14px;
+    margin: 0;
+    line-height: 1.4;
+}
+
+/* Warning message styling */
+.warning-status {
+    color: var(--vscode-editorWarning-foreground);
+}
+
+.error-status {
+    color: var(--vscode-errorForeground);
+}
+
+.info-status {
+    color: var(--vscode-foreground);
+}
+
+.analyzing-status {
+    color: var(--vscode-progressBar-background);
+}
+
+/* Tooltip styling for consistency with VS Code theme */
+#cy-tooltip {
+    background-color: var(--vscode-editorHoverWidget-background) !important;
+    color: var(--vscode-editorHoverWidget-foreground) !important;
+    border: 1px solid var(--vscode-editorHoverWidget-border) !important;
+    border-radius: 4px;
+    padding: 8px 12px;
     font-size: 12px;
-    position: absolute;
+    font-family: var(--vscode-font-family);
+    box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+    z-index: 1000;
+    max-width: 300px;
+    word-wrap: break-word;
+    line-height: 1.4;
+}
+
+/* Performance warning specific styling */
+.performance-warning {
+    background-color: var(--vscode-editorWarning-background);
+    border: 1px solid var(--vscode-editorWarning-border);
+    border-radius: 4px;
+    padding: 16px;
+    margin: 16px;
+}
+
+.performance-warning .status-icon {
+    color: var(--vscode-editorWarning-foreground);
+}
+
+.performance-warning .status-title,
+.performance-warning .status-message {
+    color: var(--vscode-editorWarning-foreground);
+}
+
+/* Empty state styling */
+.empty-state {
+    color: var(--vscode-descriptionForeground);
+}
+
+.empty-state .status-icon {
+    opacity: 0.6;
+}
+
+/* Loading/analyzing state styling */
+.loading-state {
+    color: var(--vscode-foreground);
+}
+
+.loading-state .status-icon {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* Responsive design for different webview sizes */
+@media (max-width: 600px) {
+    .status-container {
+        padding: 12px;
+    }
+    
+    .status-icon {
+        font-size: 36px;
+        margin-bottom: 12px;
+    }
+    
+    .status-title {
+        font-size: 16px;
+    }
+    
+    .status-message {
+        font-size: 13px;
+    }
+}
+
+/* Ensure proper contrast in both light and dark themes */
+@media (prefers-color-scheme: light) {
+    #cy {
+        background-color: var(--vscode-editor-background, #ffffff);
+    }
+}
+
+@media (prefers-color-scheme: dark) {
+    #cy {
+        background-color: var(--vscode-editor-background, #1e1e1e);
+    }
 }
