@@ -101,7 +101,19 @@ export default defineConfig({
         "http",
         "https",
         "zlib",
-        "querystring"
+        "querystring",
+        "dependency-cruiser",
+        "enhanced-resolve",
+        "graceful-fs",
+        "tsconfig-paths",
+        "tsconfig-paths-webpack-plugin",
+        "watskeburt",
+        "semver",
+        "acorn",
+        "module",
+        "assert",
+        "constants",
+        "console"
       ],
       output: {
         entryFileNames: "extension.js"
