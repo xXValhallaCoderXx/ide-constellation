@@ -33,6 +33,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Initialize the architecture map
         initializeArchitectureMap();
         
+        // Setup message handling for extension communication
+        setupMessageHandling();
+        
         // Send ready message to extension
         const message: Message = {
             type: 'webviewReady',
@@ -160,3 +163,370 @@ function transformGraphData(graphData: DependencyGraphData | null | undefined): 
         console.error('🚀 KIRO-CONSTELLATION: Error in transformGraphData:', error);
         return { nodes: [], edges: [] };
     }
+}
+
+// Render graph with destroy-and-recreate pattern
+function renderGraph(elements: { nodes: any[], edges: any[] }): void {
+    const container = document.getElementById('cy');
+    if (!container) {
+        console.error('🚀 KIRO-CONSTELLATION: Cannot find #cy container for graph rendering');
+        return;
+    }
+
+    // Performance guardrail: check if node count exceeds 500
+    const nodeCount = elements.nodes.length;
+    if (nodeCount > 500) {
+        console.warn(`🚀 KIRO-CONSTELLATION: Large dataset detected (${nodeCount} nodes), displaying warning`);
+        container.innerHTML = `
+            <div style="
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                text-align: center;
+                color: var(--vscode-editorWarning-foreground);
+                padding: 16px;
+            ">
+                <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                <h3>Dataset Too Large</h3>
+                <p>This project has ${nodeCount} modules, which exceeds the 500-module limit for performance.</p>
+                <p>Please consider filtering your analysis or focusing on a specific directory.</p>
+            </div>
+        `;
+        return;
+    }
+
+    // Handle empty data case
+    if (nodeCount === 0) {
+        console.log('🚀 KIRO-CONSTELLATION: No dependencies found to visualize');
+        container.innerHTML = `
+            <div style="
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                text-align: center;
+                color: var(--vscode-descriptionForeground);
+                padding: 16px;
+            ">
+                <div style="font-size: 48px; margin-bottom: 16px;">📭</div>
+                <h3>No Dependencies Found</h3>
+                <p>No dependencies found to visualize.</p>
+                <p>Make sure your project has JavaScript/TypeScript files with import/require statements.</p>
+            </div>
+        `;
+        return;
+    }
+
+    // Destroy existing Cytoscape instance if it exists
+    if (cy) {
+        try {
+            cy.destroy();
+            console.log('🚀 KIRO-CONSTELLATION: Destroyed previous Cytoscape instance');
+        } catch (error) {
+            console.warn('🚀 KIRO-CONSTELLATION: Error destroying previous Cytoscape instance:', error);
+        }
+        cy = undefined;
+    }
+
+    // Clear container content
+    container.innerHTML = '';
+
+    try {
+        // Initialize new Cytoscape instance with cose layout and styling
+        cy = cytoscape({
+            container: container,
+            elements: [...elements.nodes, ...elements.edges],
+            
+            style: [
+                {
+                    selector: 'node',
+                    style: {
+                        'background-color': 'var(--vscode-button-background)',
+                        'color': 'var(--vscode-button-foreground)',
+                        'label': 'data(label)',
+                        'font-size': '10px',
+                        'text-halign': 'center',
+                        'text-valign': 'center',
+                        'text-wrap': 'wrap',
+                        'text-max-width': '80px',
+                        'border-width': '1px',
+                        'border-color': 'var(--vscode-button-border)'
+                    }
+                },
+                {
+                    selector: 'node[external]',
+                    style: {
+                        'background-color': 'var(--vscode-descriptionForeground)',
+                        'opacity': 0.6
+                    }
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        'width': 1.5,
+                        'curve-style': 'bezier',
+                        'line-color': 'var(--vscode-editorIndentGuide-background)',
+                        'target-arrow-color': 'var(--vscode-editorIndentGuide-background)',
+                        'target-arrow-shape': 'triangle',
+                        'arrow-scale': 0.8
+                    }
+                },
+                {
+                    selector: 'edge[dependencyType = "dynamic"]',
+                    style: {
+                        'line-style': 'dashed',
+                        'line-color': 'var(--vscode-editorWarning-foreground)'
+                    }
+                }
+            ],
+            
+            layout: {
+                name: 'cose',
+                animate: true,
+                padding: 30,
+                idealEdgeLength: 50,
+                nodeOverlap: 20
+            }
+        });
+
+        console.log(`🚀 KIRO-CONSTELLATION: Successfully rendered graph with ${nodeCount} nodes and ${elements.edges.length} edges`);
+
+        // Add user interaction features: tooltips
+        addTooltipSupport();
+
+    } catch (error) {
+        console.error('🚀 KIRO-CONSTELLATION: Error initializing Cytoscape instance:', error);
+        container.innerHTML = `
+            <div style="
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                text-align: center;
+                color: var(--vscode-errorForeground);
+                padding: 16px;
+            ">
+                <div style="font-size: 48px; margin-bottom: 16px;">❌</div>
+                <h3>Rendering Error</h3>
+                <p>Failed to initialize graph visualization.</p>
+                <p>Check the developer console for details.</p>
+            </div>
+        `;
+    }
+}
+
+// Add tooltip support for node and edge hover interactions
+function addTooltipSupport(): void {
+    if (!cy) {
+        return;
+    }
+
+    // Create tooltip element
+    let tooltip = document.getElementById('cy-tooltip');
+    if (!tooltip) {
+        tooltip = document.createElement('div');
+        tooltip.id = 'cy-tooltip';
+        tooltip.style.position = 'absolute';
+        tooltip.style.pointerEvents = 'none';
+        tooltip.style.backgroundColor = 'var(--vscode-editorHoverWidget-background)';
+        tooltip.style.color = 'var(--vscode-editorHoverWidget-foreground)';
+        tooltip.style.border = '1px solid var(--vscode-editorHoverWidget-border)';
+        tooltip.style.borderRadius = '4px';
+        tooltip.style.padding = '8px';
+        tooltip.style.fontSize = '12px';
+        tooltip.style.zIndex = '1000';
+        tooltip.style.display = 'none';
+        tooltip.style.maxWidth = '300px';
+        tooltip.style.wordWrap = 'break-word';
+        document.body.appendChild(tooltip);
+    }
+
+    // Node hover: show complete file path
+    cy.on('mouseover', 'node', (event) => {
+        const node = event.target;
+        const fullPath = node.data('fullPath') || node.id();
+        const isExternal = node.data('external');
+        
+        tooltip!.innerHTML = `
+            <strong>${isExternal ? 'External Module' : 'Source File'}</strong><br>
+            ${fullPath}
+        `;
+        tooltip!.style.display = 'block';
+    });
+
+    // Edge hover: show dependency type
+    cy.on('mouseover', 'edge', (event) => {
+        const edge = event.target;
+        const dependencyType = edge.data('dependencyType');
+        const isCore = edge.data('coreModule');
+        
+        const typeText = dependencyType === 'dynamic' ? 'Dynamic Import' : 'Static Import';
+        const coreText = isCore ? ' (Core Module)' : '';
+        
+        tooltip!.innerHTML = `
+            <strong>Dependency</strong><br>
+            ${typeText}${coreText}<br>
+            <small>${edge.data('source')} → ${edge.data('target')}</small>
+        `;
+        tooltip!.style.display = 'block';
+    });
+
+    // Update tooltip position on mouse move
+    cy.on('mousemove', (event) => {
+        if (tooltip!.style.display === 'block' && cy) {
+            const container = cy.container();
+            if (container) {
+                const containerBounds = container.getBoundingClientRect();
+                tooltip!.style.left = (containerBounds.left + event.renderedPosition.x + 10) + 'px';
+                tooltip!.style.top = (containerBounds.top + event.renderedPosition.y - 10) + 'px';
+            }
+        }
+    });
+
+    // Hide tooltip when not hovering
+    cy.on('mouseout', 'node, edge', () => {
+        tooltip!.style.display = 'none';
+    });
+
+    // Log interaction capabilities for testing
+    console.log('🚀 KIRO-CONSTELLATION: User interaction features enabled');
+    console.log('🚀 KIRO-CONSTELLATION: - Tooltip support for nodes and edges');
+    console.log('🚀 KIRO-CONSTELLATION: - Pan and zoom functionality (default Cytoscape behavior)');
+    console.log('🚀 KIRO-CONSTELLATION: - Mouse drag panning on empty space');
+}
+
+// Message handling for communication with extension
+function setupMessageHandling(): void {
+    // Listen for messages from the extension
+    window.addEventListener('message', (event) => {
+        const message = event.data;
+        
+        // Validate message structure
+        if (!message || typeof message !== 'object') {
+            console.warn('🚀 KIRO-CONSTELLATION: Received invalid message format');
+            return;
+        }
+
+        console.log('🚀 KIRO-CONSTELLATION: Received message:', message.command || message.type);
+
+        switch (message.command) {
+            case 'updateGraph':
+                handleGraphUpdate(message as GraphUpdateMessage);
+                break;
+            case 'status':
+                handleStatusMessage(message as GraphStatusMessage);
+                break;
+            case 'error':
+                handleErrorMessage(message as GraphErrorMessage);
+                break;
+            default:
+                // Handle legacy message format for backwards compatibility
+                if (message.type === 'updateGraph' && message.data) {
+                    const graphData = message.data as DependencyGraphData;
+                    const elements = transformGraphData(graphData);
+                    renderGraph(elements);
+                } else {
+                    console.log('🚀 KIRO-CONSTELLATION: Unknown message type:', message.command || message.type);
+                }
+                break;
+        }
+    });
+
+    console.log('🚀 KIRO-CONSTELLATION: Message handling setup complete');
+}
+
+// Handle graph update messages
+function handleGraphUpdate(message: GraphUpdateMessage): void {
+    if (!message.data) {
+        console.error('🚀 KIRO-CONSTELLATION: Graph update message missing data');
+        return;
+    }
+
+    console.log('🚀 KIRO-CONSTELLATION: Processing graph update with', message.data.modules?.length || 0, 'modules');
+    
+    const elements = transformGraphData(message.data);
+    renderGraph(elements);
+}
+
+// Handle status messages
+function handleStatusMessage(message: GraphStatusMessage): void {
+    console.log(`🚀 KIRO-CONSTELLATION: Status update: ${message.status} - ${message.message}`);
+    
+    const container = document.getElementById('cy');
+    if (!container) {
+        return;
+    }
+
+    let statusColor = 'var(--vscode-foreground)';
+    let statusIcon = '📄';
+
+    switch (message.status) {
+        case 'initializing':
+            statusIcon = '🔄';
+            statusColor = 'var(--vscode-progressBar-background)';
+            break;
+        case 'analyzing':
+            statusIcon = '🔍';
+            statusColor = 'var(--vscode-progressBar-background)';
+            break;
+        case 'ready':
+            // Don't show status message for ready state, graph should be rendered
+            return;
+        case 'warning':
+            statusIcon = '⚠️';
+            statusColor = 'var(--vscode-editorWarning-foreground)';
+            break;
+        case 'error':
+            statusIcon = '❌';
+            statusColor = 'var(--vscode-errorForeground)';
+            break;
+    }
+
+    container.innerHTML = `
+        <div style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            color: ${statusColor};
+            padding: 16px;
+        ">
+            <div style="font-size: 48px; margin-bottom: 16px;">${statusIcon}</div>
+            <h3>${message.message}</h3>
+            ${message.status === 'analyzing' ? '<p>This may take a moment for large projects...</p>' : ''}
+        </div>
+    `;
+}
+
+// Handle error messages
+function handleErrorMessage(message: GraphErrorMessage): void {
+    console.error('🚀 KIRO-CONSTELLATION: Error message received:', message.error);
+    
+    const container = document.getElementById('cy');
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML = `
+        <div style="
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            color: var(--vscode-errorForeground);
+            padding: 16px;
+        ">
+            <div style="font-size: 48px; margin-bottom: 16px;">❌</div>
+            <h3>Error</h3>
+            <p>${message.error}</p>
+        </div>
+    `;
+}
