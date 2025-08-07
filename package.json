@@ -15,8 +15,31 @@
       {
         "command": "kiro-constellation.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "kiro-constellation.showMap",
+        "title": "Kiro Constellation: Show Architecture Map"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kiro-constellation-sidebar",
+          "title": "Kiro Constellation",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "kiro-constellation-sidebar": [
+        {
+          "id": "kiro-constellation.mapView",
+          "name": "Architecture Map",
+          "type": "webview",
+          "when": "true"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
