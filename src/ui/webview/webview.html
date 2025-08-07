@@ -11,7 +11,25 @@
 </head>
 <body>
     <div class="container">
-        <h1>Loading map...</h1>
+        <header class="map-header">
+            <div class="header-content">
+                <h1 id="map-title">🌟 Architecture Map</h1>
+                <div class="status-info" id="status-info">
+                    <span class="status-indicator" id="status-indicator">●</span>
+                    <span class="status-text" id="status-text">Ready</span>
+                </div>
+            </div>
+            <div class="stats-bar" id="stats-bar">
+                <div class="stat-item">
+                    <span class="stat-label">Files</span>
+                    <span class="stat-value" id="files-count">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Dependencies</span>
+                    <span class="stat-value" id="deps-count">0</span>
+                </div>
+            </div>
+        </header>
         <div id="cy"></div>
     </div>
     <script src="webview.js"></script>

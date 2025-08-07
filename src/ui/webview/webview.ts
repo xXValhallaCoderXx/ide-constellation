@@ -74,6 +74,24 @@ let cy: any;
 
 console.log('🚀 KIRO-CONSTELLATION: Webview TypeScript loaded');
 
+// Function to update the UI status and stats
+function updateUIStatus(status: 'ready' | 'analyzing' | 'warning' | 'error' | 'initializing', message: string, stats?: { files: number, dependencies: number }): void {
+    const statusIndicator = document.getElementById('status-indicator');
+    const statusText = document.getElementById('status-text');
+    const filesCount = document.getElementById('files-count');
+    const depsCount = document.getElementById('deps-count');
+    
+    if (statusIndicator && statusText) {
+        statusIndicator.className = `status-indicator ${status}`;
+        statusText.textContent = message;
+    }
+    
+    if (stats && filesCount && depsCount) {
+        filesCount.textContent = stats.files.toString();
+        depsCount.textContent = stats.dependencies.toString();
+    }
+}
+
 // Wait for both DOM and cytoscape to be ready
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 KIRO-CONSTELLATION: Webview DOM ready');
@@ -371,6 +389,12 @@ function renderGraph(elements: { nodes: any[], edges: any[] }): void {
 
         console.log(`🚀 KIRO-CONSTELLATION: Successfully rendered graph with ${nodeCount} nodes and ${elements.edges.length} edges`);
 
+        // Update UI status and stats
+        updateUIStatus('ready', 'Visualization Complete', {
+            files: nodeCount,
+            dependencies: elements.edges.length
+        });
+
         // Add user interaction features: tooltips
         addTooltipSupport();
 
@@ -542,52 +566,49 @@ function handleGraphUpdate(message: GraphUpdateMessage): void {
 function handleStatusMessage(message: GraphStatusMessage): void {
     console.log(`🚀 KIRO-CONSTELLATION: Status update: ${message.status} - ${message.message}`);
     
+    // Update the header status
+    updateUIStatus(message.status, message.message);
+    
     const container = document.getElementById('cy');
     if (!container) {
         return;
     }
 
-    let statusColor = 'var(--vscode-foreground)';
-    let statusIcon = '📄';
+    // For non-ready states, show status in the main area if no graph is displayed
+    if (message.status !== 'ready') {
+        let statusIcon = '📄';
+        let statusClass = 'info-status';
 
-    switch (message.status) {
-        case 'initializing':
-            statusIcon = '🔄';
-            statusColor = 'var(--vscode-progressBar-background)';
-            break;
-        case 'analyzing':
-            statusIcon = '🔍';
-            statusColor = 'var(--vscode-progressBar-background)';
-            break;
-        case 'ready':
-            // Don't show status message for ready state, graph should be rendered
-            return;
-        case 'warning':
-            statusIcon = '⚠️';
-            statusColor = 'var(--vscode-editorWarning-foreground)';
-            break;
-        case 'error':
-            statusIcon = '❌';
-            statusColor = 'var(--vscode-errorForeground)';
-            break;
+        switch (message.status) {
+            case 'initializing':
+                statusIcon = '🔄';
+                statusClass = 'analyzing-status';
+                break;
+            case 'analyzing':
+                statusIcon = '🔍';
+                statusClass = 'analyzing-status';
+                break;
+            case 'warning':
+                statusIcon = '⚠️';
+                statusClass = 'warning-status';
+                break;
+            case 'error':
+                statusIcon = '❌';
+                statusClass = 'error-status';
+                break;
+        }
+
+        // Only show status message in main area if no graph is currently displayed
+        if (!cy || cy.nodes().length === 0) {
+            container.innerHTML = `
+                <div class="status-container ${statusClass}">
+                    <div class="status-icon">${statusIcon}</div>
+                    <div class="status-title">${message.status.charAt(0).toUpperCase() + message.status.slice(1)}</div>
+                    <div class="status-message">${message.message}</div>
+                </div>
+            `;
+        }
     }
-
-    container.innerHTML = `
-        <div style="
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            text-align: center;
-            color: ${statusColor};
-            padding: 16px;
-        ">
-            <div style="font-size: 48px; margin-bottom: 16px;">${statusIcon}</div>
-            <h3>${message.message}</h3>
-            ${message.status === 'analyzing' ? '<p>This may take a moment for large projects...</p>' : ''}
-        </div>
-    `;
 }
 
 // Handle error messages
