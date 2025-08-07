@@ -86,12 +86,11 @@ export default defineConfig({
     rollupOptions: {
       external: [
         "vscode",
+        // Core Node.js modules that should remain external
         "path",
         "fs",
         "os",
         "crypto",
-        "@lancedb/lancedb",
-        "@xenova/transformers",
         "child_process",
         "util",
         "stream",
@@ -102,18 +101,26 @@ export default defineConfig({
         "https",
         "zlib",
         "querystring",
-        "dependency-cruiser",
-        "enhanced-resolve",
-        "graceful-fs",
-        "tsconfig-paths",
-        "tsconfig-paths-webpack-plugin",
-        "watskeburt",
-        "semver",
-        "acorn",
         "module",
         "assert",
         "constants",
-        "console"
+        "console",
+        // External dependencies that shouldn't be bundled
+        "@lancedb/lancedb",
+        "@xenova/transformers",
+        // dependency-cruiser and its dependencies must be external because:
+        // 1. They use Node.js-specific features (fs, path, child_process, etc.) that cannot be bundled
+        // 2. They use dynamic imports and require() calls that break when bundled
+        // 3. They are listed as dependencies in package.json so will be available at runtime
+        // 4. VS Code extensions run in Node.js environment where these modules are available
+        "dependency-cruiser",
+        "enhanced-resolve", 
+        "graceful-fs",
+        "tsconfig-paths",
+        "tsconfig-paths-webpack-plugin",
+        "watskeburt", 
+        "semver",
+        "acorn"
       ],
       output: {
         entryFileNames: "extension.js"
