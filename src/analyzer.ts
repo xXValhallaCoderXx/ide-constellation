@@ -405,24 +405,22 @@ export async function generateDependencyGraph(workspacePath: string): Promise<De
 
     logger.info('Configured dependency-cruiser options', { cruiseOptions });
 
-    // Store original working directory for restoration
-    const originalCwd: string = process.cwd();
-    let directoryChanged: boolean = false;
-
     try {
-      // Change to workspace directory for analysis
-      process.chdir(normalizedWorkspacePath);
-      directoryChanged = true;
-      logger.info('Changed working directory for analysis', { 
-        originalCwd, 
-        newCwd: normalizedWorkspacePath 
-      });
-
       // Wrap dependency-cruiser call in comprehensive try-catch
       let cruiseResult: any;
       try {
-        cruiseResult = await cruise(['.'], cruiseOptions);
-        logger.info('Dependency-cruiser analysis completed successfully');
+        // Use relative path pattern for dependency-cruiser when working with absolute paths
+        // dependency-cruiser works better when analyzing from within the target directory
+        const originalCwd = process.cwd();
+        process.chdir(normalizedWorkspacePath);
+        
+        try {
+          cruiseResult = await cruise(['.'], cruiseOptions);
+          logger.info('Dependency-cruiser analysis completed successfully');
+        } finally {
+          // Always restore working directory
+          process.chdir(originalCwd);
+        }
       } catch (cruiseError) {
         // Handle dependency-cruiser specific errors
         logger.error('Dependency-cruiser execution failed', 
@@ -534,34 +532,18 @@ export async function generateDependencyGraph(workspacePath: string): Promise<De
         );
       }
 
-    } catch (directoryError) {
-      // Handle errors related to directory operations
-      logger.error('Directory operation failed', 
-        directoryError instanceof Error ? directoryError : new Error(String(directoryError)),
-        { workspacePath: normalizedWorkspacePath, originalCwd }
+    } catch (analysisError) {
+      // Handle errors related to analysis operations
+      logger.error('Analysis operation failed', 
+        analysisError instanceof Error ? analysisError : new Error(String(analysisError)),
+        { workspacePath: normalizedWorkspacePath }
       );
       
       return createFallbackGraph(
-        `Directory access error: ${directoryError instanceof Error ? directoryError.message : 'Unknown directory error'}`,
-        'filesystem',
+        `Analysis error: ${analysisError instanceof Error ? analysisError.message : 'Unknown analysis error'}`,
+        'library',
         normalizedWorkspacePath
       );
-      
-    } finally {
-      // Always restore original working directory
-      if (directoryChanged) {
-        try {
-          process.chdir(originalCwd);
-          logger.info('Restored original working directory', { originalCwd });
-        } catch (restoreError) {
-          logger.error('Failed to restore original working directory', 
-            restoreError instanceof Error ? restoreError : new Error(String(restoreError)),
-            { originalCwd, currentCwd: process.cwd() }
-          );
-          // This is a critical error but we don't want to throw
-          // The analysis result should still be returned
-        }
-      }
     }
 
   } catch (unexpectedError) {
