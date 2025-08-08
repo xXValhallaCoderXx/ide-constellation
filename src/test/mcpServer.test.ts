@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { startServer, stopServer, isServerRunning, getServerPort, GraphDataProvider } from '../mcpServer';
+import { startServer, stopServer, isServerRunning, GraphDataProvider } from '../mcpServer';
 import { DependencyGraph } from '../analyzer';
 
 describe('MCP Server Error Handling', () => {
@@ -199,7 +199,10 @@ describe('MCP Server Error Handling', () => {
         it('should handle malformed graph data gracefully', async () => {
             const malformedProvider: GraphDataProvider = vi.fn(() => ({
                 modules: 'not an array' as any,
-                summary: {}
+                summary: {
+                    totalDependencies: 0,
+                    violations: []
+                }
             }));
 
             await startServer(malformedProvider, 6180);
@@ -220,7 +223,7 @@ describe('MCP Server Error Handling', () => {
             const invalidModulesProvider: GraphDataProvider = vi.fn(() => ({
                 modules: [
                     { source: 'valid.ts', dependencies: [], dependents: [] },
-                    { source: null, dependencies: [], dependents: [] }, // Invalid module
+                    { source: null, dependencies: [], dependents: [] } as any, // Invalid module - intentionally testing with bad data
                     { source: 'another-valid.ts', dependencies: [], dependents: [] }
                 ],
                 summary: { totalDependencies: 0, violations: [] }
