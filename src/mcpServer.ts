@@ -49,19 +49,40 @@ let app: Express | null = null;
  * @param query - The search term to match against
  * @param modulePath - The module path to check for matches
  * @returns boolean - True if the module path contains the query term (case-insensitive)
+ * @throws Error - Throws error if input validation fails
  */
 function matchesQuery(query: string, modulePath: string): boolean {
+    // Validate input parameters
+    if (typeof query !== 'string') {
+        throw new Error(`Query must be a string, received: ${typeof query}`);
+    }
+
+    if (typeof modulePath !== 'string') {
+        throw new Error(`Module path must be a string, received: ${typeof modulePath}`);
+    }
+
     // Handle edge cases
-    if (!query || !modulePath) {
+    if (!query || query.trim().length === 0) {
         return false;
     }
 
-    // Convert both strings to lowercase for case-insensitive matching
-    const normalizedQuery = query.toLowerCase().trim();
-    const normalizedPath = modulePath.toLowerCase();
+    if (!modulePath || modulePath.trim().length === 0) {
+        return false;
+    }
 
-    // Check if the module path contains the query term
-    return normalizedPath.includes(normalizedQuery);
+    try {
+        // Convert both strings to lowercase for case-insensitive matching
+        const normalizedQuery = query.toLowerCase().trim();
+        const normalizedPath = modulePath.toLowerCase();
+
+        // Check if the module path contains the query term
+        return normalizedPath.includes(normalizedQuery);
+    } catch (error) {
+        console.error('🚀 KIRO-CONSTELLATION: Error during string matching:', error);
+        console.error('🚀 KIRO-CONSTELLATION: Query:', query);
+        console.error('🚀 KIRO-CONSTELLATION: Module path:', modulePath);
+        throw new Error(`String matching failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
 }
 
 /**
@@ -70,42 +91,112 @@ function matchesQuery(query: string, modulePath: string): boolean {
  * @param query - The search term to filter modules by
  * @param graphData - The current dependency graph data
  * @returns string[] - Array of file paths that match the query
+ * @throws Error - Throws error if processing fails critically
  */
 function processQuery(query: string, graphData: DependencyGraph): string[] {
+    // Validate input parameters
+    if (!query || typeof query !== 'string') {
+        throw new Error('Invalid query parameter provided to processQuery');
+    }
+
     // Handle edge case: empty or invalid graph data
-    if (!graphData || !graphData.modules || !Array.isArray(graphData.modules)) {
+    if (!graphData) {
+        console.warn('🚀 KIRO-CONSTELLATION: Graph data is null/undefined, returning empty results');
         return [];
+    }
+
+    if (!graphData.modules) {
+        console.warn('🚀 KIRO-CONSTELLATION: Graph data has no modules property, returning empty results');
+        return [];
+    }
+
+    if (!Array.isArray(graphData.modules)) {
+        console.error('🚀 KIRO-CONSTELLATION: Graph data modules is not an array:', typeof graphData.modules);
+        throw new Error('Invalid graph data structure: modules is not an array');
     }
 
     // Handle edge case: empty modules array
     if (graphData.modules.length === 0) {
+        console.log('🚀 KIRO-CONSTELLATION: Graph data contains no modules, returning empty results');
         return [];
     }
 
     try {
+        let validModuleCount = 0;
+        let invalidModuleCount = 0;
+
         // Filter modules using case-insensitive string matching
         const matchingModules = graphData.modules.filter(module => {
-            // Ensure module has a valid source path
-            if (!module.source || typeof module.source !== 'string') {
+            // Ensure module exists and has a valid source path
+            if (!module) {
+                invalidModuleCount++;
                 return false;
             }
 
-            // Apply the matching logic
-            return matchesQuery(query, module.source);
+            if (!module.source || typeof module.source !== 'string') {
+                invalidModuleCount++;
+                return false;
+            }
+
+            if (module.source.trim().length === 0) {
+                invalidModuleCount++;
+                return false;
+            }
+
+            validModuleCount++;
+
+            try {
+                // Apply the matching logic
+                return matchesQuery(query, module.source);
+            } catch (matchError) {
+                console.error('🚀 KIRO-CONSTELLATION: Error matching module:', module.source, matchError);
+                return false;
+            }
         });
 
+        // Log statistics about the filtering process
+        if (invalidModuleCount > 0) {
+            console.warn(`🚀 KIRO-CONSTELLATION: Found ${invalidModuleCount} invalid modules during query processing`);
+        }
+
+        console.log(`🚀 KIRO-CONSTELLATION: Processed ${validModuleCount} valid modules, found ${matchingModules.length} matches`);
+
         // Extract file paths from matching modules
-        const filePaths = matchingModules.map(module => module.source);
+        const filePaths = matchingModules.map(module => {
+            if (!module.source) {
+                throw new Error('Module source is unexpectedly null after filtering');
+            }
+            return module.source;
+        });
 
         // Remove any potential duplicates and filter out empty strings
-        const uniqueFilePaths = [...new Set(filePaths)].filter(path => path && path.trim().length > 0);
+        const uniqueFilePaths = [...new Set(filePaths)].filter(path => {
+            if (!path || typeof path !== 'string') {
+                console.warn('🚀 KIRO-CONSTELLATION: Found invalid path during deduplication:', path);
+                return false;
+            }
+            return path.trim().length > 0;
+        });
+
+        const duplicatesRemoved = filePaths.length - uniqueFilePaths.length;
+        if (duplicatesRemoved > 0) {
+            console.log(`🚀 KIRO-CONSTELLATION: Removed ${duplicatesRemoved} duplicate paths`);
+        }
 
         return uniqueFilePaths;
 
     } catch (error) {
         // Handle any unexpected errors during filtering
-        console.error('🚀 KIRO-CONSTELLATION: Error during query processing:', error);
-        return [];
+        console.error('🚀 KIRO-CONSTELLATION: Critical error during query processing:', error);
+        console.error('🚀 KIRO-CONSTELLATION: Query was:', query);
+        console.error('🚀 KIRO-CONSTELLATION: Graph data summary:', {
+            hasModules: !!graphData.modules,
+            moduleCount: graphData.modules ? graphData.modules.length : 0,
+            hasSummary: !!graphData.summary
+        });
+
+        // Re-throw the error to be handled by the calling function
+        throw new Error(`Query processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
 
@@ -131,16 +222,36 @@ export async function startServer(
             // Create Express app
             app = express();
 
-            // Add JSON middleware for request body parsing
-            app.use(express.json());
+            // Add JSON middleware for request body parsing with error handling
+            app.use(express.json({
+                limit: '10mb', // Prevent DoS attacks with large payloads
+                strict: true,  // Only parse arrays and objects
+                type: 'application/json'
+            }));
+
+            // Add request logging middleware
+            app.use((req: Request, res: Response, next) => {
+                const requestId = Math.random().toString(36).substring(2, 15);
+                console.log(`🚀 KIRO-CONSTELLATION: Incoming request ${requestId}: ${req.method} ${req.url}`);
+
+                // Add request ID to request object for tracking
+                (req as any).requestId = requestId;
+
+                next();
+            });
 
             // Define POST /query endpoint
             app.post('/query', (req: Request, res: Response) => {
+                const requestId = (req as any).requestId || Math.random().toString(36).substring(2, 15);
+                console.log(`🚀 KIRO-CONSTELLATION: Processing query request ${requestId}`);
+
                 try {
                     // Validate request body exists
                     if (!req.body) {
+                        const error = 'Request body is required';
+                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} failed - ${error}`);
                         return res.status(400).json({
-                            error: 'Request body is required',
+                            error,
                             code: 'MISSING_BODY',
                             timestamp: new Date().toISOString()
                         } as ErrorResponse);
@@ -149,15 +260,19 @@ export async function startServer(
                     // Validate query parameter presence and type
                     const { query } = req.body as QueryRequest;
 
-                    if (!query) {
+                    if (query === undefined || query === null) {
+                        const error = 'Query parameter is required';
+                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} failed - ${error}`);
                         return res.status(400).json({
-                            error: 'Query parameter is required',
+                            error,
                             code: 'MISSING_QUERY',
                             timestamp: new Date().toISOString()
                         } as ErrorResponse);
                     }
 
                     if (typeof query !== 'string') {
+                        const error = `Query parameter must be a string, received: ${typeof query}`;
+                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} failed - ${error}`);
                         return res.status(400).json({
                             error: 'Query parameter must be a string',
                             code: 'INVALID_QUERY_TYPE',
@@ -166,18 +281,67 @@ export async function startServer(
                     }
 
                     if (query.trim().length === 0) {
+                        const error = 'Query parameter cannot be empty';
+                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} failed - ${error}`);
                         return res.status(400).json({
-                            error: 'Query parameter cannot be empty',
+                            error,
                             code: 'EMPTY_QUERY',
                             timestamp: new Date().toISOString()
                         } as ErrorResponse);
                     }
 
-                    // Get current graph data from provider
-                    const graphData = graphDataProvider();
+                    // Validate query length to prevent potential DoS
+                    if (query.length > 1000) {
+                        const error = 'Query parameter is too long (maximum 1000 characters)';
+                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} failed - ${error}`);
+                        return res.status(400).json({
+                            error,
+                            code: 'QUERY_TOO_LONG',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
 
-                    // Implement query processing and filtering logic
-                    const matches = processQuery(query, graphData);
+                    // Get current graph data from provider with comprehensive error handling
+                    let graphData: DependencyGraph;
+                    try {
+                        console.log(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Calling data provider`);
+                        graphData = graphDataProvider();
+
+                        if (!graphData) {
+                            console.warn(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Data provider returned null/undefined`);
+                            graphData = {
+                                modules: [],
+                                summary: {
+                                    totalDependencies: 0,
+                                    violations: []
+                                }
+                            };
+                        }
+                    } catch (providerError) {
+                        const error = 'Failed to retrieve dependency graph data';
+                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Data provider error:`, providerError);
+                        return res.status(500).json({
+                            error,
+                            code: 'DATA_PROVIDER_ERROR',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Implement query processing and filtering logic with error handling
+                    let matches: string[];
+                    try {
+                        console.log(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Processing query: "${query.substring(0, 50)}${query.length > 50 ? '...' : ''}"`);
+                        matches = processQuery(query, graphData);
+                        console.log(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Found ${matches.length} matches`);
+                    } catch (queryError) {
+                        const error = 'Failed to process query against dependency graph';
+                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Query processing error:`, queryError);
+                        return res.status(500).json({
+                            error,
+                            code: 'QUERY_PROCESSING_ERROR',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
 
                     // Create response structure with matches array and total count
                     const response: QueryResponse = {
@@ -186,24 +350,63 @@ export async function startServer(
                         timestamp: new Date().toISOString()
                     };
 
+                    console.log(`🚀 KIRO-CONSTELLATION: Request ${requestId} completed successfully`);
                     res.json(response);
 
                 } catch (error) {
-                    console.error('🚀 KIRO-CONSTELLATION: Error processing query:', error);
+                    console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Unexpected error:`, error);
+                    console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Error stack:`, error instanceof Error ? error.stack : 'No stack trace available');
+
                     res.status(500).json({
                         error: 'Internal server error while processing query',
-                        code: 'QUERY_PROCESSING_ERROR',
+                        code: 'INTERNAL_SERVER_ERROR',
                         timestamp: new Date().toISOString()
                     } as ErrorResponse);
                 }
             });
 
-            // Add basic error handling middleware
-            app.use((err: any, req: Request, res: Response, next: any) => {
-                console.error('🚀 KIRO-CONSTELLATION: MCP server error:', err);
-                res.status(500).json({
+            // Add comprehensive error handling middleware
+            app.use((err: any, req: Request, res: Response, _next: any) => {
+                const errorId = Math.random().toString(36).substring(2, 15);
+                console.error(`🚀 KIRO-CONSTELLATION: MCP server error ${errorId}:`, err);
+                console.error(`🚀 KIRO-CONSTELLATION: Error ${errorId} - Request URL:`, req.url);
+                console.error(`🚀 KIRO-CONSTELLATION: Error ${errorId} - Request method:`, req.method);
+                console.error(`🚀 KIRO-CONSTELLATION: Error ${errorId} - Error stack:`, err instanceof Error ? err.stack : 'No stack trace available');
+
+                // Don't send error response if headers already sent
+                if (res.headersSent) {
+                    console.error(`🚀 KIRO-CONSTELLATION: Error ${errorId} - Headers already sent, cannot send error response`);
+                    return _next(err);
+                }
+
+                // Determine appropriate error code based on error type
+                let errorCode = 'INTERNAL_ERROR';
+                let statusCode = 500;
+
+                if (err.type === 'entity.parse.failed') {
+                    errorCode = 'JSON_PARSE_ERROR';
+                    statusCode = 400;
+                } else if (err.type === 'entity.too.large') {
+                    errorCode = 'REQUEST_TOO_LARGE';
+                    statusCode = 413;
+                } else if (err.code === 'ECONNRESET') {
+                    errorCode = 'CONNECTION_RESET';
+                    statusCode = 499;
+                }
+
+                res.status(statusCode).json({
                     error: 'Internal server error',
-                    code: 'INTERNAL_ERROR',
+                    code: errorCode,
+                    timestamp: new Date().toISOString()
+                } as ErrorResponse);
+            });
+
+            // Add 404 handler for undefined routes
+            app.use((req: Request, res: Response) => {
+                console.warn(`🚀 KIRO-CONSTELLATION: 404 - Route not found: ${req.method} ${req.originalUrl}`);
+                res.status(404).json({
+                    error: 'Route not found',
+                    code: 'ROUTE_NOT_FOUND',
                     timestamp: new Date().toISOString()
                 } as ErrorResponse);
             });
