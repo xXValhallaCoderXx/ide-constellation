@@ -41,14 +41,14 @@
   - Update performDependencyAnalysis to set currentGraph state after analysis
   - _Requirements: 2.1, 5.3_
 
-- [ ] 7. Implement extension deactivation integration
+- [x] 7. Implement extension deactivation integration
   - Export deactivate function from extension.ts if not already present
   - Import and call stopServer in deactivate function
   - Add proper error handling for server shutdown failures
   - Ensure graceful cleanup of server resources
   - _Requirements: 1.2, 4.4_
 
-- [ ] 8. Create unit tests for MCP server module
+- [x] 8. Create unit tests for MCP server module
   - Write tests for server lifecycle functions (start/stop)
   - Create tests for query processing logic with various input scenarios
   - Add tests for error handling with invalid requests and data provider failures
