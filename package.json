@@ -67,6 +67,8 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@types/cytoscape": "^3.21.9",
+    "cytoscape": "^3.33.0",
     "dependency-cruiser": "^17.0.1"
   }
 }

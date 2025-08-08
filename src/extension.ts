@@ -47,6 +47,9 @@ export function activate(context: vscode.ExtensionContext) {
 	 */
 	async function performDependencyAnalysis(workspaceRoot: string): Promise<void> {
 		try {
+			// Send analyzing status to webview
+			webviewManager.sendStatus('analyzing', 'Analyzing dependencies...');
+			
 			console.log('🚀 KIRO-CONSTELLATION: Starting dependency analysis...');
 			const dependencyGraph = await generateDependencyGraph(workspaceRoot);
 			
@@ -58,7 +61,15 @@ export function activate(context: vscode.ExtensionContext) {
 			
 			if (dependencyGraph.summary.error) {
 				console.log('🚀 KIRO-CONSTELLATION: Analysis completed with error:', dependencyGraph.summary.error);
+				// Send warning status for analysis errors
+				webviewManager.sendStatus('warning', `Analysis completed with warnings: ${dependencyGraph.summary.error}`);
+			} else {
+				// Send ready status for successful analysis
+				webviewManager.sendStatus('ready', 'Analysis completed successfully');
 			}
+			
+			// Send graph data to webview
+			webviewManager.sendGraphData(dependencyGraph);
 			
 			// Log first few modules for debugging (avoid overwhelming console)
 			if (dependencyGraph.modules.length > 0) {
@@ -73,6 +84,10 @@ export function activate(context: vscode.ExtensionContext) {
 				stack: error instanceof Error ? error.stack : undefined,
 				workspaceRoot
 			});
+			
+			// Send error status to webview
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred during analysis';
+			webviewManager.sendStatus('error', `Analysis failed: ${errorMessage}`);
 		}
 	}
 
@@ -121,9 +136,36 @@ export function activate(context: vscode.ExtensionContext) {
 		});
 
 		// Register the new showMap command
-		const showMapDisposable = vscode.commands.registerCommand('kiro-constellation.showMap', () => {
+		const showMapDisposable = vscode.commands.registerCommand('kiro-constellation.showMap', async () => {
 			console.log('🚀 KIRO-CONSTELLATION: Show Map command executed!');
+			
+			// Create or show the webview panel
 			webviewManager.createOrShowPanel();
+			
+			// Send initializing status
+			webviewManager.sendStatus('initializing', 'Initializing Constellation Map...');
+			
+			// Check if we have a workspace to analyze
+			const workspaceFolders = vscode.workspace.workspaceFolders;
+			console.log('🚀 KIRO-CONSTELLATION: Workspace folders:', workspaceFolders?.length || 0);
+			
+			if (!workspaceFolders || workspaceFolders.length === 0) {
+				console.log('🚀 KIRO-CONSTELLATION: No workspace folder open');
+				webviewManager.sendStatus('warning', 'No workspace folder is currently open. Please open a project to visualize dependencies.');
+				return;
+			}
+
+			const workspaceRoot = workspaceFolders[0].uri.fsPath;
+			console.log('🚀 KIRO-CONSTELLATION: Analyzing workspace:', workspaceRoot);
+			
+			// Perform dependency analysis for the current workspace
+			try {
+				await performDependencyAnalysis(workspaceRoot);
+				console.log('🚀 KIRO-CONSTELLATION: Dependency analysis completed');
+			} catch (error) {
+				console.error('🚀 KIRO-CONSTELLATION: Error during dependency analysis:', error);
+				webviewManager.sendStatus('error', `Failed to analyze dependencies: ${error instanceof Error ? error.message : 'Unknown error'}`);
+			}
 		});
 
 		context.subscriptions.push(helloWorldDisposable);

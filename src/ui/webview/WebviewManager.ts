@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { DependencyGraph } from '../../analyzer';
+import { GraphUpdateMessage, GraphStatusMessage } from '../shared/types';
 
 /**
  * Manages the webview panel for the Kiro Constellation architecture map
@@ -86,14 +88,21 @@ export class WebviewManager {
             const stylesUri = this.panel.webview.asWebviewUri(
                 vscode.Uri.joinPath(webviewPath, 'webview.css')
             );
-            const scriptUri = this.panel.webview.asWebviewUri(
-                vscode.Uri.joinPath(webviewPath, 'webview.js')
-            );
+            
+            // Read the JavaScript file to inline it
+            let scriptContent = '';
+            try {
+                const scriptPath = vscode.Uri.joinPath(webviewPath, 'webview.js');
+                scriptContent = fs.readFileSync(scriptPath.fsPath, 'utf8');
+            } catch (scriptError) {
+                console.error('🚀 KIRO-CONSTELLATION: Could not read webview.js:', scriptError);
+                scriptContent = 'console.error("Webview script could not be loaded");';
+            }
 
-            // Replace placeholder paths with proper URIs
+            // Replace placeholder paths with proper URIs and inline script
             htmlContent = htmlContent
                 .replace(/href="webview.css"/g, `href="${stylesUri}"`)
-                .replace(/src="webview.js"/g, `src="${scriptUri}"`);
+                .replace(/<script src="webview.js"><\/script>/g, `<script>${scriptContent}</script>`);
 
             console.log('🚀 KIRO-CONSTELLATION: Webview content generated with proper resource URIs');
             return htmlContent;
@@ -153,6 +162,78 @@ export class WebviewManager {
             this.panel.dispose();
             this.panel = undefined;
             console.log('🚀 KIRO-CONSTELLATION: WebviewManager disposed');
+        }
+    }
+
+    /**
+     * Sends dependency graph data to the webview
+     */
+    public sendGraphData(data: DependencyGraph): void {
+        try {
+            // Check if panel exists and is active
+            if (!this.panel) {
+                console.warn('🚀 KIRO-CONSTELLATION: Cannot send graph data - no active panel');
+                return;
+            }
+
+            if (!data || typeof data !== 'object') {
+                console.error('🚀 KIRO-CONSTELLATION: Invalid graph data provided to sendGraphData');
+                return;
+            }
+
+            // Format message with GraphUpdateMessage interface
+            const message: GraphUpdateMessage = {
+                command: 'updateGraph',
+                data: {
+                    modules: data.modules,
+                    summary: data.summary
+                },
+                timestamp: new Date().toISOString(),
+                metadata: {
+                    source: 'extension',
+                    version: '1.0'
+                }
+            };
+
+            // Send message to webview
+            this.panel.webview.postMessage(message);
+            
+            console.log(`🚀 KIRO-CONSTELLATION: Graph data sent to webview (${data.modules.length} modules)`);
+
+        } catch (error) {
+            console.error('🚀 KIRO-CONSTELLATION: Error sending graph data to webview:', error);
+        }
+    }
+
+    /**
+     * Sends status messages to the webview for different states
+     */
+    public sendStatus(status: 'initializing' | 'analyzing' | 'ready' | 'warning' | 'error', messageText: string): void {
+        try {
+            // Check if panel exists and is active
+            if (!this.panel) {
+                console.warn('🚀 KIRO-CONSTELLATION: Cannot send status - no active panel');
+                return;
+            }
+
+            // Format message with GraphStatusMessage interface
+            const message: GraphStatusMessage = {
+                command: 'status',
+                status: status,
+                message: messageText,
+                timestamp: new Date().toISOString(),
+                metadata: {
+                    source: 'extension'
+                }
+            };
+
+            // Send message to webview
+            this.panel.webview.postMessage(message);
+            
+            console.log(`🚀 KIRO-CONSTELLATION: Status message sent: ${status} - ${messageText}`);
+
+        } catch (error) {
+            console.error('🚀 KIRO-CONSTELLATION: Error sending status message to webview:', error);
         }
     }
 }

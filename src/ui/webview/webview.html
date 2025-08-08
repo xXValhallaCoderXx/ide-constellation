@@ -3,13 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' vscode-resource: https://unpkg.com; script-src 'unsafe-inline' https://unpkg.com;">
     <title>Kiro Constellation - Architecture Map</title>
     <link rel="stylesheet" href="webview.css">
+    <!-- Load Cytoscape.js from CDN -->
+    <script src="https://unpkg.com/cytoscape@3.33.0/dist/cytoscape.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <h1>Loading map...</h1>
+        <header class="map-header">
+            <div class="header-content">
+                <h1 id="map-title">🌟 Architecture Map</h1>
+                <div class="status-info" id="status-info">
+                    <span class="status-indicator" id="status-indicator">●</span>
+                    <span class="status-text" id="status-text">Ready</span>
+                </div>
+            </div>
+            <div class="stats-bar" id="stats-bar">
+                <div class="stat-item">
+                    <span class="stat-label">Files</span>
+                    <span class="stat-value" id="files-count">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Dependencies</span>
+                    <span class="stat-value" id="deps-count">0</span>
+                </div>
+            </div>
+        </header>
         <div id="cy"></div>
     </div>
     <script src="webview.js"></script>

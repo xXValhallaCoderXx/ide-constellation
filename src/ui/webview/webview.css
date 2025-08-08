@@ -2,43 +2,279 @@
 
 body {
     margin: 0;
-    padding: 16px;
+    padding: 0;
     font-family: var(--vscode-font-family);
     font-size: var(--vscode-font-size);
     color: var(--vscode-foreground);
     background-color: var(--vscode-editor-background);
+    height: 100vh;
+    overflow: hidden;
 }
 
 .container {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 16px;
+    height: 100vh;
 }
 
-h1 {
+/* Enhanced Header Styling */
+.map-header {
+    background: linear-gradient(135deg, var(--vscode-sideBar-background) 0%, var(--vscode-panel-background) 100%);
+    border-bottom: 2px solid var(--vscode-panel-border);
+    padding: 16px 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(10px);
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+#map-title {
     color: var(--vscode-foreground);
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 600;
     margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background-color: var(--vscode-badge-background);
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-indicator {
+    font-size: 8px;
+    transition: color 0.3s ease;
+}
+
+.status-indicator.ready { color: #4CAF50; }
+.status-indicator.analyzing { color: #FF9800; animation: pulse 1.5s infinite; }
+.status-indicator.warning { color: #FFC107; }
+.status-indicator.error { color: #F44336; }
+.status-indicator.initializing { color: #2196F3; animation: pulse 1.5s infinite; }
+
+.status-text {
+    color: var(--vscode-badge-foreground);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Stats Bar */
+.stats-bar {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.stat-label {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+}
+
+.stat-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--vscode-textLink-foreground);
+    min-width: 20px;
     text-align: center;
 }
 
+/* Main graph container - now takes remaining space after header */
 #cy {
-    width: 300px;
-    height: 300px;
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 4px;
+    flex: 1;
+    width: 100%;
+    border: none;
     background-color: var(--vscode-editor-background);
-    display: flex;
-    align-items: center;
-    justify-content: center;
     position: relative;
+    min-height: 300px;
 }
 
-#cy::before {
-    content: "Map container ready";
-    color: var(--vscode-descriptionForeground);
+/* Animation for status indicators */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* Status message containers (for when graph is not showing) */
+.status-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    padding: 16px;
+}
+
+.status-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    display: block;
+}
+
+.status-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+}
+
+.status-message {
+    font-size: 14px;
+    margin: 0;
+    line-height: 1.4;
+}
+
+/* Warning message styling */
+.warning-status {
+    color: var(--vscode-editorWarning-foreground);
+}
+
+.error-status {
+    color: var(--vscode-errorForeground);
+}
+
+.info-status {
+    color: var(--vscode-foreground);
+}
+
+.analyzing-status {
+    color: var(--vscode-progressBar-background);
+}
+
+/* Tooltip styling for consistency with VS Code theme */
+#cy-tooltip {
+    background-color: var(--vscode-editorHoverWidget-background) !important;
+    color: var(--vscode-editorHoverWidget-foreground) !important;
+    border: 1px solid var(--vscode-editorHoverWidget-border) !important;
+    border-radius: 6px;
+    padding: 10px 14px;
     font-size: 12px;
-    position: absolute;
+    font-family: var(--vscode-font-family);
+    box-shadow: 0 4px 12px var(--vscode-widget-shadow);
+    z-index: 1000;
+    max-width: 320px;
+    word-wrap: break-word;
+    line-height: 1.5;
+    backdrop-filter: blur(8px);
+}
+
+/* Performance warning specific styling */
+.performance-warning {
+    background-color: var(--vscode-editorWarning-background);
+    border: 1px solid var(--vscode-editorWarning-border);
+    border-radius: 6px;
+    padding: 20px;
+    margin: 20px;
+}
+
+.performance-warning .status-icon {
+    color: var(--vscode-editorWarning-foreground);
+}
+
+.performance-warning .status-title,
+.performance-warning .status-message {
+    color: var(--vscode-editorWarning-foreground);
+}
+
+/* Empty state styling */
+.empty-state {
+    color: var(--vscode-descriptionForeground);
+}
+
+.empty-state .status-icon {
+    opacity: 0.6;
+}
+
+/* Loading/analyzing state styling */
+.loading-state {
+    color: var(--vscode-foreground);
+}
+
+.loading-state .status-icon {
+    animation: pulse 2s infinite;
+}
+
+/* Responsive design for different webview sizes */
+@media (max-width: 600px) {
+    .map-header {
+        padding: 12px 16px;
+    }
+    
+    .header-content {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+    
+    #map-title {
+        font-size: 18px;
+    }
+    
+    .stats-bar {
+        gap: 16px;
+    }
+    
+    .stat-value {
+        font-size: 16px;
+    }
+    
+    .status-container {
+        padding: 12px;
+    }
+    
+    .status-icon {
+        font-size: 36px;
+        margin-bottom: 12px;
+    }
+    
+    .status-title {
+        font-size: 16px;
+    }
+    
+    .status-message {
+        font-size: 13px;
+    }
+}
+
+/* Ensure proper contrast in both light and dark themes */
+@media (prefers-color-scheme: light) {
+    #cy {
+        background-color: var(--vscode-editor-background, #ffffff);
+    }
+    
+    .map-header {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+}
+
+@media (prefers-color-scheme: dark) {
+    #cy {
+        background-color: var(--vscode-editor-background, #1e1e1e);
+    }
+    
+    .map-header {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
 }
