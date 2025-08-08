@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import { WebviewManager } from './ui/webview/WebviewManager';
 import { SidebarProvider } from './ui/sidebar/SidebarProvider';
-import { generateDependencyGraph } from './analyzer';
+import { generateDependencyGraph, DependencyGraph } from './analyzer';
 import { startServer, stopServer, GraphDataProvider } from './mcpServer';
 
 /**
@@ -41,26 +41,25 @@ export function activate(context: vscode.ExtensionContext) {
 	// Create WebviewManager instance
 	const webviewManager = new WebviewManager(context);
 
-	// Store the latest dependency graph data for MCP server
-	let latestGraphData: any = null;
+	// Module-level currentGraph state variable to store dependency graph data for MCP server
+	let currentGraph: DependencyGraph = { modules: [], summary: { totalDependencies: 0, violations: [] } };
 
-	// Create graph data provider for MCP server
+	// Create graphDataProvider callback function that returns current graph state
 	const graphDataProvider: GraphDataProvider = () => {
-		return latestGraphData || { modules: [], summary: { totalDependencies: 0, violations: [] } };
+		return currentGraph;
 	};
 
 	console.log('🚀 KIRO-CONSTELLATION: Extension is now active!');
 
-	// Start MCP server asynchronously (don't block extension activation)
-	setTimeout(() => {
-		startServer(graphDataProvider, 6170)
-			.then(() => {
-				console.log('🚀 KIRO-CONSTELLATION: MCP server started successfully');
-			})
-			.catch((error) => {
-				console.error('🚀 KIRO-CONSTELLATION: Failed to start MCP server:', error);
-			});
-	}, 1000); // Start after 1 second delay
+	// Import and call startServer in activate function with error handling
+	startServer(graphDataProvider, 6170)
+		.then(() => {
+			console.log('🚀 KIRO-CONSTELLATION: MCP server started successfully');
+		})
+		.catch((error) => {
+			console.error('🚀 KIRO-CONSTELLATION: Failed to start MCP server:', error);
+			// Continue extension activation even if MCP server fails to start
+		});
 
 	/**
 	 * Performs dependency analysis for the given workspace
@@ -92,8 +91,8 @@ export function activate(context: vscode.ExtensionContext) {
 			// Send graph data to webview
 			webviewManager.sendGraphData(dependencyGraph);
 			
-			// Store graph data for MCP server
-			latestGraphData = dependencyGraph;
+			// Update performDependencyAnalysis to set currentGraph state after analysis
+			currentGraph = dependencyGraph;
 
 			// Log first few modules for debugging (avoid overwhelming console)
 			if (dependencyGraph.modules.length > 0) {
