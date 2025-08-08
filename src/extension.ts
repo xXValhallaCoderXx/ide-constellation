@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { WebviewManager } from './ui/webview/WebviewManager';
 import { SidebarProvider } from './ui/sidebar/SidebarProvider';
 import { generateDependencyGraph } from './analyzer';
+import { startServer, stopServer, GraphDataProvider } from './mcpServer';
 
 /**
  * Lightweight debounce function to prevent excessive analysis calls
@@ -36,10 +37,30 @@ export function activate(context: vscode.ExtensionContext) {
 	console.log('🚀 KIRO-CONSTELLATION: Extension is activating...');
 	console.log('🚀 KIRO-CONSTELLATION: VS Code version:', vscode.version);
 	console.log('🚀 KIRO-CONSTELLATION: Extension context:', context.extensionPath);
-	console.log('🚀 KIRO-CONSTELLATION: Extension is now active!');
 
 	// Create WebviewManager instance
 	const webviewManager = new WebviewManager(context);
+
+	// Store the latest dependency graph data for MCP server
+	let latestGraphData: any = null;
+
+	// Create graph data provider for MCP server
+	const graphDataProvider: GraphDataProvider = () => {
+		return latestGraphData || { modules: [], summary: { totalDependencies: 0, violations: [] } };
+	};
+
+	console.log('🚀 KIRO-CONSTELLATION: Extension is now active!');
+
+	// Start MCP server asynchronously (don't block extension activation)
+	setTimeout(() => {
+		startServer(graphDataProvider, 6170)
+			.then(() => {
+				console.log('🚀 KIRO-CONSTELLATION: MCP server started successfully');
+			})
+			.catch((error) => {
+				console.error('🚀 KIRO-CONSTELLATION: Failed to start MCP server:', error);
+			});
+	}, 1000); // Start after 1 second delay
 
 	/**
 	 * Performs dependency analysis for the given workspace
@@ -71,6 +92,9 @@ export function activate(context: vscode.ExtensionContext) {
 			// Send graph data to webview
 			webviewManager.sendGraphData(dependencyGraph);
 			
+			// Store graph data for MCP server
+			latestGraphData = dependencyGraph;
+
 			// Log first few modules for debugging (avoid overwhelming console)
 			if (dependencyGraph.modules.length > 0) {
 				const sampleModules = dependencyGraph.modules.slice(0, 3);
@@ -179,4 +203,15 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() {
+	console.log('🚀 KIRO-CONSTELLATION: Extension is deactivating...');
+
+	// Stop MCP server
+	stopServer()
+		.then(() => {
+			console.log('🚀 KIRO-CONSTELLATION: MCP server stopped successfully');
+		})
+		.catch((error) => {
+			console.error('🚀 KIRO-CONSTELLATION: Error stopping MCP server:', error);
+		});
+}

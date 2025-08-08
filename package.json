@@ -52,6 +52,7 @@
     "test:unit:watch": "vitest"
   },
   "devDependencies": {
+    "@types/express": "^5.0.3",
     "@types/node": "20.x",
     "@types/vscode": "^1.102.0",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
@@ -69,6 +70,7 @@
   "dependencies": {
     "@types/cytoscape": "^3.21.9",
     "cytoscape": "^3.33.0",
-    "dependency-cruiser": "^17.0.1"
+    "dependency-cruiser": "^17.0.1",
+    "express": "^5.1.0"
   }
 }

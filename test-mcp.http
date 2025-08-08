@@ -1,0 +1,37 @@
+### Test valid query
+POST http://127.0.0.1:6170/query
+Content-Type: application/json
+
+{
+  "query": "test"
+}
+
+### Test missing query parameter
+POST http://127.0.0.1:6170/query
+Content-Type: application/json
+
+{}
+
+### Test invalid query type
+POST http://127.0.0.1:6170/query
+Content-Type: application/json
+
+{
+  "query": 123
+}
+
+### Test empty query
+POST http://127.0.0.1:6170/query
+Content-Type: application/json
+
+{
+  "query": ""
+}
+
+### Test whitespace-only query
+POST http://127.0.0.1:6170/query
+Content-Type: application/json
+
+{
+  "query": "   "
+}
