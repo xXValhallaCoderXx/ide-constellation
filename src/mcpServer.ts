@@ -44,6 +44,72 @@ let serverInstance: Server | null = null;
 let app: Express | null = null;
 
 /**
+ * Performs case-insensitive string matching for module paths
+ * 
+ * @param query - The search term to match against
+ * @param modulePath - The module path to check for matches
+ * @returns boolean - True if the module path contains the query term (case-insensitive)
+ */
+function matchesQuery(query: string, modulePath: string): boolean {
+    // Handle edge cases
+    if (!query || !modulePath) {
+        return false;
+    }
+
+    // Convert both strings to lowercase for case-insensitive matching
+    const normalizedQuery = query.toLowerCase().trim();
+    const normalizedPath = modulePath.toLowerCase();
+
+    // Check if the module path contains the query term
+    return normalizedPath.includes(normalizedQuery);
+}
+
+/**
+ * Processes a query against the dependency graph and returns matching file paths
+ * 
+ * @param query - The search term to filter modules by
+ * @param graphData - The current dependency graph data
+ * @returns string[] - Array of file paths that match the query
+ */
+function processQuery(query: string, graphData: DependencyGraph): string[] {
+    // Handle edge case: empty or invalid graph data
+    if (!graphData || !graphData.modules || !Array.isArray(graphData.modules)) {
+        return [];
+    }
+
+    // Handle edge case: empty modules array
+    if (graphData.modules.length === 0) {
+        return [];
+    }
+
+    try {
+        // Filter modules using case-insensitive string matching
+        const matchingModules = graphData.modules.filter(module => {
+            // Ensure module has a valid source path
+            if (!module.source || typeof module.source !== 'string') {
+                return false;
+            }
+
+            // Apply the matching logic
+            return matchesQuery(query, module.source);
+        });
+
+        // Extract file paths from matching modules
+        const filePaths = matchingModules.map(module => module.source);
+
+        // Remove any potential duplicates and filter out empty strings
+        const uniqueFilePaths = [...new Set(filePaths)].filter(path => path && path.trim().length > 0);
+
+        return uniqueFilePaths;
+
+    } catch (error) {
+        // Handle any unexpected errors during filtering
+        console.error('🚀 KIRO-CONSTELLATION: Error during query processing:', error);
+        return [];
+    }
+}
+
+/**
  * Starts the MCP server with the provided data provider callback
  * 
  * @param graphDataProvider - Callback function that returns the current dependency graph
@@ -110,8 +176,8 @@ export async function startServer(
                     // Get current graph data from provider
                     const graphData = graphDataProvider();
 
-                    // For now, return empty matches array - filtering logic will be implemented in task 4
-                    const matches: string[] = [];
+                    // Implement query processing and filtering logic
+                    const matches = processQuery(query, graphData);
 
                     // Create response structure with matches array and total count
                     const response: QueryResponse = {
