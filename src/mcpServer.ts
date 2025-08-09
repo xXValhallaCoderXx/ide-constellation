@@ -11,6 +11,75 @@ import express, { Express, Request, Response } from 'express';
 import { Server } from 'http';
 import { DependencyGraph } from './analyzer';
 
+// Logging utility functions for structured logging
+interface LogContext {
+    requestId?: string;
+    port?: number;
+    query?: string;
+    matchCount?: number;
+    errorCode?: string;
+    duration?: number;
+    [key: string]: any;
+}
+
+/**
+ * Structured logging utility for server lifecycle events
+ */
+function logServerEvent(event: string, level: 'info' | 'warn' | 'error', message: string, context?: LogContext): void {
+    const timestamp = new Date().toISOString();
+    const prefix = '🚀 KIRO-CONSTELLATION';
+    const contextStr = context ? ` | Context: ${JSON.stringify(context)}` : '';
+
+    const logMessage = `${prefix}: [${level.toUpperCase()}] [${event}] ${message}${contextStr}`;
+
+    switch (level) {
+        case 'error':
+            console.error(logMessage);
+            break;
+        case 'warn':
+            console.warn(logMessage);
+            break;
+        default:
+            console.log(logMessage);
+    }
+}
+
+/**
+ * Structured logging utility for request/response events with sanitized details
+ */
+function logRequest(phase: 'start' | 'success' | 'error', requestId: string, method: string, url: string, context?: LogContext): void {
+    const sanitizedContext = context ? {
+        ...context,
+        // Sanitize sensitive information
+        query: context.query ? (context.query.length > 100 ? `${context.query.substring(0, 100)}...` : context.query) : undefined,
+        // Remove any potential sensitive data
+        body: undefined,
+        headers: undefined
+    } : {};
+
+    const eventName = `REQUEST_${phase.toUpperCase()}`;
+    const message = `${method} ${url}`;
+
+    logServerEvent(eventName, phase === 'error' ? 'error' : 'info', message, {
+        requestId,
+        ...sanitizedContext
+    });
+}
+
+/**
+ * Structured logging utility for error events with appropriate context
+ */
+function logError(errorType: string, error: any, context?: LogContext): void {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
+    logServerEvent('ERROR', 'error', errorMessage, {
+        ...context,
+        errorType,
+        stack: errorStack ? errorStack.split('\n').slice(0, 5).join('\n') : undefined // Limit stack trace length
+    });
+}
+
 // Data provider callback type - allows decoupling from analysis engine
 export type GraphDataProvider = () => DependencyGraph;
 
@@ -78,9 +147,11 @@ function matchesQuery(query: string, modulePath: string): boolean {
         // Check if the module path contains the query term
         return normalizedPath.includes(normalizedQuery);
     } catch (error) {
-        console.error('🚀 KIRO-CONSTELLATION: Error during string matching:', error);
-        console.error('🚀 KIRO-CONSTELLATION: Query:', query);
-        console.error('🚀 KIRO-CONSTELLATION: Module path:', modulePath);
+        logError('STRING_MATCHING_ERROR', error, {
+            query: query.substring(0, 100), // Limit query length in logs
+            modulePath: modulePath.substring(0, 200), // Limit path length in logs
+            errorCode: 'STRING_MATCHING_FAILED'
+        });
         throw new Error(`String matching failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 }
@@ -101,23 +172,27 @@ function processQuery(query: string, graphData: DependencyGraph): string[] {
 
     // Handle edge case: empty or invalid graph data
     if (!graphData) {
-        console.warn('🚀 KIRO-CONSTELLATION: Graph data is null/undefined, returning empty results');
+        logServerEvent('QUERY_PROCESSING', 'warn', 'Graph data is null/undefined, returning empty results', {});
         return [];
     }
 
     if (!graphData.modules) {
-        console.warn('🚀 KIRO-CONSTELLATION: Graph data has no modules property, returning empty results');
+        logServerEvent('QUERY_PROCESSING', 'warn', 'Graph data has no modules property, returning empty results', {});
         return [];
     }
 
     if (!Array.isArray(graphData.modules)) {
-        console.error('🚀 KIRO-CONSTELLATION: Graph data modules is not an array:', typeof graphData.modules);
-        throw new Error('Invalid graph data structure: modules is not an array');
+        const error = 'Invalid graph data structure: modules is not an array';
+        logError('QUERY_PROCESSING_ERROR', error, {
+            modulesType: typeof graphData.modules,
+            errorCode: 'INVALID_MODULES_STRUCTURE'
+        });
+        throw new Error(error);
     }
 
     // Handle edge case: empty modules array
     if (graphData.modules.length === 0) {
-        console.log('🚀 KIRO-CONSTELLATION: Graph data contains no modules, returning empty results');
+        logServerEvent('QUERY_PROCESSING', 'info', 'Graph data contains no modules, returning empty results', { moduleCount: 0 });
         return [];
     }
 
@@ -149,17 +224,29 @@ function processQuery(query: string, graphData: DependencyGraph): string[] {
                 // Apply the matching logic
                 return matchesQuery(query, module.source);
             } catch (matchError) {
-                console.error('🚀 KIRO-CONSTELLATION: Error matching module:', module.source, matchError);
+                logError('MODULE_MATCHING_ERROR', matchError, {
+                    modulePath: module.source?.substring(0, 200), // Limit path length in logs
+                    query: query.substring(0, 100), // Limit query length in logs
+                    errorCode: 'MODULE_MATCH_FAILED'
+                });
                 return false;
             }
         });
 
         // Log statistics about the filtering process
         if (invalidModuleCount > 0) {
-            console.warn(`🚀 KIRO-CONSTELLATION: Found ${invalidModuleCount} invalid modules during query processing`);
+            logServerEvent('QUERY_PROCESSING', 'warn', 'Found invalid modules during processing', {
+                invalidModuleCount,
+                validModuleCount,
+                totalModules: invalidModuleCount + validModuleCount
+            });
         }
 
-        console.log(`🚀 KIRO-CONSTELLATION: Processed ${validModuleCount} valid modules, found ${matchingModules.length} matches`);
+        logServerEvent('QUERY_PROCESSING', 'info', 'Module filtering completed', {
+            validModuleCount,
+            matchingModules: matchingModules.length,
+            invalidModuleCount
+        });
 
         // Extract file paths from matching modules
         const filePaths = matchingModules.map(module => {
@@ -172,7 +259,10 @@ function processQuery(query: string, graphData: DependencyGraph): string[] {
         // Remove any potential duplicates and filter out empty strings
         const uniqueFilePaths = [...new Set(filePaths)].filter(path => {
             if (!path || typeof path !== 'string') {
-                console.warn('🚀 KIRO-CONSTELLATION: Found invalid path during deduplication:', path);
+                logServerEvent('QUERY_PROCESSING', 'warn', 'Found invalid path during deduplication', {
+                    invalidPath: String(path),
+                    pathType: typeof path
+                });
                 return false;
             }
             return path.trim().length > 0;
@@ -180,19 +270,23 @@ function processQuery(query: string, graphData: DependencyGraph): string[] {
 
         const duplicatesRemoved = filePaths.length - uniqueFilePaths.length;
         if (duplicatesRemoved > 0) {
-            console.log(`🚀 KIRO-CONSTELLATION: Removed ${duplicatesRemoved} duplicate paths`);
+            logServerEvent('QUERY_PROCESSING', 'info', 'Removed duplicate paths', {
+                duplicatesRemoved,
+                originalCount: filePaths.length,
+                uniqueCount: uniqueFilePaths.length
+            });
         }
 
         return uniqueFilePaths;
 
     } catch (error) {
         // Handle any unexpected errors during filtering
-        console.error('🚀 KIRO-CONSTELLATION: Critical error during query processing:', error);
-        console.error('🚀 KIRO-CONSTELLATION: Query was:', query);
-        console.error('🚀 KIRO-CONSTELLATION: Graph data summary:', {
+        logError('QUERY_PROCESSING_CRITICAL_ERROR', error, {
+            query: query.substring(0, 100), // Limit query length in logs
             hasModules: !!graphData.modules,
             moduleCount: graphData.modules ? graphData.modules.length : 0,
-            hasSummary: !!graphData.summary
+            hasSummary: !!graphData.summary,
+            errorCode: 'CRITICAL_PROCESSING_ERROR'
         });
 
         // Re-throw the error to be handled by the calling function
@@ -213,9 +307,11 @@ export async function startServer(
 ): Promise<void> {
     // If server is already running, stop it first
     if (serverInstance) {
-        console.log('🚀 KIRO-CONSTELLATION: MCP server already running, stopping first...');
+        logServerEvent('SERVER_RESTART', 'info', 'Server already running, stopping first', { port });
         await stopServer();
     }
+
+    logServerEvent('SERVER_START', 'info', 'Initializing MCP server', { port });
 
     return new Promise((resolve, reject) => {
         try {
@@ -229,13 +325,46 @@ export async function startServer(
                 type: 'application/json'
             }));
 
-            // Add request logging middleware
+            // Add request logging middleware with structured logging
             app.use((req: Request, res: Response, next) => {
                 const requestId = Math.random().toString(36).substring(2, 15);
-                console.log(`🚀 KIRO-CONSTELLATION: Incoming request ${requestId}: ${req.method} ${req.url}`);
+                const startTime = Date.now();
 
-                // Add request ID to request object for tracking
+                // Log incoming request with sanitized details
+                logRequest('start', requestId, req.method, req.url, {
+                    userAgent: req.get('User-Agent')?.substring(0, 100), // Limit user agent length
+                    contentType: req.get('Content-Type'),
+                    contentLength: req.get('Content-Length')
+                });
+
+                // Add request ID and start time to request object for tracking
                 (req as any).requestId = requestId;
+                (req as any).startTime = startTime;
+
+                // Override res.json to log successful responses
+                const originalJson = res.json.bind(res);
+                res.json = function (body: any) {
+                    const duration = Date.now() - startTime;
+                    logRequest('success', requestId, req.method, req.url, {
+                        statusCode: res.statusCode,
+                        duration,
+                        responseSize: JSON.stringify(body).length
+                    });
+                    return originalJson(body);
+                };
+
+                // Override res.status to capture error responses
+                const originalStatus = res.status.bind(res);
+                res.status = function (code: number) {
+                    if (code >= 400) {
+                        const duration = Date.now() - startTime;
+                        logRequest('error', requestId, req.method, req.url, {
+                            statusCode: code,
+                            duration
+                        });
+                    }
+                    return originalStatus(code);
+                };
 
                 next();
             });
@@ -243,13 +372,15 @@ export async function startServer(
             // Define POST /query endpoint
             app.post('/query', (req: Request, res: Response) => {
                 const requestId = (req as any).requestId || Math.random().toString(36).substring(2, 15);
-                console.log(`🚀 KIRO-CONSTELLATION: Processing query request ${requestId}`);
+                const startTime = (req as any).startTime || Date.now();
+
+                logServerEvent('QUERY_START', 'info', 'Processing query request', { requestId });
 
                 try {
                     // Validate request body exists
                     if (!req.body) {
                         const error = 'Request body is required';
-                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} failed - ${error}`);
+                        logError('VALIDATION_ERROR', error, { requestId, errorCode: 'MISSING_BODY' });
                         return res.status(400).json({
                             error,
                             code: 'MISSING_BODY',
@@ -262,7 +393,7 @@ export async function startServer(
 
                     if (query === undefined || query === null) {
                         const error = 'Query parameter is required';
-                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} failed - ${error}`);
+                        logError('VALIDATION_ERROR', error, { requestId, errorCode: 'MISSING_QUERY' });
                         return res.status(400).json({
                             error,
                             code: 'MISSING_QUERY',
@@ -272,7 +403,7 @@ export async function startServer(
 
                     if (typeof query !== 'string') {
                         const error = `Query parameter must be a string, received: ${typeof query}`;
-                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} failed - ${error}`);
+                        logError('VALIDATION_ERROR', error, { requestId, errorCode: 'INVALID_QUERY_TYPE', queryType: typeof query });
                         return res.status(400).json({
                             error: 'Query parameter must be a string',
                             code: 'INVALID_QUERY_TYPE',
@@ -282,7 +413,7 @@ export async function startServer(
 
                     if (query.trim().length === 0) {
                         const error = 'Query parameter cannot be empty';
-                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} failed - ${error}`);
+                        logError('VALIDATION_ERROR', error, { requestId, errorCode: 'EMPTY_QUERY' });
                         return res.status(400).json({
                             error,
                             code: 'EMPTY_QUERY',
@@ -293,7 +424,7 @@ export async function startServer(
                     // Validate query length to prevent potential DoS
                     if (query.length > 1000) {
                         const error = 'Query parameter is too long (maximum 1000 characters)';
-                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} failed - ${error}`);
+                        logError('VALIDATION_ERROR', error, { requestId, errorCode: 'QUERY_TOO_LONG', queryLength: query.length });
                         return res.status(400).json({
                             error,
                             code: 'QUERY_TOO_LONG',
@@ -304,11 +435,11 @@ export async function startServer(
                     // Get current graph data from provider with comprehensive error handling
                     let graphData: DependencyGraph;
                     try {
-                        console.log(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Calling data provider`);
+                        logServerEvent('DATA_PROVIDER_CALL', 'info', 'Calling data provider', { requestId });
                         graphData = graphDataProvider();
 
                         if (!graphData) {
-                            console.warn(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Data provider returned null/undefined`);
+                            logServerEvent('DATA_PROVIDER_WARNING', 'warn', 'Data provider returned null/undefined, using empty graph', { requestId });
                             graphData = {
                                 modules: [],
                                 summary: {
@@ -316,10 +447,16 @@ export async function startServer(
                                     violations: []
                                 }
                             };
+                        } else {
+                            logServerEvent('DATA_PROVIDER_SUCCESS', 'info', 'Data provider returned graph data', {
+                                requestId,
+                                moduleCount: graphData.modules?.length || 0,
+                                totalDependencies: graphData.summary?.totalDependencies || 0
+                            });
                         }
                     } catch (providerError) {
                         const error = 'Failed to retrieve dependency graph data';
-                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Data provider error:`, providerError);
+                        logError('DATA_PROVIDER_ERROR', providerError, { requestId, errorCode: 'DATA_PROVIDER_ERROR' });
                         return res.status(500).json({
                             error,
                             code: 'DATA_PROVIDER_ERROR',
@@ -330,12 +467,24 @@ export async function startServer(
                     // Implement query processing and filtering logic with error handling
                     let matches: string[];
                     try {
-                        console.log(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Processing query: "${query.substring(0, 50)}${query.length > 50 ? '...' : ''}"`);
+                        const sanitizedQuery = query.length > 50 ? `${query.substring(0, 50)}...` : query;
+                        logServerEvent('QUERY_PROCESSING', 'info', 'Processing query against dependency graph', {
+                            requestId,
+                            query: sanitizedQuery,
+                            moduleCount: graphData.modules?.length || 0
+                        });
+
                         matches = processQuery(query, graphData);
-                        console.log(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Found ${matches.length} matches`);
+
+                        logServerEvent('QUERY_SUCCESS', 'info', 'Query processing completed', {
+                            requestId,
+                            matchCount: matches.length,
+                            query: sanitizedQuery,
+                            duration: Date.now() - startTime
+                        });
                     } catch (queryError) {
                         const error = 'Failed to process query against dependency graph';
-                        console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Query processing error:`, queryError);
+                        logError('QUERY_PROCESSING_ERROR', queryError, { requestId, errorCode: 'QUERY_PROCESSING_ERROR', query: query.substring(0, 50) });
                         return res.status(500).json({
                             error,
                             code: 'QUERY_PROCESSING_ERROR',
@@ -350,12 +499,20 @@ export async function startServer(
                         timestamp: new Date().toISOString()
                     };
 
-                    console.log(`🚀 KIRO-CONSTELLATION: Request ${requestId} completed successfully`);
+                    logServerEvent('QUERY_COMPLETE', 'info', 'Request completed successfully', {
+                        requestId,
+                        matchCount: matches.length,
+                        totalDuration: Date.now() - startTime
+                    });
+
                     res.json(response);
 
                 } catch (error) {
-                    console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Unexpected error:`, error);
-                    console.error(`🚀 KIRO-CONSTELLATION: Request ${requestId} - Error stack:`, error instanceof Error ? error.stack : 'No stack trace available');
+                    logError('UNEXPECTED_ERROR', error, {
+                        requestId,
+                        errorCode: 'INTERNAL_SERVER_ERROR',
+                        duration: Date.now() - startTime
+                    });
 
                     res.status(500).json({
                         error: 'Internal server error while processing query',
@@ -365,19 +522,10 @@ export async function startServer(
                 }
             });
 
-            // Add comprehensive error handling middleware
+            // Add comprehensive error handling middleware with structured logging
             app.use((err: any, req: Request, res: Response, _next: any) => {
                 const errorId = Math.random().toString(36).substring(2, 15);
-                console.error(`🚀 KIRO-CONSTELLATION: MCP server error ${errorId}:`, err);
-                console.error(`🚀 KIRO-CONSTELLATION: Error ${errorId} - Request URL:`, req.url);
-                console.error(`🚀 KIRO-CONSTELLATION: Error ${errorId} - Request method:`, req.method);
-                console.error(`🚀 KIRO-CONSTELLATION: Error ${errorId} - Error stack:`, err instanceof Error ? err.stack : 'No stack trace available');
-
-                // Don't send error response if headers already sent
-                if (res.headersSent) {
-                    console.error(`🚀 KIRO-CONSTELLATION: Error ${errorId} - Headers already sent, cannot send error response`);
-                    return _next(err);
-                }
+                const requestId = (req as any).requestId || 'unknown';
 
                 // Determine appropriate error code based on error type
                 let errorCode = 'INTERNAL_ERROR';
@@ -394,6 +542,22 @@ export async function startServer(
                     statusCode = 499;
                 }
 
+                logError('MIDDLEWARE_ERROR', err, {
+                    errorId,
+                    requestId,
+                    errorCode,
+                    statusCode,
+                    url: req.url,
+                    method: req.method,
+                    userAgent: req.get('User-Agent')?.substring(0, 100)
+                });
+
+                // Don't send error response if headers already sent
+                if (res.headersSent) {
+                    logServerEvent('ERROR_HEADERS_SENT', 'warn', 'Cannot send error response, headers already sent', { errorId, requestId });
+                    return _next(err);
+                }
+
                 res.status(statusCode).json({
                     error: 'Internal server error',
                     code: errorCode,
@@ -401,9 +565,16 @@ export async function startServer(
                 } as ErrorResponse);
             });
 
-            // Add 404 handler for undefined routes
+            // Add 404 handler for undefined routes with structured logging
             app.use((req: Request, res: Response) => {
-                console.warn(`🚀 KIRO-CONSTELLATION: 404 - Route not found: ${req.method} ${req.originalUrl}`);
+                const requestId = (req as any).requestId || 'unknown';
+                logServerEvent('ROUTE_NOT_FOUND', 'warn', 'Route not found', {
+                    requestId,
+                    method: req.method,
+                    url: req.originalUrl,
+                    userAgent: req.get('User-Agent')?.substring(0, 100)
+                });
+
                 res.status(404).json({
                     error: 'Route not found',
                     code: 'ROUTE_NOT_FOUND',
@@ -411,25 +582,43 @@ export async function startServer(
                 } as ErrorResponse);
             });
 
-            // Attempt to start server on specified port
+            // Attempt to start server on specified port with structured logging
             const tryStartServer = (currentPort: number, maxAttempts: number = 10): void => {
                 if (maxAttempts <= 0) {
-                    reject(new Error(`Failed to start MCP server: all ports from ${port} to ${port + 9} are in use`));
+                    const error = new Error(`Failed to start MCP server: all ports from ${port} to ${port + 9} are in use`);
+                    logError('SERVER_START_FAILED', error, {
+                        originalPort: port,
+                        lastAttemptedPort: currentPort - 1,
+                        errorCode: 'ALL_PORTS_IN_USE'
+                    });
+                    reject(error);
                     return;
                 }
 
                 serverInstance = app!.listen(currentPort, '127.0.0.1', () => {
-                    console.log(`🚀 KIRO-CONSTELLATION: MCP server started on http://127.0.0.1:${currentPort}`);
+                    logServerEvent('SERVER_STARTED', 'info', 'MCP server started successfully', {
+                        port: currentPort,
+                        host: '127.0.0.1',
+                        url: `http://127.0.0.1:${currentPort}`,
+                        attemptsUsed: 11 - maxAttempts
+                    });
                     resolve();
                 });
 
                 serverInstance.on('error', (error: any) => {
                     if (error.code === 'EADDRINUSE') {
-                        console.log(`🚀 KIRO-CONSTELLATION: Port ${currentPort} is in use, trying ${currentPort + 1}...`);
+                        logServerEvent('PORT_IN_USE', 'warn', 'Port in use, trying next port', {
+                            port: currentPort,
+                            nextPort: currentPort + 1,
+                            attemptsRemaining: maxAttempts - 1
+                        });
                         serverInstance = null;
                         tryStartServer(currentPort + 1, maxAttempts - 1);
                     } else {
-                        console.error('🚀 KIRO-CONSTELLATION: Failed to start MCP server:', error);
+                        logError('SERVER_START_ERROR', error, {
+                            port: currentPort,
+                            errorCode: error.code || 'UNKNOWN_ERROR'
+                        });
                         serverInstance = null;
                         reject(error);
                     }
@@ -439,7 +628,7 @@ export async function startServer(
             tryStartServer(port);
 
         } catch (error) {
-            console.error('🚀 KIRO-CONSTELLATION: Error initializing MCP server:', error);
+            logError('SERVER_INIT_ERROR', error, { port, errorCode: 'INITIALIZATION_FAILED' });
             reject(error);
         }
     });
@@ -453,19 +642,31 @@ export async function startServer(
 export async function stopServer(): Promise<void> {
     return new Promise((resolve, reject) => {
         if (!serverInstance) {
-            console.log('🚀 KIRO-CONSTELLATION: MCP server is not running');
+            logServerEvent('SERVER_STOP', 'info', 'Server is not running, nothing to stop', {});
             resolve();
             return;
         }
 
-        console.log('🚀 KIRO-CONSTELLATION: Stopping MCP server...');
+        const currentPort = getServerPort();
+        logServerEvent('SERVER_STOP', 'info', 'Initiating server shutdown', { port: currentPort || undefined });
+
+        const shutdownStartTime = Date.now();
 
         serverInstance.close((error) => {
+            const shutdownDuration = Date.now() - shutdownStartTime;
+
             if (error) {
-                console.error('🚀 KIRO-CONSTELLATION: Error stopping MCP server:', error);
+                logError('SERVER_STOP_ERROR', error, {
+                    port: currentPort || undefined,
+                    shutdownDuration,
+                    errorCode: 'GRACEFUL_SHUTDOWN_FAILED'
+                });
                 reject(error);
             } else {
-                console.log('🚀 KIRO-CONSTELLATION: MCP server stopped successfully');
+                logServerEvent('SERVER_STOPPED', 'info', 'Server stopped successfully', {
+                    port: currentPort || undefined,
+                    shutdownDuration
+                });
                 serverInstance = null;
                 app = null;
                 resolve();
@@ -475,7 +676,13 @@ export async function stopServer(): Promise<void> {
         // Force close after timeout to prevent hanging
         setTimeout(() => {
             if (serverInstance) {
-                console.log('🚀 KIRO-CONSTELLATION: Force closing MCP server after timeout');
+                const shutdownDuration = Date.now() - shutdownStartTime;
+                logServerEvent('SERVER_FORCE_CLOSE', 'warn', 'Force closing server after timeout', {
+                    port: currentPort || undefined,
+                    shutdownDuration,
+                    timeoutMs: 5000
+                });
+
                 serverInstance.closeAllConnections?.();
                 serverInstance = null;
                 app = null;
