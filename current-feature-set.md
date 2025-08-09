@@ -40,35 +40,92 @@ Kiro Constellation is a VS Code extension that provides architecture visualizati
 
 ### **4. MCP (Model Context Protocol) Server**
 - **HTTP REST API** running on localhost:6170 (configurable)
-- **Query endpoint** (`POST /query`) for external tool integration
-- **JSON response format** with matches and metadata
+- **Multiple endpoints** for comprehensive dependency analysis
+- **JSON response format** with rich metadata and timestamps
 - **Automatic port conflict resolution** (tries ports 6170-6179)
 - **Graceful error handling** with structured error responses
+- **Request ID tracking** for debugging and monitoring
 
-#### **Query API Features:**
+#### **Available API Endpoints:**
+
+##### **File Search: `POST /query`**
 - **Case-insensitive search** across all analyzed files
 - **Partial path matching** for flexible queries
 - **Real-time data** from the latest dependency analysis
 - **Duplicate filtering** and result optimization
-- **Request validation** with comprehensive error messages
 
-#### **External Integration Use Cases:**
 ```bash
 # Find React components
 curl -X POST http://localhost:6170/query \
   -H "Content-Type: application/json" \
   -d '{"query": "react"}'
 
-# Locate test files
-curl -X POST http://localhost:6170/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": ".test."}'
-
-# Find files in specific directory
-curl -X POST http://localhost:6170/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "src/components"}'
+# Response: {"matches": ["src/App.tsx", "src/components/Button.tsx"], "total": 2, "timestamp": "..."}
 ```
+
+##### **Dependencies: `POST /dependencies`**
+- **Get all dependencies** for a specific file
+- **Excludes core modules** (Node.js built-ins like 'fs', 'path')
+- **Returns resolved file paths** that the target file imports
+
+```bash
+# Get dependencies of App.tsx
+curl -X POST http://localhost:6170/dependencies \
+  -H "Content-Type: application/json" \
+  -d '{"file": "src/App.tsx"}'
+
+# Response: {"file": "src/App.tsx", "dependencies": ["src/components/Button.tsx", "src/utils/helper.ts"], "total": 2, "timestamp": "..."}
+```
+
+##### **Dependents: `POST /dependents`**
+- **Get all dependents** for a specific file
+- **Shows which files import** the target file
+- **Useful for impact analysis** before making changes
+
+```bash
+# Get dependents of helper.ts
+curl -X POST http://localhost:6170/dependents \
+  -H "Content-Type: application/json" \
+  -d '{"file": "src/utils/helper.ts"}'
+
+# Response: {"file": "src/utils/helper.ts", "dependents": ["src/App.tsx", "src/components/Button.tsx"], "total": 2, "timestamp": "..."}
+```
+
+##### **Dependency Chain: `POST /dependency-chain`**
+- **Find dependency path** between two files
+- **Uses breadth-first search** for shortest path
+- **Returns empty array** if no connection exists
+- **Perfect for understanding** how modules are connected
+
+```bash
+# Find path from App.tsx to helper.ts
+curl -X POST http://localhost:6170/dependency-chain \
+  -H "Content-Type: application/json" \
+  -d '{"from": "src/App.tsx", "to": "src/utils/helper.ts"}'
+
+# Response: {"from": "src/App.tsx", "to": "src/utils/helper.ts", "chain": ["src/App.tsx", "src/components/Button.tsx", "src/utils/helper.ts"], "found": true, "timestamp": "..."}
+```
+
+##### **Circular Dependencies: `GET /circular-dependencies`**
+- **Detects circular dependency loops** in your codebase
+- **Returns all cycles found** with complete paths
+- **Critical for identifying** architecture problems
+- **No request body required** - analyzes entire project
+
+```bash
+# Find all circular dependencies
+curl http://localhost:6170/circular-dependencies
+
+# Response: {"cycles": [["src/A.tsx", "src/B.tsx", "src/A.tsx"]], "total": 1, "timestamp": "..."}
+```
+
+#### **Advanced Use Cases:**
+- **Refactoring tools**: Query dependents before changing a file
+- **Build optimization**: Analyze dependency chains for bundling
+- **Architecture validation**: Check for circular dependencies in CI/CD
+- **Impact analysis**: Understand blast radius of changes
+- **Documentation generation**: Map module relationships automatically
+- **Code quality tools**: Validate dependency patterns and constraints
 
 ---
 
@@ -119,11 +176,19 @@ curl -X POST http://localhost:6170/query \
 - **Connection management** with proper cleanup
 
 ### **9. Testing Coverage**
-- **Unit tests** for core functionality (67 tests passing)
+- **Unit tests** for core functionality (67+ tests passing)
 - **Mock data providers** for isolated testing
 - **Error scenario coverage** for edge cases
+- **Dependency endpoint testing** with comprehensive validation
 - **Integration test framework** (in development)
 - **Automated test execution** in CI/CD pipeline
+
+#### **Test Categories:**
+- **MCP Server Tests**: All endpoints, error handling, validation
+- **Dependency Analysis Tests**: Graph processing, edge cases, resilience
+- **Query Processing Tests**: Search functionality, filtering, performance
+- **Circular Dependency Tests**: Detection algorithms, complex cycles
+- **Error Handling Tests**: Graceful failures, structured logging
 
 ---
 
@@ -169,11 +234,13 @@ curl -X POST http://localhost:6170/query \
 - **New team members** onboarding to existing projects
 
 ### **Integration Scenarios:**
-- **Build tools** querying dependency information
-- **CI/CD pipelines** validating architecture constraints
-- **Documentation generators** mapping module relationships
-- **Refactoring tools** identifying affected files
-- **Code quality analyzers** examining dependency patterns
+- **Build tools** querying dependency information and optimization opportunities
+- **CI/CD pipelines** validating architecture constraints and detecting circular dependencies
+- **Documentation generators** mapping module relationships and dependency flows
+- **Refactoring tools** identifying affected files and impact analysis
+- **Code quality analyzers** examining dependency patterns and architectural violations
+- **Migration scripts** finding dependency chains and planning update sequences
+- **Bundle analyzers** optimizing module splitting and lazy loading strategies
 
 ---
 

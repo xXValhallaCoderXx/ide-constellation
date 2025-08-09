@@ -95,6 +95,54 @@ export interface QueryResponse {
     timestamp: string;
 }
 
+// Dependencies request interface
+export interface DependenciesRequest {
+    file: string;
+}
+
+// Dependencies response interface
+export interface DependenciesResponse {
+    file: string;
+    dependencies: string[];
+    total: number;
+    timestamp: string;
+}
+
+// Dependents request interface
+export interface DependentsRequest {
+    file: string;
+}
+
+// Dependents response interface
+export interface DependentsResponse {
+    file: string;
+    dependents: string[];
+    total: number;
+    timestamp: string;
+}
+
+// Dependency chain request interface
+export interface DependencyChainRequest {
+    from: string;
+    to: string;
+}
+
+// Dependency chain response interface
+export interface DependencyChainResponse {
+    from: string;
+    to: string;
+    chain: string[];
+    found: boolean;
+    timestamp: string;
+}
+
+// Circular dependencies response interface
+export interface CircularDependenciesResponse {
+    cycles: string[][];
+    total: number;
+    timestamp: string;
+}
+
 // Error response interface
 export interface ErrorResponse {
     error: string;
@@ -111,6 +159,163 @@ export interface ServerConfig {
 // Module-level server instance for lifecycle management
 let serverInstance: Server | null = null;
 let app: Express | null = null;
+
+/**
+ * Gets dependencies for a specific file from the dependency graph
+ * 
+ * @param filePath - The file path to get dependencies for
+ * @param graphData - The current dependency graph data
+ * @returns string[] - Array of dependency file paths
+ */
+function getFileDependencies(filePath: string, graphData: DependencyGraph): string[] {
+    if (!graphData?.modules || !Array.isArray(graphData.modules)) {
+        return [];
+    }
+
+    const module = graphData.modules.find(m => m.source === filePath);
+    if (!module || !module.dependencies) {
+        return [];
+    }
+
+    return module.dependencies
+        .filter(dep => dep.resolved && !dep.coreModule) // Exclude core modules like 'fs', 'path'
+        .map(dep => dep.resolved);
+}
+
+/**
+ * Gets dependents for a specific file from the dependency graph
+ * 
+ * @param filePath - The file path to get dependents for
+ * @param graphData - The current dependency graph data
+ * @returns string[] - Array of dependent file paths
+ */
+function getFileDependents(filePath: string, graphData: DependencyGraph): string[] {
+    if (!graphData?.modules || !Array.isArray(graphData.modules)) {
+        return [];
+    }
+
+    const module = graphData.modules.find(m => m.source === filePath);
+    if (!module || !module.dependents) {
+        return [];
+    }
+
+    return [...module.dependents]; // Return a copy to avoid mutations
+}
+
+/**
+ * Finds a dependency chain between two files using breadth-first search
+ * 
+ * @param fromFile - Starting file path
+ * @param toFile - Target file path
+ * @param graphData - The current dependency graph data
+ * @returns string[] - Array representing the dependency chain, empty if no path found
+ */
+function findDependencyChain(fromFile: string, toFile: string, graphData: DependencyGraph): string[] {
+    if (!graphData?.modules || !Array.isArray(graphData.modules)) {
+        return [];
+    }
+
+    if (fromFile === toFile) {
+        return [fromFile];
+    }
+
+    // Build adjacency map for faster lookups
+    const adjacencyMap = new Map<string, string[]>();
+    graphData.modules.forEach(module => {
+        if (module.dependencies) {
+            const deps = module.dependencies
+                .filter(dep => dep.resolved && !dep.coreModule)
+                .map(dep => dep.resolved);
+            adjacencyMap.set(module.source, deps);
+        }
+    });
+
+    // BFS to find shortest path
+    const queue: { file: string; path: string[] }[] = [{ file: fromFile, path: [fromFile] }];
+    const visited = new Set<string>([fromFile]);
+
+    while (queue.length > 0) {
+        const { file, path } = queue.shift()!;
+        const dependencies = adjacencyMap.get(file) || [];
+
+        for (const dep of dependencies) {
+            if (dep === toFile) {
+                return [...path, dep];
+            }
+
+            if (!visited.has(dep)) {
+                visited.add(dep);
+                queue.push({ file: dep, path: [...path, dep] });
+            }
+        }
+    }
+
+    return []; // No path found
+}
+
+/**
+ * Detects circular dependencies in the dependency graph
+ * 
+ * @param graphData - The current dependency graph data
+ * @returns string[][] - Array of cycles, where each cycle is an array of file paths
+ */
+function findCircularDependencies(graphData: DependencyGraph): string[][] {
+    if (!graphData?.modules || !Array.isArray(graphData.modules)) {
+        return [];
+    }
+
+    const cycles: string[][] = [];
+    const visited = new Set<string>();
+    const recursionStack = new Set<string>();
+
+    // Build adjacency map
+    const adjacencyMap = new Map<string, string[]>();
+    graphData.modules.forEach(module => {
+        if (module.dependencies) {
+            const deps = module.dependencies
+                .filter(dep => dep.resolved && !dep.coreModule)
+                .map(dep => dep.resolved);
+            adjacencyMap.set(module.source, deps);
+        }
+    });
+
+    function dfs(node: string, path: string[]): void {
+        if (recursionStack.has(node)) {
+            // Found a cycle - extract the cycle from the path
+            const cycleStart = path.indexOf(node);
+            if (cycleStart !== -1) {
+                const cycle = [...path.slice(cycleStart), node];
+                cycles.push(cycle);
+            }
+            return;
+        }
+
+        if (visited.has(node)) {
+            return;
+        }
+
+        visited.add(node);
+        recursionStack.add(node);
+        path.push(node);
+
+        const dependencies = adjacencyMap.get(node) || [];
+        for (const dep of dependencies) {
+            dfs(dep, path);
+        }
+
+        recursionStack.delete(node);
+        path.pop();
+    }
+
+    // Check each module for cycles
+    for (const module of graphData.modules) {
+        if (!visited.has(module.source)) {
+            dfs(module.source, []);
+        }
+    }
+
+    return cycles;
+}
 
 /**
  * Performs case-insensitive string matching for module paths
@@ -516,6 +721,434 @@ export async function startServer(
 
                     res.status(500).json({
                         error: 'Internal server error while processing query',
+                        code: 'INTERNAL_SERVER_ERROR',
+                        timestamp: new Date().toISOString()
+                    } as ErrorResponse);
+                }
+            });
+
+            // Define POST /dependencies endpoint
+            app.post('/dependencies', (req: Request, res: Response) => {
+                const requestId = (req as any).requestId || Math.random().toString(36).substring(2, 15);
+                const startTime = (req as any).startTime || Date.now();
+
+                logServerEvent('DEPENDENCIES_START', 'info', 'Processing dependencies request', { requestId });
+
+                try {
+                    // Validate request body exists
+                    if (!req.body) {
+                        const error = 'Request body is required';
+                        logError('VALIDATION_ERROR', error, { requestId, errorCode: 'MISSING_BODY' });
+                        return res.status(400).json({
+                            error,
+                            code: 'MISSING_BODY',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Validate file parameter
+                    const { file } = req.body as DependenciesRequest;
+
+                    if (!file || typeof file !== 'string') {
+                        const error = 'File parameter is required and must be a string';
+                        logError('VALIDATION_ERROR', error, { requestId, errorCode: 'INVALID_FILE_PARAM' });
+                        return res.status(400).json({
+                            error,
+                            code: 'INVALID_FILE_PARAM',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Get current graph data from provider
+                    let graphData: DependencyGraph;
+                    try {
+                        logServerEvent('DATA_PROVIDER_CALL', 'info', 'Calling data provider', { requestId });
+                        graphData = graphDataProvider();
+
+                        if (!graphData) {
+                            logServerEvent('DATA_PROVIDER_WARNING', 'warn', 'Data provider returned null/undefined, using empty graph', { requestId });
+                            graphData = {
+                                modules: [],
+                                summary: {
+                                    totalDependencies: 0,
+                                    violations: []
+                                }
+                            };
+                        }
+                    } catch (providerError) {
+                        const error = 'Failed to retrieve dependency graph data';
+                        logError('DATA_PROVIDER_ERROR', providerError, { requestId, errorCode: 'DATA_PROVIDER_ERROR' });
+                        return res.status(500).json({
+                            error,
+                            code: 'DATA_PROVIDER_ERROR',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Get dependencies for the specified file
+                    let dependencies: string[];
+                    try {
+                        dependencies = getFileDependencies(file, graphData);
+
+                        logServerEvent('DEPENDENCIES_SUCCESS', 'info', 'Dependencies retrieved successfully', {
+                            requestId,
+                            file: file.substring(0, 100), // Limit file path length in logs
+                            dependencyCount: dependencies.length,
+                            duration: Date.now() - startTime
+                        });
+                    } catch (dependencyError) {
+                        const error = 'Failed to retrieve dependencies';
+                        logError('DEPENDENCY_RETRIEVAL_ERROR', dependencyError, { requestId, errorCode: 'DEPENDENCY_RETRIEVAL_ERROR', file: file.substring(0, 100) });
+                        return res.status(500).json({
+                            error,
+                            code: 'DEPENDENCY_RETRIEVAL_ERROR',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Create response structure
+                    const response: DependenciesResponse = {
+                        file,
+                        dependencies,
+                        total: dependencies.length,
+                        timestamp: new Date().toISOString()
+                    };
+
+                    logServerEvent('DEPENDENCIES_COMPLETE', 'info', 'Dependencies request completed successfully', {
+                        requestId,
+                        dependencyCount: dependencies.length,
+                        totalDuration: Date.now() - startTime
+                    });
+
+                    res.json(response);
+
+                } catch (error) {
+                    logError('UNEXPECTED_ERROR', error, {
+                        requestId,
+                        errorCode: 'INTERNAL_SERVER_ERROR',
+                        duration: Date.now() - startTime
+                    });
+
+                    res.status(500).json({
+                        error: 'Internal server error while processing dependencies request',
+                        code: 'INTERNAL_SERVER_ERROR',
+                        timestamp: new Date().toISOString()
+                    } as ErrorResponse);
+                }
+            });
+
+            // Define POST /dependents endpoint
+            app.post('/dependents', (req: Request, res: Response) => {
+                const requestId = (req as any).requestId || Math.random().toString(36).substring(2, 15);
+                const startTime = (req as any).startTime || Date.now();
+
+                logServerEvent('DEPENDENTS_START', 'info', 'Processing dependents request', { requestId });
+
+                try {
+                    // Validate request body exists
+                    if (!req.body) {
+                        const error = 'Request body is required';
+                        logError('VALIDATION_ERROR', error, { requestId, errorCode: 'MISSING_BODY' });
+                        return res.status(400).json({
+                            error,
+                            code: 'MISSING_BODY',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Validate file parameter
+                    const { file } = req.body as DependentsRequest;
+
+                    if (!file || typeof file !== 'string') {
+                        const error = 'File parameter is required and must be a string';
+                        logError('VALIDATION_ERROR', error, { requestId, errorCode: 'INVALID_FILE_PARAM' });
+                        return res.status(400).json({
+                            error,
+                            code: 'INVALID_FILE_PARAM',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Get current graph data from provider
+                    let graphData: DependencyGraph;
+                    try {
+                        logServerEvent('DATA_PROVIDER_CALL', 'info', 'Calling data provider', { requestId });
+                        graphData = graphDataProvider();
+
+                        if (!graphData) {
+                            logServerEvent('DATA_PROVIDER_WARNING', 'warn', 'Data provider returned null/undefined, using empty graph', { requestId });
+                            graphData = {
+                                modules: [],
+                                summary: {
+                                    totalDependencies: 0,
+                                    violations: []
+                                }
+                            };
+                        }
+                    } catch (providerError) {
+                        const error = 'Failed to retrieve dependency graph data';
+                        logError('DATA_PROVIDER_ERROR', providerError, { requestId, errorCode: 'DATA_PROVIDER_ERROR' });
+                        return res.status(500).json({
+                            error,
+                            code: 'DATA_PROVIDER_ERROR',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Get dependents for the specified file
+                    let dependents: string[];
+                    try {
+                        dependents = getFileDependents(file, graphData);
+
+                        logServerEvent('DEPENDENTS_SUCCESS', 'info', 'Dependents retrieved successfully', {
+                            requestId,
+                            file: file.substring(0, 100), // Limit file path length in logs
+                            dependentCount: dependents.length,
+                            duration: Date.now() - startTime
+                        });
+                    } catch (dependentError) {
+                        const error = 'Failed to retrieve dependents';
+                        logError('DEPENDENT_RETRIEVAL_ERROR', dependentError, { requestId, errorCode: 'DEPENDENT_RETRIEVAL_ERROR', file: file.substring(0, 100) });
+                        return res.status(500).json({
+                            error,
+                            code: 'DEPENDENT_RETRIEVAL_ERROR',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Create response structure
+                    const response: DependentsResponse = {
+                        file,
+                        dependents,
+                        total: dependents.length,
+                        timestamp: new Date().toISOString()
+                    };
+
+                    logServerEvent('DEPENDENTS_COMPLETE', 'info', 'Dependents request completed successfully', {
+                        requestId,
+                        dependentCount: dependents.length,
+                        totalDuration: Date.now() - startTime
+                    });
+
+                    res.json(response);
+
+                } catch (error) {
+                    logError('UNEXPECTED_ERROR', error, {
+                        requestId,
+                        errorCode: 'INTERNAL_SERVER_ERROR',
+                        duration: Date.now() - startTime
+                    });
+
+                    res.status(500).json({
+                        error: 'Internal server error while processing dependents request',
+                        code: 'INTERNAL_SERVER_ERROR',
+                        timestamp: new Date().toISOString()
+                    } as ErrorResponse);
+                }
+            });
+
+            // Define POST /dependency-chain endpoint
+            app.post('/dependency-chain', (req: Request, res: Response) => {
+                const requestId = (req as any).requestId || Math.random().toString(36).substring(2, 15);
+                const startTime = (req as any).startTime || Date.now();
+
+                logServerEvent('DEPENDENCY_CHAIN_START', 'info', 'Processing dependency chain request', { requestId });
+
+                try {
+                    // Validate request body exists
+                    if (!req.body) {
+                        const error = 'Request body is required';
+                        logError('VALIDATION_ERROR', error, { requestId, errorCode: 'MISSING_BODY' });
+                        return res.status(400).json({
+                            error,
+                            code: 'MISSING_BODY',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Validate from and to parameters
+                    const { from, to } = req.body as DependencyChainRequest;
+
+                    if (!from || typeof from !== 'string') {
+                        const error = 'From parameter is required and must be a string';
+                        logError('VALIDATION_ERROR', error, { requestId, errorCode: 'INVALID_FROM_PARAM' });
+                        return res.status(400).json({
+                            error,
+                            code: 'INVALID_FROM_PARAM',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    if (!to || typeof to !== 'string') {
+                        const error = 'To parameter is required and must be a string';
+                        logError('VALIDATION_ERROR', error, { requestId, errorCode: 'INVALID_TO_PARAM' });
+                        return res.status(400).json({
+                            error,
+                            code: 'INVALID_TO_PARAM',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Get current graph data from provider
+                    let graphData: DependencyGraph;
+                    try {
+                        logServerEvent('DATA_PROVIDER_CALL', 'info', 'Calling data provider', { requestId });
+                        graphData = graphDataProvider();
+
+                        if (!graphData) {
+                            logServerEvent('DATA_PROVIDER_WARNING', 'warn', 'Data provider returned null/undefined, using empty graph', { requestId });
+                            graphData = {
+                                modules: [],
+                                summary: {
+                                    totalDependencies: 0,
+                                    violations: []
+                                }
+                            };
+                        }
+                    } catch (providerError) {
+                        const error = 'Failed to retrieve dependency graph data';
+                        logError('DATA_PROVIDER_ERROR', providerError, { requestId, errorCode: 'DATA_PROVIDER_ERROR' });
+                        return res.status(500).json({
+                            error,
+                            code: 'DATA_PROVIDER_ERROR',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Find dependency chain between the specified files
+                    let chain: string[];
+                    try {
+                        chain = findDependencyChain(from, to, graphData);
+
+                        logServerEvent('DEPENDENCY_CHAIN_SUCCESS', 'info', 'Dependency chain search completed', {
+                            requestId,
+                            from: from.substring(0, 100), // Limit file path length in logs
+                            to: to.substring(0, 100),
+                            chainLength: chain.length,
+                            found: chain.length > 0,
+                            duration: Date.now() - startTime
+                        });
+                    } catch (chainError) {
+                        const error = 'Failed to find dependency chain';
+                        logError('DEPENDENCY_CHAIN_ERROR', chainError, { requestId, errorCode: 'DEPENDENCY_CHAIN_ERROR', from: from.substring(0, 100), to: to.substring(0, 100) });
+                        return res.status(500).json({
+                            error,
+                            code: 'DEPENDENCY_CHAIN_ERROR',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Create response structure
+                    const response: DependencyChainResponse = {
+                        from,
+                        to,
+                        chain,
+                        found: chain.length > 0,
+                        timestamp: new Date().toISOString()
+                    };
+
+                    logServerEvent('DEPENDENCY_CHAIN_COMPLETE', 'info', 'Dependency chain request completed successfully', {
+                        requestId,
+                        chainLength: chain.length,
+                        found: chain.length > 0,
+                        totalDuration: Date.now() - startTime
+                    });
+
+                    res.json(response);
+
+                } catch (error) {
+                    logError('UNEXPECTED_ERROR', error, {
+                        requestId,
+                        errorCode: 'INTERNAL_SERVER_ERROR',
+                        duration: Date.now() - startTime
+                    });
+
+                    res.status(500).json({
+                        error: 'Internal server error while processing dependency chain request',
+                        code: 'INTERNAL_SERVER_ERROR',
+                        timestamp: new Date().toISOString()
+                    } as ErrorResponse);
+                }
+            });
+
+            // Define GET /circular-dependencies endpoint
+            app.get('/circular-dependencies', (req: Request, res: Response) => {
+                const requestId = (req as any).requestId || Math.random().toString(36).substring(2, 15);
+                const startTime = (req as any).startTime || Date.now();
+
+                logServerEvent('CIRCULAR_DEPENDENCIES_START', 'info', 'Processing circular dependencies request', { requestId });
+
+                try {
+                    // Get current graph data from provider
+                    let graphData: DependencyGraph;
+                    try {
+                        logServerEvent('DATA_PROVIDER_CALL', 'info', 'Calling data provider', { requestId });
+                        graphData = graphDataProvider();
+
+                        if (!graphData) {
+                            logServerEvent('DATA_PROVIDER_WARNING', 'warn', 'Data provider returned null/undefined, using empty graph', { requestId });
+                            graphData = {
+                                modules: [],
+                                summary: {
+                                    totalDependencies: 0,
+                                    violations: []
+                                }
+                            };
+                        }
+                    } catch (providerError) {
+                        const error = 'Failed to retrieve dependency graph data';
+                        logError('DATA_PROVIDER_ERROR', providerError, { requestId, errorCode: 'DATA_PROVIDER_ERROR' });
+                        return res.status(500).json({
+                            error,
+                            code: 'DATA_PROVIDER_ERROR',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Find circular dependencies
+                    let cycles: string[][];
+                    try {
+                        cycles = findCircularDependencies(graphData);
+
+                        logServerEvent('CIRCULAR_DEPENDENCIES_SUCCESS', 'info', 'Circular dependencies analysis completed', {
+                            requestId,
+                            cycleCount: cycles.length,
+                            duration: Date.now() - startTime
+                        });
+                    } catch (circularError) {
+                        const error = 'Failed to analyze circular dependencies';
+                        logError('CIRCULAR_DEPENDENCIES_ERROR', circularError, { requestId, errorCode: 'CIRCULAR_DEPENDENCIES_ERROR' });
+                        return res.status(500).json({
+                            error,
+                            code: 'CIRCULAR_DEPENDENCIES_ERROR',
+                            timestamp: new Date().toISOString()
+                        } as ErrorResponse);
+                    }
+
+                    // Create response structure
+                    const response: CircularDependenciesResponse = {
+                        cycles,
+                        total: cycles.length,
+                        timestamp: new Date().toISOString()
+                    };
+
+                    logServerEvent('CIRCULAR_DEPENDENCIES_COMPLETE', 'info', 'Circular dependencies request completed successfully', {
+                        requestId,
+                        cycleCount: cycles.length,
+                        totalDuration: Date.now() - startTime
+                    });
+
+                    res.json(response);
+
+                } catch (error) {
+                    logError('UNEXPECTED_ERROR', error, {
+                        requestId,
+                        errorCode: 'INTERNAL_SERVER_ERROR',
+                        duration: Date.now() - startTime
+                    });
+
+                    res.status(500).json({
+                        error: 'Internal server error while processing circular dependencies request',
                         code: 'INTERNAL_SERVER_ERROR',
                         timestamp: new Date().toISOString()
                     } as ErrorResponse);

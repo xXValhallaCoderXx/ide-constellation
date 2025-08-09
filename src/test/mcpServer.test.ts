@@ -670,6 +670,341 @@ describe('MCP Server Module', () => {
         });
     });
 
+    describe('Dependency Query Endpoints', () => {
+        describe('POST /dependencies', () => {
+            it('should return dependencies for a valid file', async () => {
+                const mockProvider: GraphDataProvider = vi.fn(() => ({
+                    modules: [
+                        {
+                            source: 'src/App.tsx',
+                            dependencies: [
+                                { resolved: 'react', coreModule: true, followable: false, dynamic: false },
+                                { resolved: 'src/components/Button.tsx', coreModule: false, followable: true, dynamic: false },
+                                { resolved: 'src/utils/helper.ts', coreModule: false, followable: true, dynamic: false }
+                            ],
+                            dependents: []
+                        },
+                        {
+                            source: 'src/components/Button.tsx',
+                            dependencies: [
+                                { resolved: 'react', coreModule: true, followable: false, dynamic: false }
+                            ],
+                            dependents: ['src/App.tsx']
+                        }
+                    ],
+                    summary: { totalDependencies: 4, violations: [] }
+                }));
+
+                await startServer(mockProvider, 6250);
+
+                const response = await fetch('http://localhost:6250/dependencies', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file: 'src/App.tsx' })
+                });
+
+                expect(response.status).toBe(200);
+                const data = await response.json();
+                expect(data.file).toBe('src/App.tsx');
+                expect(data.dependencies).toEqual(['src/components/Button.tsx', 'src/utils/helper.ts']);
+                expect(data.total).toBe(2);
+                expect(data.timestamp).toBeDefined();
+
+                await stopServer();
+            });
+
+            it('should return empty array for file with no dependencies', async () => {
+                const mockProvider: GraphDataProvider = vi.fn(() => ({
+                    modules: [
+                        {
+                            source: 'src/utils/helper.ts',
+                            dependencies: [],
+                            dependents: ['src/App.tsx']
+                        }
+                    ],
+                    summary: { totalDependencies: 0, violations: [] }
+                }));
+
+                await startServer(mockProvider, 6251);
+
+                const response = await fetch('http://localhost:6251/dependencies', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file: 'src/utils/helper.ts' })
+                });
+
+                expect(response.status).toBe(200);
+                const data = await response.json();
+                expect(data.dependencies).toEqual([]);
+                expect(data.total).toBe(0);
+
+                await stopServer();
+            });
+
+            it('should return 400 for missing file parameter', async () => {
+                const mockProvider: GraphDataProvider = vi.fn(() => ({
+                    modules: [],
+                    summary: { totalDependencies: 0, violations: [] }
+                }));
+
+                await startServer(mockProvider, 6252);
+
+                const response = await fetch('http://localhost:6252/dependencies', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+
+                expect(response.status).toBe(400);
+                const data = await response.json();
+                expect(data.error).toBe('File parameter is required and must be a string');
+                expect(data.code).toBe('INVALID_FILE_PARAM');
+
+                await stopServer();
+            });
+        });
+
+        describe('POST /dependents', () => {
+            it('should return dependents for a valid file', async () => {
+                const mockProvider: GraphDataProvider = vi.fn(() => ({
+                    modules: [
+                        {
+                            source: 'src/utils/helper.ts',
+                            dependencies: [],
+                            dependents: ['src/App.tsx', 'src/components/Button.tsx']
+                        },
+                        {
+                            source: 'src/App.tsx',
+                            dependencies: [
+                                { resolved: 'src/utils/helper.ts', coreModule: false, followable: true, dynamic: false }
+                            ],
+                            dependents: []
+                        }
+                    ],
+                    summary: { totalDependencies: 1, violations: [] }
+                }));
+
+                await startServer(mockProvider, 6253);
+
+                const response = await fetch('http://localhost:6253/dependents', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file: 'src/utils/helper.ts' })
+                });
+
+                expect(response.status).toBe(200);
+                const data = await response.json();
+                expect(data.file).toBe('src/utils/helper.ts');
+                expect(data.dependents).toEqual(['src/App.tsx', 'src/components/Button.tsx']);
+                expect(data.total).toBe(2);
+
+                await stopServer();
+            });
+
+            it('should return empty array for file with no dependents', async () => {
+                const mockProvider: GraphDataProvider = vi.fn(() => ({
+                    modules: [
+                        {
+                            source: 'src/App.tsx',
+                            dependencies: [],
+                            dependents: []
+                        }
+                    ],
+                    summary: { totalDependencies: 0, violations: [] }
+                }));
+
+                await startServer(mockProvider, 6254);
+
+                const response = await fetch('http://localhost:6254/dependents', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file: 'src/App.tsx' })
+                });
+
+                expect(response.status).toBe(200);
+                const data = await response.json();
+                expect(data.dependents).toEqual([]);
+                expect(data.total).toBe(0);
+
+                await stopServer();
+            });
+        });
+
+        describe('POST /dependency-chain', () => {
+            it('should find dependency chain between two files', async () => {
+                const mockProvider: GraphDataProvider = vi.fn(() => ({
+                    modules: [
+                        {
+                            source: 'src/App.tsx',
+                            dependencies: [
+                                { resolved: 'src/components/Button.tsx', coreModule: false, followable: true, dynamic: false }
+                            ],
+                            dependents: []
+                        },
+                        {
+                            source: 'src/components/Button.tsx',
+                            dependencies: [
+                                { resolved: 'src/utils/helper.ts', coreModule: false, followable: true, dynamic: false }
+                            ],
+                            dependents: ['src/App.tsx']
+                        },
+                        {
+                            source: 'src/utils/helper.ts',
+                            dependencies: [],
+                            dependents: ['src/components/Button.tsx']
+                        }
+                    ],
+                    summary: { totalDependencies: 2, violations: [] }
+                }));
+
+                await startServer(mockProvider, 6255);
+
+                const response = await fetch('http://localhost:6255/dependency-chain', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ from: 'src/App.tsx', to: 'src/utils/helper.ts' })
+                });
+
+                expect(response.status).toBe(200);
+                const data = await response.json();
+                expect(data.from).toBe('src/App.tsx');
+                expect(data.to).toBe('src/utils/helper.ts');
+                expect(data.chain).toEqual(['src/App.tsx', 'src/components/Button.tsx', 'src/utils/helper.ts']);
+                expect(data.found).toBe(true);
+
+                await stopServer();
+            });
+
+            it('should return empty chain when no path exists', async () => {
+                const mockProvider: GraphDataProvider = vi.fn(() => ({
+                    modules: [
+                        {
+                            source: 'src/App.tsx',
+                            dependencies: [],
+                            dependents: []
+                        },
+                        {
+                            source: 'src/utils/helper.ts',
+                            dependencies: [],
+                            dependents: []
+                        }
+                    ],
+                    summary: { totalDependencies: 0, violations: [] }
+                }));
+
+                await startServer(mockProvider, 6256);
+
+                const response = await fetch('http://localhost:6256/dependency-chain', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ from: 'src/App.tsx', to: 'src/utils/helper.ts' })
+                });
+
+                expect(response.status).toBe(200);
+                const data = await response.json();
+                expect(data.chain).toEqual([]);
+                expect(data.found).toBe(false);
+
+                await stopServer();
+            });
+
+            it('should return single file chain when from equals to', async () => {
+                const mockProvider: GraphDataProvider = vi.fn(() => ({
+                    modules: [
+                        {
+                            source: 'src/App.tsx',
+                            dependencies: [],
+                            dependents: []
+                        }
+                    ],
+                    summary: { totalDependencies: 0, violations: [] }
+                }));
+
+                await startServer(mockProvider, 6257);
+
+                const response = await fetch('http://localhost:6257/dependency-chain', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ from: 'src/App.tsx', to: 'src/App.tsx' })
+                });
+
+                expect(response.status).toBe(200);
+                const data = await response.json();
+                expect(data.chain).toEqual(['src/App.tsx']);
+                expect(data.found).toBe(true);
+
+                await stopServer();
+            });
+        });
+
+        describe('GET /circular-dependencies', () => {
+            it('should detect circular dependencies', async () => {
+                const mockProvider: GraphDataProvider = vi.fn(() => ({
+                    modules: [
+                        {
+                            source: 'src/A.tsx',
+                            dependencies: [
+                                { resolved: 'src/B.tsx', coreModule: false, followable: true, dynamic: false }
+                            ],
+                            dependents: ['src/B.tsx']
+                        },
+                        {
+                            source: 'src/B.tsx',
+                            dependencies: [
+                                { resolved: 'src/A.tsx', coreModule: false, followable: true, dynamic: false }
+                            ],
+                            dependents: ['src/A.tsx']
+                        }
+                    ],
+                    summary: { totalDependencies: 2, violations: [] }
+                }));
+
+                await startServer(mockProvider, 6258);
+
+                const response = await fetch('http://localhost:6258/circular-dependencies');
+
+                expect(response.status).toBe(200);
+                const data = await response.json();
+                expect(data.total).toBe(1);
+                expect(data.cycles).toHaveLength(1);
+                expect(data.cycles[0]).toEqual(['src/A.tsx', 'src/B.tsx', 'src/A.tsx']);
+
+                await stopServer();
+            });
+
+            it('should return empty array when no circular dependencies exist', async () => {
+                const mockProvider: GraphDataProvider = vi.fn(() => ({
+                    modules: [
+                        {
+                            source: 'src/App.tsx',
+                            dependencies: [
+                                { resolved: 'src/utils/helper.ts', coreModule: false, followable: true, dynamic: false }
+                            ],
+                            dependents: []
+                        },
+                        {
+                            source: 'src/utils/helper.ts',
+                            dependencies: [],
+                            dependents: ['src/App.tsx']
+                        }
+                    ],
+                    summary: { totalDependencies: 1, violations: [] }
+                }));
+
+                await startServer(mockProvider, 6259);
+
+                const response = await fetch('http://localhost:6259/circular-dependencies');
+
+                expect(response.status).toBe(200);
+                const data = await response.json();
+                expect(data.total).toBe(0);
+                expect(data.cycles).toEqual([]);
+
+                await stopServer();
+            });
+        });
+    });
+
     describe('Mock Data Provider Testing', () => {
         describe('Isolated Server Testing', () => {
             it('should work with completely mocked data provider', async () => {
