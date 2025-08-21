@@ -1,16 +1,20 @@
 {
   "name": "kiro-constellation",
+  "publisher": "xXValhallaCoderXx",
   "displayName": "kiro-constellation",
   "description": "",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.103.0"
+    "vscode": "^1.70.0"
   },
+  "extensionKind": ["workspace"],
   "categories": [
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onCommand:kiro-constellation.showPanel",
+    "*"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -18,12 +22,18 @@
       {
         "command": "kiro-constellation.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "kiro-constellation.showPanel",
+        "title": "Kiro Constellation: Show Panel"
       }
     ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
     "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "compile:extension": "node esbuild.js --extension-only",
+    "compile:webview": "node esbuild.js --webview-only",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
@@ -36,16 +46,21 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.103.0",
+    "@types/express": "^5.0.3",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/vscode": "^1.103.0",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
-    "eslint": "^9.25.1",
-    "esbuild": "^0.25.3",
-    "npm-run-all": "^4.1.5",
-    "typescript": "^5.8.3",
     "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2"
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.25.3",
+    "eslint": "^9.25.1",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "preact": "^10.27.1"
   }
 }

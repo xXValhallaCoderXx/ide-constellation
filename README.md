@@ -1,71 +1,203 @@
-# kiro-constellation README
+# Kiro Constellation POC
 
-This is the README for your extension "kiro-constellation". After writing up a brief description, we recommend including the following sections.
+A proof of concept VS Code extension that demonstrates the integration between VS Code, a local MCP (Model Context Protocol) server, and Kiro agent communication.
+
+## Overview
+
+This POC validates three critical architectural pillars:
+1. **VS Code Extension Integration** - Command palette integration and extension lifecycle
+2. **Webview Side Panel Interface** - Modern Preact-based UI within VS Code
+3. **MCP Server Management** - Background Express.js server for agent communication
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+- 🎯 VS Code command palette integration
+- 🖥️ Webview side panel with Preact UI
+- 🌐 Background MCP server on port 31337 (with fallback ports)
+- 📡 Real-time server status checking
+- 🔄 Graceful server lifecycle management
+- 🧪 Kiro agent integration validation
 
-For example if there is an image subfolder under your extension project workspace:
+## Installation & Development
 
-\!\[feature X\]\(images/feature-x.png\)
+### Prerequisites
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+- Node.js (v20.x or later)
+- VS Code (v1.103.0 or later)
+- npm
 
-## Requirements
+### Setup
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-## Extension Settings
+2. **Build the extension:**
+   ```bash
+   npm run compile
+   ```
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+3. **Run in VS Code:**
+   - Open this project in VS Code
+   - Press `F5` to launch a new Extension Development Host window
+   - The extension will automatically activate and start the MCP server
 
-For example:
+### Available Commands
 
-This extension contributes the following settings:
+- **Build extension only:** `npm run compile:extension`
+- **Build webview only:** `npm run compile:webview`
+- **Watch mode:** `npm run watch`
+- **Type checking:** `npm run check-types`
+- **Linting:** `npm run lint`
+- **Full build:** `npm run compile`
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+## Usage
 
-## Known Issues
+### 1. Launch the Panel
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+1. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
+2. Type "Kiro Constellation: Show Panel"
+3. Select the command to open the side panel
 
-## Release Notes
+### 2. Check Server Status
 
-Users appreciate release notes as you update your extension.
+- Click the "Check Server Status" button in the panel
+- The status will update with server information including:
+  - Server status (ok/error/unknown)
+  - Last check timestamp
+  - Server port
+  - Any error messages
 
-### 1.0.0
+### 3. Validate Kiro Integration
 
-Initial release of ...
+Run the validation script to test external agent communication:
 
-### 1.0.1
+```bash
+node validate-kiro-integration.js
+```
 
-Fixed issue #.
+This script simulates a Kiro agent connecting to the MCP server and validates:
+- Server accessibility on expected ports
+- Correct response format
+- Communication success
 
-### 1.1.0
+## Architecture
 
-Added features X, Y, and Z.
+### Components
 
----
+1. **Extension Core** (`src/extension.ts`)
+   - Extension activation/deactivation
+   - Command registration
+   - MCP server lifecycle management
 
-## Following extension guidelines
+2. **MCP Server** (`src/server/mcpServer.ts`)
+   - Express.js server on port 31337
+   - `/status` endpoint for health checks
+   - Graceful shutdown handling
+   - Port conflict resolution
 
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
+3. **Webview Manager** (`src/webview/webviewManager.ts`)
+   - Webview panel creation and management
+   - Message passing between webview and extension
+   - Server status communication bridge
 
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+4. **Preact UI** (`src/webview/components/`)
+   - Modern React-like components
+   - Real-time status updates
+   - VS Code theme integration
 
-## Working with Markdown
+### Build System
 
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
+- **esbuild** for fast compilation
+- **Dual build process** for extension and webview
+- **TypeScript** with JSX support for Preact
+- **ESLint** for code quality
 
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
+### API Endpoints
 
-## For more information
+- `GET /status` - Returns server status and timestamp
+- `GET /health` - Basic health check endpoint
 
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
+## Requirements Validation
 
-**Enjoy!**
+This POC addresses all specified requirements:
+
+### ✅ Requirement 1: VS Code Extension Integration
+- Command palette integration
+- Automatic MCP server initialization
+- Proper extension lifecycle management
+
+### ✅ Requirement 2: Webview Side Panel Interface
+- Dedicated "Kiro Constellation" panel
+- Status indicator and check button
+- Real-time server communication
+
+### ✅ Requirement 3: MCP Server Management
+- Express.js server on port 31337
+- `/status` endpoint with JSON response
+- Graceful shutdown handling
+
+### ✅ Requirement 4: Build System and UI Framework
+- Preact framework for UI components
+- esbuild compilation pipeline
+- Single JavaScript bundle generation
+
+### ✅ Requirement 5: Kiro Agent Integration Validation
+- External agent communication testing
+- Validation script for integration testing
+- Diagnostic information for troubleshooting
+
+## Troubleshooting
+
+### Server Won't Start
+- Check if port 31337 is available
+- Extension will try fallback ports (31338, 31339, etc.)
+- Check VS Code Developer Console for error messages
+
+### Webview Not Loading
+- Ensure both extension and webview builds completed successfully
+- Check browser console in webview for JavaScript errors
+- Verify CSS and JavaScript files are accessible
+
+### Status Check Fails
+- Verify MCP server is running (check extension logs)
+- Test server directly: `curl http://127.0.0.1:31337/status`
+- Run validation script: `node validate-kiro-integration.js`
+
+## Development Notes
+
+### File Structure
+```
+src/
+├── extension.ts              # Main extension entry point
+├── server/
+│   └── mcpServer.ts         # Express.js MCP server
+├── webview/
+│   ├── index.tsx            # Preact app entry point
+│   ├── webviewManager.ts    # VS Code webview management
+│   ├── components/          # Preact components
+│   └── styles/              # CSS styles
+└── types/
+    └── messages.ts          # TypeScript interfaces
+```
+
+### Key Technologies
+- **TypeScript** - Type-safe development
+- **Preact** - Lightweight React alternative
+- **Express.js** - HTTP server framework
+- **esbuild** - Fast bundling and compilation
+- **VS Code Extension API** - Platform integration
+
+## Future Enhancements
+
+This POC establishes the foundation for:
+- Advanced MCP protocol implementation
+- Multi-agent communication patterns
+- Context-aware feature development
+- Enhanced UI components and interactions
+- Production deployment strategies
+
+## License
+
+This is a proof of concept for internal development and testing purposes.

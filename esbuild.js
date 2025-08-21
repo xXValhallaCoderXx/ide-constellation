@@ -2,6 +2,8 @@ const esbuild = require("esbuild");
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
+const extensionOnly = process.argv.includes('--extension-only');
+const webviewOnly = process.argv.includes('--webview-only');
 
 /**
  * @type {import('esbuild').Plugin}
@@ -24,31 +26,61 @@ const esbuildProblemMatcherPlugin = {
 };
 
 async function main() {
-	const ctx = await esbuild.context({
-		entryPoints: [
-			'src/extension.ts'
-		],
-		bundle: true,
-		format: 'cjs',
-		minify: production,
-		sourcemap: !production,
-		sourcesContent: false,
-		platform: 'node',
-		outfile: 'dist/extension.js',
-		external: ['vscode'],
-		logLevel: 'silent',
-		plugins: [
-			/* add to the end of plugins array */
-			esbuildProblemMatcherPlugin,
-		],
-	});
+	const contexts = [];
+
+	// Extension build configuration
+	if (!webviewOnly) {
+		const extensionCtx = await esbuild.context({
+			entryPoints: [
+				'src/extension.ts'
+			],
+			bundle: true,
+			format: 'cjs',
+			minify: production,
+			sourcemap: !production,
+			sourcesContent: false,
+			platform: 'node',
+			outfile: 'dist/extension.js',
+			external: ['vscode'],
+			logLevel: 'silent',
+			plugins: [
+				/* add to the end of plugins array */
+				esbuildProblemMatcherPlugin,
+			],
+		});
+		contexts.push(extensionCtx);
+	}
+
+	// Webview build configuration
+	if (!extensionOnly) {
+		const webviewCtx = await esbuild.context({
+			entryPoints: [
+				'src/webview/index.tsx'
+			],
+			bundle: true,
+			format: 'iife',
+			minify: production,
+			sourcemap: !production,
+			sourcesContent: false,
+			platform: 'browser',
+			outfile: 'dist/webview.js',
+			jsx: 'automatic',
+			jsxImportSource: 'preact',
+			logLevel: 'silent',
+			plugins: [
+				esbuildProblemMatcherPlugin,
+			],
+		});
+		contexts.push(webviewCtx);
+	}
+
 	if (watch) {
-		// Trigger an initial build so background problem matchers receive a begin/end cycle
-		await ctx.rebuild();
-		await ctx.watch();
+		// Trigger initial builds so background problem matchers receive a begin/end cycle
+		await Promise.all(contexts.map(ctx => ctx.rebuild()));
+		await Promise.all(contexts.map(ctx => ctx.watch()));
 	} else {
-		await ctx.rebuild();
-		await ctx.dispose();
+		await Promise.all(contexts.map(ctx => ctx.rebuild()));
+		await Promise.all(contexts.map(ctx => ctx.dispose()));
 	}
 }
 
