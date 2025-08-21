@@ -1,0 +1,91 @@
+/* Main styles for the Kiro Constellation webview */
+
+.constellation-panel {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-editor-background);
+  padding: 20px;
+  margin: 0;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+h1 {
+  color: var(--vscode-titleBar-activeForeground);
+  margin-bottom: 20px;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.status-section {
+  margin: 20px 0;
+  padding: 15px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  background-color: var(--vscode-panel-background);
+}
+
+.status-text {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 14px;
+  margin-bottom: 10px;
+  padding: 8px;
+  background-color: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 2px;
+  min-height: 20px;
+  line-height: 1.4;
+}
+
+.status-text.status-ok {
+  border-color: var(--vscode-testing-iconPassed);
+  background-color: var(--vscode-inputValidation-infoBackground);
+}
+
+.status-text.status-error {
+  border-color: var(--vscode-testing-iconFailed);
+  background-color: var(--vscode-inputValidation-errorBackground);
+}
+
+.status-text.status-unknown {
+  border-color: var(--vscode-testing-iconUnset);
+  background-color: var(--vscode-inputValidation-warningBackground);
+}
+
+.status-text.status-checking {
+  border-color: var(--vscode-progressBar-background);
+  background-color: var(--vscode-input-background);
+  opacity: 0.8;
+}
+
+.check-button {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--vscode-font-family);
+  transition: background-color 0.2s ease;
+}
+
+.check-button:hover:not(:disabled) {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.check-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--vscode-button-secondaryBackground);
+}
+
+.check-button:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
