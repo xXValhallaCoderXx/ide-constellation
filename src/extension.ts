@@ -7,28 +7,38 @@ let mcpServer: MCPServer | null = null;
 let webviewManager: WebviewManager | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
-	console.log('Kiro Constellation extension is now active!');
+	const output = vscode.window.createOutputChannel('Kiro Constellation');
+	context.subscriptions.push(output);
+	const log = (msg: string) => {
+		const line = `[${new Date().toISOString()}] ${msg}`;
+		console.log(line);
+		output.appendLine(line);
+	};
+
+	log('Extension activating...');
 
 	// Initialize MCP Server
 	try {
 		mcpServer = new MCPServer();
 		await mcpServer.start();
-		console.log(`MCP Server started on port ${mcpServer.getPort()}`);
+		log(`MCP Server started on port ${mcpServer.getPort()}`);
 	} catch (error) {
-		console.error('Failed to start MCP Server:', error);
+		log(`Failed to start MCP Server: ${error instanceof Error ? error.message : String(error)}`);
 		vscode.window.showErrorMessage('Failed to start Kiro Constellation MCP Server');
 	}
 
 	// Initialize Webview Manager
-	webviewManager = new WebviewManager(mcpServer);
+	webviewManager = new WebviewManager(mcpServer, output);
 
 	// Register the Hello World command (keeping for compatibility)
 	const helloWorldDisposable = vscode.commands.registerCommand('kiro-constellation.helloWorld', () => {
+		log('Hello World command executed');
 		vscode.window.showInformationMessage('Hello World from kiro-constellation!');
 	});
 
 	// Register the Show Panel command
 	const showPanelDisposable = vscode.commands.registerCommand('kiro-constellation.showPanel', () => {
+		log('Show Panel command executed');
 		webviewManager?.createOrShowPanel(context);
 	});
 
@@ -36,6 +46,7 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export async function deactivate() {
+	// No output channel at this point; keep a console log for host logs
 	console.log('Kiro Constellation extension is deactivating...');
 	
 	// Clean up webview manager

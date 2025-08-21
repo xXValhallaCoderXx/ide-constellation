@@ -1,16 +1,20 @@
 {
   "name": "kiro-constellation",
+  "publisher": "xXValhallaCoderXx",
   "displayName": "kiro-constellation",
   "description": "",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.103.0"
+    "vscode": "^1.70.0"
   },
+  "extensionKind": ["workspace"],
   "categories": [
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onCommand:kiro-constellation.showPanel",
+    "*"
   ],
   "main": "./dist/extension.js",
   "contributes": {

@@ -23888,10 +23888,13 @@ var vscode = __toESM(require("vscode"));
 var WebviewManager = class {
   currentPanel = void 0;
   mcpServer = null;
-  constructor(mcpServer2) {
+  output;
+  constructor(mcpServer2, output) {
     this.mcpServer = mcpServer2;
+    this.output = output;
   }
   createOrShowPanel(context) {
+    this.output?.appendLine(`[${(/* @__PURE__ */ new Date()).toISOString()}] Creating or showing webview panel...`);
     const columnToShowIn = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : void 0;
     if (this.currentPanel) {
       this.currentPanel.reveal(columnToShowIn);
@@ -23904,12 +23907,17 @@ var WebviewManager = class {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "dist")]
+        localResourceRoots: [
+          vscode.Uri.joinPath(context.extensionUri, "dist"),
+          vscode.Uri.joinPath(context.extensionUri, "src", "webview", "styles")
+        ]
       }
     );
     this.currentPanel.webview.html = this.getWebviewContent(context);
+    this.output?.appendLine(`[${(/* @__PURE__ */ new Date()).toISOString()}] Webview HTML set.`);
     this.currentPanel.webview.onDidReceiveMessage(
       async (message) => {
+        this.output?.appendLine(`[${(/* @__PURE__ */ new Date()).toISOString()}] Webview message received: ${JSON.stringify(message)}`);
         await this.handleWebviewMessage(message);
       },
       void 0,
@@ -23917,6 +23925,7 @@ var WebviewManager = class {
     );
     this.currentPanel.onDidDispose(
       () => {
+        this.output?.appendLine(`[${(/* @__PURE__ */ new Date()).toISOString()}] Webview panel disposed.`);
         this.currentPanel = void 0;
       },
       null,
@@ -23946,6 +23955,7 @@ var WebviewManager = class {
           }
         };
         this.currentPanel?.webview.postMessage(statusMessage);
+        this.output?.appendLine(`[${(/* @__PURE__ */ new Date()).toISOString()}] Sent statusUpdate to webview: ${JSON.stringify(statusMessage.data)}`);
         const serverInfoMessage = {
           command: "serverInfo",
           data: {
@@ -23954,6 +23964,7 @@ var WebviewManager = class {
           }
         };
         this.currentPanel?.webview.postMessage(serverInfoMessage);
+        this.output?.appendLine(`[${(/* @__PURE__ */ new Date()).toISOString()}] Sent serverInfo to webview: ${JSON.stringify(serverInfoMessage.data)}`);
       } catch (error) {
         const errorMessage = {
           command: "statusUpdate",
@@ -23964,6 +23975,7 @@ var WebviewManager = class {
           }
         };
         this.currentPanel?.webview.postMessage(errorMessage);
+        this.output?.appendLine(`[${(/* @__PURE__ */ new Date()).toISOString()}] Error during status check: ${error instanceof Error ? error.message : String(error)}`);
       }
     } else {
       const errorMessage = {
@@ -23975,13 +23987,17 @@ var WebviewManager = class {
         }
       };
       this.currentPanel?.webview.postMessage(errorMessage);
+      this.output?.appendLine(`[${(/* @__PURE__ */ new Date()).toISOString()}] MCP Server not initialized.`);
     }
   }
   getWebviewContent(context) {
-    const webviewUri = this.currentPanel?.webview.asWebviewUri(
+    const webview = this.currentPanel?.webview;
+    const nonce = this.getNonce();
+    const cspSource = webview.cspSource;
+    const webviewUri = webview.asWebviewUri(
       vscode.Uri.joinPath(context.extensionUri, "dist", "webview.js")
     );
-    const cssUri = this.currentPanel?.webview.asWebviewUri(
+    const cssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(context.extensionUri, "src", "webview", "styles", "main.css")
     );
     return `<!DOCTYPE html>
@@ -23990,6 +24006,7 @@ var WebviewManager = class {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kiro Constellation</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; script-src 'nonce-${nonce}' ${cspSource}; style-src ${cspSource} 'unsafe-inline'; font-src ${cspSource};" />
     <link href="${cssUri}" rel="stylesheet">
     <style>
         /* Fallback styles in case CSS file doesn't load */
@@ -24019,7 +24036,7 @@ var WebviewManager = class {
         </div>
     </div>
 
-    <script>
+  <script nonce="${nonce}">
         // Make VS Code API available globally
         window.vscode = acquireVsCodeApi();
         
@@ -24067,7 +24084,7 @@ var WebviewManager = class {
             }
         }, 2000);
     </script>
-    ${webviewUri ? `<script src="${webviewUri}"></script>` : ""}
+    ${webviewUri ? `<script src="${webviewUri}" nonce="${nonce}"></script>` : ""}
 </body>
 </html>`;
   }
@@ -24080,26 +24097,43 @@ var WebviewManager = class {
   updateMCPServer(mcpServer2) {
     this.mcpServer = mcpServer2;
   }
+  getNonce() {
+    const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let text = "";
+    for (let i = 0; i < 32; i++) {
+      text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
+  }
 };
 
 // src/extension.ts
 var mcpServer = null;
 var webviewManager = null;
 async function activate(context) {
-  console.log("Kiro Constellation extension is now active!");
+  const output = vscode2.window.createOutputChannel("Kiro Constellation");
+  context.subscriptions.push(output);
+  const log = (msg) => {
+    const line = `[${(/* @__PURE__ */ new Date()).toISOString()}] ${msg}`;
+    console.log(line);
+    output.appendLine(line);
+  };
+  log("Extension activating...");
   try {
     mcpServer = new MCPServer();
     await mcpServer.start();
-    console.log(`MCP Server started on port ${mcpServer.getPort()}`);
+    log(`MCP Server started on port ${mcpServer.getPort()}`);
   } catch (error) {
-    console.error("Failed to start MCP Server:", error);
+    log(`Failed to start MCP Server: ${error instanceof Error ? error.message : String(error)}`);
     vscode2.window.showErrorMessage("Failed to start Kiro Constellation MCP Server");
   }
-  webviewManager = new WebviewManager(mcpServer);
+  webviewManager = new WebviewManager(mcpServer, output);
   const helloWorldDisposable = vscode2.commands.registerCommand("kiro-constellation.helloWorld", () => {
+    log("Hello World command executed");
     vscode2.window.showInformationMessage("Hello World from kiro-constellation!");
   });
   const showPanelDisposable = vscode2.commands.registerCommand("kiro-constellation.showPanel", () => {
+    log("Show Panel command executed");
     webviewManager?.createOrShowPanel(context);
   });
   context.subscriptions.push(helloWorldDisposable, showPanelDisposable);
