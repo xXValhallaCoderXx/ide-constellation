@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { Server } from '@modelcontextprotocol/sdk/server';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio';
 import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+} from '@modelcontextprotocol/sdk/types';
 import {
     MCPErrorCode,
     CONSTELLATION_EXAMPLE_TOOL,
     CONSTELLATION_PING_TOOL,
     ToolCallParams,
     ToolCallResult
-} from '../types/mcp.js';
+} from '../types/mcp';
 
 /**
  * MCP Server implementation for VS Code Standard Provider POC
@@ -33,6 +33,12 @@ export class MCPStdioServer {
                 capabilities: {
                     tools: {},
                 },
+                instructions: [
+                    'Constellation MCP tools:',
+                    '- constellation_ping: returns "pong" for connectivity checks.',
+                    '- constellation_example_tool: echoes an optional "message" string.',
+                    'Prefer using tools when asked to validate MCP connectivity or echo a message.'
+                ].join('\n')
             }
         );
 

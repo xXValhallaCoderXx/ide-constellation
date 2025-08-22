@@ -1,6 +1,12 @@
 {
 	"compilerOptions": {
-		"module": "Node16",
+		"baseUrl": ".",
+		"paths": {
+			"@modelcontextprotocol/sdk/*": [
+				"node_modules/@modelcontextprotocol/sdk/dist/esm/*"
+			]
+		},
+		"module": "ESNext",
 		"target": "ES2022",
 		"lib": [
 			"ES2022",
@@ -11,7 +17,7 @@
 		"strict": true, /* enable all strict type-checking options */
 		"jsx": "react-jsx",
 		"jsxImportSource": "preact",
-		"moduleResolution": "Node16",
+		"moduleResolution": "bundler",
 		"allowSyntheticDefaultImports": true,
 		"esModuleInterop": true,
 		/* Additional Checks */
