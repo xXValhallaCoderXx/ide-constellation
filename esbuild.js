@@ -95,26 +95,6 @@ async function main() {
 			],
 		});
 		contexts.push(mcpServerCtx);
-
-		// Also emit a second bundle at dist/mcp-stdio.js for tools expecting that path
-		const mcpServerAltCtx = await esbuild.context({
-			entryPoints: [
-				'src/mcp/mcpStdioServer.ts'
-			],
-			bundle: true,
-			format: 'cjs',
-			minify: production,
-			sourcemap: !production,
-			sourcesContent: false,
-			platform: 'node',
-			outfile: 'dist/mcp-stdio.js',
-			external: [],
-			logLevel: 'silent',
-			plugins: [
-				esbuildProblemMatcherPlugin,
-			],
-		});
-		contexts.push(mcpServerAltCtx);
 	}
 
 	if (watch) {

@@ -1,19 +1,17 @@
 import * as vscode from 'vscode';
-import { MCPServer } from './server/mcpServer';
 import { WebviewManager } from './webview/webviewManager';
 import { KiroConstellationMCPProvider } from './mcp/mcpProvider';
 import * as path from 'path';
 import { spawn } from 'child_process';
 
 // POC Configuration Flag
-// Set to true to test VS Code Standard MCP Provider POC
-// Set to false to use the existing Express.js MCP server
+// Set to true to use the VS Code Standard MCP Provider POC
 const USE_STANDARD_PROVIDER_POC = true;
 
 // Global instances
-let mcpServer: MCPServer | null = null;
 let webviewManager: WebviewManager | null = null;
 let mcpProvider: KiroConstellationMCPProvider | null = null;
+const IS_DEV = process.env.NODE_ENV !== 'production';
 
 export async function activate(context: vscode.ExtensionContext) {
 	const output = vscode.window.createOutputChannel('Kiro Constellation');
@@ -49,20 +47,9 @@ export async function activate(context: vscode.ExtensionContext) {
 		// Initialize Webview Manager (always available)
 		webviewManager = new WebviewManager(null, output);
 	} else {
-		log('[PRODUCTION] Using existing Express.js MCP server');
-
-		// Initialize MCP Server (existing implementation)
-		try {
-			mcpServer = new MCPServer();
-			await mcpServer.start();
-			log(`MCP Server started on port ${mcpServer.getPort()}`);
-		} catch (error) {
-			log(`Failed to start MCP Server: ${error instanceof Error ? error.message : String(error)}`);
-			vscode.window.showErrorMessage('Failed to start Kiro Constellation MCP Server');
-		}
-
-		// Initialize Webview Manager
-		webviewManager = new WebviewManager(mcpServer, output);
+		// Legacy HTTP server path removed; MCP provider is the default
+		log('[PRODUCTION] MCP provider path active');
+		webviewManager = new WebviewManager(null, output);
 	}
 
 	// Register the Hello World command (keeping for compatibility)
@@ -79,6 +66,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Register a debug command to manually launch the MCP stdio server
 	const debugLaunchDisposable = vscode.commands.registerCommand('kiro-constellation.debugLaunchMcp', async () => {
+		if (!IS_DEV) {
+			log('[DEBUG] Debug launch is disabled in production builds');
+			return;
+		}
 		try {
 			const serverScriptPath = path.join(context.extensionPath, 'out', 'mcp-server.js');
 			log(`[DEBUG] Spawning MCP server with: ${process.execPath} ${serverScriptPath}`);
@@ -133,17 +124,6 @@ export async function deactivate() {
 		console.log('[POC] Cleaning up MCP Provider POC...');
 		// MCP Provider cleanup is handled automatically by VS Code through disposables
 		mcpProvider = null;
-	} else {
-		// Stop MCP Server (existing implementation)
-		if (mcpServer) {
-			try {
-				await mcpServer.stop();
-				console.log('MCP Server stopped successfully');
-			} catch (error) {
-				console.error('Error stopping MCP Server:', error);
-			}
-			mcpServer = null;
-		}
 	}
 }
 

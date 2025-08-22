@@ -59,7 +59,6 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/express": "^5.0.3",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/vscode": "^1.103.0",
@@ -74,7 +73,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.3",
-    "express": "^5.1.0",
     "preact": "^10.27.1"
   }
 }

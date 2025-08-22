@@ -7,15 +7,14 @@ A proof of concept VS Code extension that demonstrates the integration between V
 This POC validates three critical architectural pillars:
 1. **VS Code Extension Integration** - Command palette integration and extension lifecycle
 2. **Webview Side Panel Interface** - Modern Preact-based UI within VS Code
-3. **MCP Server Management** - Background Express.js server for agent communication
+3. **MCP Provider** - VS Code Standard MCP provider returning a stdio server
 
 ## Features
 
 - 🎯 VS Code command palette integration
 - 🖥️ Webview side panel with Preact UI
-- 🌐 Background MCP server on port 31337 (with fallback ports)
-- 📡 Real-time server status checking
-- 🔄 Graceful server lifecycle management
+- 🤖 MCP stdio server bundled and launched by VS Code
+- �️ Tools: `constellation_example_tool`, `constellation_ping`
 - 🧪 Kiro agent integration validation
 
 ## Installation & Development
@@ -41,7 +40,7 @@ This POC validates three critical architectural pillars:
 3. **Run in VS Code:**
    - Open this project in VS Code
    - Press `F5` to launch a new Extension Development Host window
-   - The extension will automatically activate and start the MCP server
+   - The extension will activate, register the MCP provider, and expose tools
 
 ### Available Commands
 
@@ -60,27 +59,14 @@ This POC validates three critical architectural pillars:
 2. Type "Kiro Constellation: Show Panel"
 3. Select the command to open the side panel
 
-### 2. Check Server Status
+### 2. Validate MCP Tools
 
-- Click the "Check Server Status" button in the panel
-- The status will update with server information including:
-  - Server status (ok/error/unknown)
-  - Last check timestamp
-  - Server port
-  - Any error messages
+- Use the command: "Kiro Constellation: Debug Launch MCP (stdio)" to emit initialize/list/call over stdio
+- Verify logs in the "Kiro Constellation" output channel for tool results (e.g., "pong")
 
 ### 3. Validate Kiro Integration
 
-Run the validation script to test external agent communication:
-
-```bash
-node validate-kiro-integration.js
-```
-
-This script simulates a Kiro agent connecting to the MCP server and validates:
-- Server accessibility on expected ports
-- Correct response format
-- Communication success
+Kiro can discover the provider via the VS Code MCP API. No HTTP endpoints are required.
 
 ## Architecture
 
@@ -89,13 +75,11 @@ This script simulates a Kiro agent connecting to the MCP server and validates:
 1. **Extension Core** (`src/extension.ts`)
    - Extension activation/deactivation
    - Command registration
-   - MCP server lifecycle management
+   - MCP provider registration and debug helpers
 
-2. **MCP Server** (`src/server/mcpServer.ts`)
-   - Express.js server on port 31337
-   - `/status` endpoint for health checks
-   - Graceful shutdown handling
-   - Port conflict resolution
+2. **MCP stdio Server** (`src/mcp/mcpStdioServer.ts`)
+   - Implements `initialize`, `tools/list`, and `tools/call`
+   - Tools: `constellation_example_tool`, `constellation_ping`
 
 3. **Webview Manager** (`src/webview/webviewManager.ts`)
    - Webview panel creation and management
@@ -116,8 +100,7 @@ This script simulates a Kiro agent connecting to the MCP server and validates:
 
 ### API Endpoints
 
-- `GET /status` - Returns server status and timestamp
-- `GET /health` - Basic health check endpoint
+No HTTP endpoints. Communication uses MCP over stdio.
 
 ## Requirements Validation
 
@@ -133,10 +116,9 @@ This POC addresses all specified requirements:
 - Status indicator and check button
 - Real-time server communication
 
-### ✅ Requirement 3: MCP Server Management
-- Express.js server on port 31337
-- `/status` endpoint with JSON response
-- Graceful shutdown handling
+### ✅ Requirement 3: MCP Provider
+- VS Code MCP provider returns a stdio server definition
+- Tools are discoverable and callable via MCP
 
 ### ✅ Requirement 4: Build System and UI Framework
 - Preact framework for UI components
@@ -171,21 +153,21 @@ This POC addresses all specified requirements:
 ```
 src/
 ├── extension.ts              # Main extension entry point
-├── server/
-│   └── mcpServer.ts         # Express.js MCP server
+├── mcp/
+│   └── mcpStdioServer.ts     # MCP stdio server
 ├── webview/
 │   ├── index.tsx            # Preact app entry point
 │   ├── webviewManager.ts    # VS Code webview management
 │   ├── components/          # Preact components
 │   └── styles/              # CSS styles
 └── types/
-    └── messages.ts          # TypeScript interfaces
+   └── messages.ts          # TypeScript interfaces
 ```
 
 ### Key Technologies
 - **TypeScript** - Type-safe development
 - **Preact** - Lightweight React alternative
-- **Express.js** - HTTP server framework
+- **VS Code MCP API** - Server definition provider
 - **esbuild** - Fast bundling and compilation
 - **VS Code Extension API** - Platform integration
 

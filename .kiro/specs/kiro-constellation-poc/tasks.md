@@ -1,13 +1,13 @@
 # Implementation Plan
 
 - [x] 1. Set up project dependencies and build configuration
-  - Install required dependencies: express, preact, and their type definitions
+  - Install required dependencies: preact and related type definitions
   - Configure esbuild for both extension and webview compilation
   - Update package.json scripts for dual build process
   - _Requirements: 4.1, 4.2, 4.3_
 
 - [x] 2. Implement MCP Server core functionality
-  - [x] 2.1 Create Express.js server with status endpoint
+  - [x] 2.1 Implement MCP stdio server with `initialize`/`tools/*`
     - Write MCPServer class with start/stop methods
     - Implement GET /status endpoint returning JSON with status and timestamp
     - Add proper error handling and logging
