@@ -221,6 +221,7 @@ var KiroConstellationMCPProvider = class {
       if (!vscode2.lm || typeof vscode2.lm.registerMcpServerDefinitionProvider !== "function") {
         this.log("[FAILURE] vscode.lm.registerMcpServerDefinitionProvider is not available");
         this.log("[FAILURE] The standard MCP API is not supported in this IDE");
+        await this.offerCreateWorkspaceMcpConfig();
         return false;
       }
       this.log("[SUCCESS] VS Code MCP API is available!");
@@ -245,6 +246,79 @@ var KiroConstellationMCPProvider = class {
         this.log("[DEBUG] Check package.json contributes.mcpServerDefinitionProviders array");
       }
       return false;
+    }
+  }
+  /**
+   * Offer to create or update a Kiro MCP config pointing to the bundled stdio server.
+   * Workspace level: .kiro/settings/mcp.json
+   * User level: ~/.kiro/settings/mcp.json
+   */
+  async offerCreateWorkspaceMcpConfig() {
+    try {
+      const folders = vscode2.workspace.workspaceFolders;
+      if (!folders || folders.length === 0) {
+        this.log("[FALLBACK] No workspace folder is open; cannot create workspace-level Kiro MCP config");
+        return;
+      }
+      let targetFolder = folders[0];
+      if (folders.length > 1) {
+        const picked = await vscode2.window.showQuickPick(
+          folders.map((f) => ({ label: f.name, description: f.uri.fsPath, folder: f })),
+          { placeHolder: "Select a workspace folder for .kiro/settings/mcp.json" }
+        );
+        if (!picked) {
+          this.log("[FALLBACK] Creation cancelled (no folder selected)");
+          return;
+        }
+        targetFolder = picked.folder;
+      }
+      const wsPath = targetFolder.uri.fsPath;
+      const kiroDir = path.join(wsPath, ".kiro", "settings");
+      if (!fs.existsSync(kiroDir)) {
+        fs.mkdirSync(kiroDir, { recursive: true });
+      }
+      const mcpJsonPath = path.join(kiroDir, "mcp.json");
+      const targetName = targetFolder.name;
+      const serverScriptPath = this.getServerScriptPath();
+      if (!fs.existsSync(serverScriptPath)) {
+        this.log(`[FALLBACK] MCP server script missing at ${serverScriptPath}. Run: npm run compile:mcp`);
+        vscode2.window.showWarningMessage("Constellation MCP server bundle not found. Run the build first (npm run compile:mcp).");
+        return;
+      }
+      let current = {};
+      try {
+        if (fs.existsSync(mcpJsonPath)) {
+          const raw = fs.readFileSync(mcpJsonPath, "utf8");
+          current = JSON.parse(raw || "{}");
+        }
+      } catch (e) {
+        this.log(`[FALLBACK] Failed to parse existing mcp.json, will overwrite: ${e instanceof Error ? e.message : String(e)}`);
+        current = {};
+      }
+      if (!current || typeof current !== "object") {
+        current = {};
+      }
+      if (!current.mcpServers || typeof current.mcpServers !== "object") {
+        current.mcpServers = {};
+      }
+      const serverId = "constellation-stdio";
+      const existing = current.mcpServers[serverId] || {};
+      const suggestedAutoApprove = ["constellation_ping", "constellation_example_tool"];
+      const mergedAutoApprove = Array.from(/* @__PURE__ */ new Set([...existing.autoApprove || [], ...suggestedAutoApprove]));
+      current.mcpServers[serverId] = {
+        type: "stdio",
+        // Use system Node from PATH to run the bundled server
+        command: "node",
+        args: [serverScriptPath],
+        env: existing.env || {},
+        disabled: typeof existing.disabled === "boolean" ? existing.disabled : false,
+        autoApprove: mergedAutoApprove
+      };
+      fs.writeFileSync(mcpJsonPath, JSON.stringify(current, null, 2) + "\n", "utf8");
+      this.log(`[FALLBACK] Wrote MCP config to ${mcpJsonPath}`);
+      vscode2.window.showInformationMessage(`Created/updated MCP config at '${targetName}'.`);
+    } catch (err) {
+      this.log(`[FALLBACK] Failed to create Kiro MCP config: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   /**
@@ -291,7 +365,7 @@ var KiroConstellationMCPProvider = class {
    */
   getServerScriptPath() {
     const serverScriptPath = path.join(this.extensionContext.extensionPath, "out", "mcp-server.js");
-    this.log(`[POC] Resolved server script path from extensionPath: ${this.extensionContext.extensionPath}`);
+    this.log(`[POC] Bundled MCP server script path: ${serverScriptPath}`);
     return serverScriptPath;
   }
   /**

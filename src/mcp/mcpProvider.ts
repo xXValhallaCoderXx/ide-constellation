@@ -27,6 +27,8 @@ export class KiroConstellationMCPProvider {
             if (!vscode.lm || typeof vscode.lm.registerMcpServerDefinitionProvider !== 'function') {
                 this.log('[FAILURE] vscode.lm.registerMcpServerDefinitionProvider is not available');
                 this.log('[FAILURE] The standard MCP API is not supported in this IDE');
+                // Fallback: Offer to create a Kiro MCP config using stdio server
+                await this.offerCreateWorkspaceMcpConfig();
                 return false;
             }
 
@@ -62,6 +64,91 @@ export class KiroConstellationMCPProvider {
             }
 
             return false;
+        }
+    }
+
+    /**
+     * Offer to create or update a Kiro MCP config pointing to the bundled stdio server.
+     * Workspace level: .kiro/settings/mcp.json
+     * User level: ~/.kiro/settings/mcp.json
+     */
+    private async offerCreateWorkspaceMcpConfig(): Promise<void> {
+        try {
+            const folders = vscode.workspace.workspaceFolders;
+
+            // Resolve workspace target path
+            if (!folders || folders.length === 0) {
+                this.log('[FALLBACK] No workspace folder is open; cannot create workspace-level Kiro MCP config');
+                return;
+            }
+            let targetFolder = folders[0];
+            if (folders.length > 1) {
+                const picked = await vscode.window.showQuickPick(
+                    folders.map(f => ({ label: f.name, description: f.uri.fsPath, folder: f })),
+                    { placeHolder: 'Select a workspace folder for .kiro/settings/mcp.json' }
+                );
+                if (!picked) {
+                    this.log('[FALLBACK] Creation cancelled (no folder selected)');
+                    return;
+                }
+                targetFolder = picked.folder;
+            }
+            const wsPath = targetFolder.uri.fsPath;
+            const kiroDir = path.join(wsPath, '.kiro', 'settings');
+            if (!fs.existsSync(kiroDir)) {
+                fs.mkdirSync(kiroDir, { recursive: true });
+            }
+            const mcpJsonPath = path.join(kiroDir, 'mcp.json');
+            const targetName = targetFolder.name;
+
+            // Ensure bundled server exists
+            const serverScriptPath = this.getServerScriptPath();
+            if (!fs.existsSync(serverScriptPath)) {
+                this.log(`[FALLBACK] MCP server script missing at ${serverScriptPath}. Run: npm run compile:mcp`);
+                vscode.window.showWarningMessage('Constellation MCP server bundle not found. Run the build first (npm run compile:mcp).');
+                return;
+            }
+
+            // Read existing mcp.json (if present) and merge
+            let current: any = {};
+            try {
+                if (fs.existsSync(mcpJsonPath)) {
+                    const raw = fs.readFileSync(mcpJsonPath, 'utf8');
+                    current = JSON.parse(raw || '{}');
+                }
+            } catch (e) {
+                this.log(`[FALLBACK] Failed to parse existing mcp.json, will overwrite: ${e instanceof Error ? e.message : String(e)}`);
+                current = {};
+            }
+
+            if (!current || typeof current !== 'object') {
+                current = {};
+            }
+            if (!current.mcpServers || typeof current.mcpServers !== 'object') {
+                current.mcpServers = {};
+            }
+
+            // Define/update the constellation stdio server entry
+            const serverId = 'constellation-stdio';
+            const existing = current.mcpServers[serverId] || {};
+            const suggestedAutoApprove = ['constellation_ping', 'constellation_example_tool'];
+            const mergedAutoApprove = Array.from(new Set([...(existing.autoApprove || []), ...suggestedAutoApprove]));
+            current.mcpServers[serverId] = {
+                type: 'stdio',
+                // Use system Node from PATH to run the bundled server
+                command: 'node',
+                args: [serverScriptPath],
+                env: existing.env || {},
+                disabled: typeof existing.disabled === 'boolean' ? existing.disabled : false,
+                autoApprove: mergedAutoApprove
+            };
+
+            fs.writeFileSync(mcpJsonPath, JSON.stringify(current, null, 2) + '\n', 'utf8');
+
+            this.log(`[FALLBACK] Wrote MCP config to ${mcpJsonPath}`);
+            vscode.window.showInformationMessage(`Created/updated MCP config at '${targetName}'.`);
+        } catch (err) {
+            this.log(`[FALLBACK] Failed to create Kiro MCP config: ${err instanceof Error ? err.message : String(err)}`);
         }
     }
 
@@ -120,9 +207,9 @@ export class KiroConstellationMCPProvider {
     private getServerScriptPath(): string {
         // Use extensionPath to resolve the bundled server script
         // This works in local development, remote containers, and Codespaces
-        const serverScriptPath = path.join(this.extensionContext.extensionPath, 'out', 'mcp-server.js');
+    const serverScriptPath = path.join(this.extensionContext.extensionPath, 'out', 'mcp-server.js');
 
-        this.log(`[POC] Resolved server script path from extensionPath: ${this.extensionContext.extensionPath}`);
+    this.log(`[POC] Bundled MCP server script path: ${serverScriptPath}`);
 
         return serverScriptPath;
     }
