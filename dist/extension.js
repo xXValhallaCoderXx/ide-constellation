@@ -5482,10 +5482,10 @@ var require_raw_body = __commonJS({
       if (done) {
         return readStream(stream, encoding, length, limit, wrap(done));
       }
-      return new Promise(function executor(resolve, reject) {
+      return new Promise(function executor(resolve2, reject) {
         readStream(stream, encoding, length, limit, function onRead(err, buf) {
           if (err) return reject(err);
-          resolve(buf);
+          resolve2(buf);
         });
       });
     }
@@ -15301,11 +15301,11 @@ var require_mime_types = __commonJS({
       }
       return exts[0];
     }
-    function lookup(path) {
-      if (!path || typeof path !== "string") {
+    function lookup(path3) {
+      if (!path3 || typeof path3 !== "string") {
         return false;
       }
-      var extension2 = extname("x." + path).toLowerCase().slice(1);
+      var extension2 = extname("x." + path3).toLowerCase().slice(1);
       if (!extension2) {
         return false;
       }
@@ -18762,13 +18762,13 @@ var require_view = __commonJS({
   "node_modules/express/lib/view.js"(exports2, module2) {
     "use strict";
     var debug = require_src()("express:view");
-    var path = require("node:path");
-    var fs = require("node:fs");
-    var dirname = path.dirname;
-    var basename = path.basename;
-    var extname = path.extname;
-    var join = path.join;
-    var resolve = path.resolve;
+    var path3 = require("node:path");
+    var fs2 = require("node:fs");
+    var dirname = path3.dirname;
+    var basename = path3.basename;
+    var extname = path3.extname;
+    var join3 = path3.join;
+    var resolve2 = path3.resolve;
     module2.exports = View;
     function View(name, options) {
       var opts = options || {};
@@ -18797,17 +18797,17 @@ var require_view = __commonJS({
       this.path = this.lookup(fileName);
     }
     View.prototype.lookup = function lookup(name) {
-      var path2;
+      var path4;
       var roots = [].concat(this.root);
       debug('lookup "%s"', name);
-      for (var i = 0; i < roots.length && !path2; i++) {
+      for (var i = 0; i < roots.length && !path4; i++) {
         var root = roots[i];
-        var loc = resolve(root, name);
+        var loc = resolve2(root, name);
         var dir = dirname(loc);
         var file = basename(loc);
-        path2 = this.resolve(dir, file);
+        path4 = this.resolve(dir, file);
       }
-      return path2;
+      return path4;
     };
     View.prototype.render = function render(options, callback) {
       var sync = true;
@@ -18827,23 +18827,23 @@ var require_view = __commonJS({
       });
       sync = false;
     };
-    View.prototype.resolve = function resolve2(dir, file) {
+    View.prototype.resolve = function resolve3(dir, file) {
       var ext = this.ext;
-      var path2 = join(dir, file);
-      var stat = tryStat(path2);
+      var path4 = join3(dir, file);
+      var stat = tryStat(path4);
       if (stat && stat.isFile()) {
-        return path2;
+        return path4;
       }
-      path2 = join(dir, basename(file, ext), "index" + ext);
-      stat = tryStat(path2);
+      path4 = join3(dir, basename(file, ext), "index" + ext);
+      stat = tryStat(path4);
       if (stat && stat.isFile()) {
-        return path2;
+        return path4;
       }
     };
-    function tryStat(path2) {
-      debug('stat "%s"', path2);
+    function tryStat(path4) {
+      debug('stat "%s"', path4);
       try {
-        return fs.statSync(path2);
+        return fs2.statSync(path4);
       } catch (e) {
         return void 0;
       }
@@ -20065,9 +20065,9 @@ var require_dist = __commonJS({
       function consume(endType) {
         const tokens2 = [];
         while (true) {
-          const path = it.text();
-          if (path)
-            tokens2.push({ type: "text", value: encodePath(path) });
+          const path3 = it.text();
+          if (path3)
+            tokens2.push({ type: "text", value: encodePath(path3) });
           const param = it.tryConsume("PARAM");
           if (param) {
             tokens2.push({
@@ -20099,16 +20099,16 @@ var require_dist = __commonJS({
       const tokens = consume("END");
       return new TokenData(tokens);
     }
-    function compile(path, options = {}) {
+    function compile(path3, options = {}) {
       const { encode = encodeURIComponent, delimiter = DEFAULT_DELIMITER } = options;
-      const data = path instanceof TokenData ? path : parse(path, options);
+      const data = path3 instanceof TokenData ? path3 : parse(path3, options);
       const fn = tokensToFunction(data.tokens, delimiter, encode);
-      return function path2(data2 = {}) {
-        const [path3, ...missing] = fn(data2);
+      return function path4(data2 = {}) {
+        const [path5, ...missing] = fn(data2);
         if (missing.length) {
           throw new TypeError(`Missing parameters: ${missing.join(", ")}`);
         }
-        return path3;
+        return path5;
       };
     }
     function tokensToFunction(tokens, delimiter, encode) {
@@ -20164,9 +20164,9 @@ var require_dist = __commonJS({
         return [encodeValue(value)];
       };
     }
-    function match(path, options = {}) {
+    function match(path3, options = {}) {
       const { decode = decodeURIComponent, delimiter = DEFAULT_DELIMITER } = options;
-      const { regexp, keys } = pathToRegexp(path, options);
+      const { regexp, keys } = pathToRegexp(path3, options);
       const decoders = keys.map((key) => {
         if (decode === false)
           return NOOP_VALUE;
@@ -20178,7 +20178,7 @@ var require_dist = __commonJS({
         const m = regexp.exec(input);
         if (!m)
           return false;
-        const path2 = m[0];
+        const path4 = m[0];
         const params = /* @__PURE__ */ Object.create(null);
         for (let i = 1; i < m.length; i++) {
           if (m[i] === void 0)
@@ -20187,16 +20187,16 @@ var require_dist = __commonJS({
           const decoder = decoders[i - 1];
           params[key.name] = decoder(m[i]);
         }
-        return { path: path2, params };
+        return { path: path4, params };
       };
     }
-    function pathToRegexp(path, options = {}) {
+    function pathToRegexp(path3, options = {}) {
       const { delimiter = DEFAULT_DELIMITER, end = true, sensitive = false, trailing = true } = options;
       const keys = [];
       const sources = [];
       const flags = sensitive ? "" : "i";
-      const paths = Array.isArray(path) ? path : [path];
-      const items = paths.map((path2) => path2 instanceof TokenData ? path2 : parse(path2, options));
+      const paths = Array.isArray(path3) ? path3 : [path3];
+      const items = paths.map((path4) => path4 instanceof TokenData ? path4 : parse(path4, options));
       for (const { tokens } of items) {
         for (const seq of flatten(tokens, 0, [])) {
           const regexp2 = sequenceToRegExp(seq, delimiter, keys);
@@ -20306,18 +20306,18 @@ var require_layer = __commonJS({
     var TRAILING_SLASH_REGEXP = /\/+$/;
     var MATCHING_GROUP_REGEXP = /\((?:\?<(.*?)>)?(?!\?)/g;
     module2.exports = Layer;
-    function Layer(path, options, fn) {
+    function Layer(path3, options, fn) {
       if (!(this instanceof Layer)) {
-        return new Layer(path, options, fn);
+        return new Layer(path3, options, fn);
       }
-      debug("new %o", path);
+      debug("new %o", path3);
       const opts = options || {};
       this.handle = fn;
       this.keys = [];
       this.name = fn.name || "<anonymous>";
       this.params = void 0;
       this.path = void 0;
-      this.slash = path === "/" && opts.end === false;
+      this.slash = path3 === "/" && opts.end === false;
       function matcher(_path) {
         if (_path instanceof RegExp) {
           const keys = [];
@@ -20356,7 +20356,7 @@ var require_layer = __commonJS({
           decode: decodeParam
         });
       }
-      this.matchers = Array.isArray(path) ? path.map(matcher) : [matcher(path)];
+      this.matchers = Array.isArray(path3) ? path3.map(matcher) : [matcher(path3)];
     }
     Layer.prototype.handleError = function handleError(error, req, res, next) {
       const fn = this.handle;
@@ -20396,9 +20396,9 @@ var require_layer = __commonJS({
         next(err);
       }
     };
-    Layer.prototype.match = function match(path) {
+    Layer.prototype.match = function match(path3) {
       let match2;
-      if (path != null) {
+      if (path3 != null) {
         if (this.slash) {
           this.params = {};
           this.path = "";
@@ -20406,7 +20406,7 @@ var require_layer = __commonJS({
         }
         let i = 0;
         while (!match2 && i < this.matchers.length) {
-          match2 = this.matchers[i](path);
+          match2 = this.matchers[i](path3);
           i++;
         }
       }
@@ -20434,13 +20434,13 @@ var require_layer = __commonJS({
         throw err;
       }
     }
-    function loosen(path) {
-      if (path instanceof RegExp || path === "/") {
-        return path;
+    function loosen(path3) {
+      if (path3 instanceof RegExp || path3 === "/") {
+        return path3;
       }
-      return Array.isArray(path) ? path.map(function(p) {
+      return Array.isArray(path3) ? path3.map(function(p) {
         return loosen(p);
-      }) : String(path).replace(TRAILING_SLASH_REGEXP, "");
+      }) : String(path3).replace(TRAILING_SLASH_REGEXP, "");
     }
   }
 });
@@ -20456,9 +20456,9 @@ var require_route = __commonJS({
     var flatten = Array.prototype.flat;
     var methods = METHODS.map((method) => method.toLowerCase());
     module2.exports = Route;
-    function Route(path) {
-      debug("new %o", path);
-      this.path = path;
+    function Route(path3) {
+      debug("new %o", path3);
+      this.path = path3;
       this.stack = [];
       this.methods = /* @__PURE__ */ Object.create(null);
     }
@@ -20666,8 +20666,8 @@ var require_router = __commonJS({
         if (++sync > 100) {
           return setImmediate(next, err);
         }
-        const path = getPathname(req);
-        if (path == null) {
+        const path3 = getPathname(req);
+        if (path3 == null) {
           return done(layerError);
         }
         let layer;
@@ -20675,7 +20675,7 @@ var require_router = __commonJS({
         let route;
         while (match !== true && idx < stack.length) {
           layer = stack[idx++];
-          match = matchLayer(layer, path);
+          match = matchLayer(layer, path3);
           route = layer.route;
           if (typeof match !== "boolean") {
             layerError = layerError || match;
@@ -20713,18 +20713,18 @@ var require_router = __commonJS({
           } else if (route) {
             layer.handleRequest(req, res, next);
           } else {
-            trimPrefix(layer, layerError, layerPath, path);
+            trimPrefix(layer, layerError, layerPath, path3);
           }
           sync = 0;
         });
       }
-      function trimPrefix(layer, layerError, layerPath, path) {
+      function trimPrefix(layer, layerError, layerPath, path3) {
         if (layerPath.length !== 0) {
-          if (layerPath !== path.substring(0, layerPath.length)) {
+          if (layerPath !== path3.substring(0, layerPath.length)) {
             next(layerError);
             return;
           }
-          const c = path[layerPath.length];
+          const c = path3[layerPath.length];
           if (c && c !== "/") {
             next(layerError);
             return;
@@ -20748,7 +20748,7 @@ var require_router = __commonJS({
     };
     Router.prototype.use = function use(handler) {
       let offset = 0;
-      let path = "/";
+      let path3 = "/";
       if (typeof handler !== "function") {
         let arg = handler;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -20756,7 +20756,7 @@ var require_router = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path = handler;
+          path3 = handler;
         }
       }
       const callbacks = flatten.call(slice.call(arguments, offset), Infinity);
@@ -20768,8 +20768,8 @@ var require_router = __commonJS({
         if (typeof fn !== "function") {
           throw new TypeError("argument handler must be a function");
         }
-        debug("use %o %s", path, fn.name || "<anonymous>");
-        const layer = new Layer(path, {
+        debug("use %o %s", path3, fn.name || "<anonymous>");
+        const layer = new Layer(path3, {
           sensitive: this.caseSensitive,
           strict: false,
           end: false
@@ -20779,9 +20779,9 @@ var require_router = __commonJS({
       }
       return this;
     };
-    Router.prototype.route = function route(path) {
-      const route2 = new Route(path);
-      const layer = new Layer(path, {
+    Router.prototype.route = function route(path3) {
+      const route2 = new Route(path3);
+      const layer = new Layer(path3, {
         sensitive: this.caseSensitive,
         strict: this.strict,
         end: true
@@ -20794,8 +20794,8 @@ var require_router = __commonJS({
       return route2;
     };
     methods.concat("all").forEach(function(method) {
-      Router.prototype[method] = function(path) {
-        const route = this.route(path);
+      Router.prototype[method] = function(path3) {
+        const route = this.route(path3);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
@@ -20824,9 +20824,9 @@ var require_router = __commonJS({
       const fqdnIndex = url.substring(0, pathLength).indexOf("://");
       return fqdnIndex !== -1 ? url.substring(0, url.indexOf("/", 3 + fqdnIndex)) : void 0;
     }
-    function matchLayer(layer, path) {
+    function matchLayer(layer, path3) {
       try {
-        return layer.match(path);
+        return layer.match(path3);
       } catch (err) {
         return err;
       }
@@ -20975,7 +20975,7 @@ var require_application = __commonJS({
     var compileETag = require_utils3().compileETag;
     var compileQueryParser = require_utils3().compileQueryParser;
     var compileTrust = require_utils3().compileTrust;
-    var resolve = require("node:path").resolve;
+    var resolve2 = require("node:path").resolve;
     var once = require_once();
     var Router = require_router();
     var slice = Array.prototype.slice;
@@ -21029,7 +21029,7 @@ var require_application = __commonJS({
       this.mountpath = "/";
       this.locals.settings = this.settings;
       this.set("view", View);
-      this.set("views", resolve("views"));
+      this.set("views", resolve2("views"));
       this.set("jsonp callback name", "callback");
       if (env2 === "production") {
         this.enable("view cache");
@@ -21054,7 +21054,7 @@ var require_application = __commonJS({
     };
     app.use = function use(fn) {
       var offset = 0;
-      var path = "/";
+      var path3 = "/";
       if (typeof fn !== "function") {
         var arg = fn;
         while (Array.isArray(arg) && arg.length !== 0) {
@@ -21062,7 +21062,7 @@ var require_application = __commonJS({
         }
         if (typeof arg !== "function") {
           offset = 1;
-          path = fn;
+          path3 = fn;
         }
       }
       var fns = flatten.call(slice.call(arguments, offset), Infinity);
@@ -21072,12 +21072,12 @@ var require_application = __commonJS({
       var router = this.router;
       fns.forEach(function(fn2) {
         if (!fn2 || !fn2.handle || !fn2.set) {
-          return router.use(path, fn2);
+          return router.use(path3, fn2);
         }
-        debug(".use app under %s", path);
-        fn2.mountpath = path;
+        debug(".use app under %s", path3);
+        fn2.mountpath = path3;
         fn2.parent = this;
-        router.use(path, function mounted_app(req, res, next) {
+        router.use(path3, function mounted_app(req, res, next) {
           var orig = req.app;
           fn2.handle(req, res, function(err) {
             Object.setPrototypeOf(req, orig.request);
@@ -21089,8 +21089,8 @@ var require_application = __commonJS({
       }, this);
       return this;
     };
-    app.route = function route(path) {
-      return this.router.route(path);
+    app.route = function route(path3) {
+      return this.router.route(path3);
     };
     app.engine = function engine(ext, fn) {
       if (typeof fn !== "function") {
@@ -21133,7 +21133,7 @@ var require_application = __commonJS({
       }
       return this;
     };
-    app.path = function path() {
+    app.path = function path3() {
       return this.parent ? this.parent.path() + this.mountpath : "";
     };
     app.enabled = function enabled(setting) {
@@ -21149,17 +21149,17 @@ var require_application = __commonJS({
       return this.set(setting, false);
     };
     methods.forEach(function(method) {
-      app[method] = function(path) {
+      app[method] = function(path3) {
         if (method === "get" && arguments.length === 1) {
-          return this.set(path);
+          return this.set(path3);
         }
-        var route = this.route(path);
+        var route = this.route(path3);
         route[method].apply(route, slice.call(arguments, 1));
         return this;
       };
     });
-    app.all = function all(path) {
-      var route = this.route(path);
+    app.all = function all(path3) {
+      var route = this.route(path3);
       var args = slice.call(arguments, 1);
       for (var i = 0; i < methods.length; i++) {
         route[methods[i]].apply(route, args);
@@ -22070,7 +22070,7 @@ var require_request = __commonJS({
       var subdomains2 = !isIP(hostname) ? hostname.split(".").reverse() : [hostname];
       return subdomains2.slice(offset);
     });
-    defineGetter(req, "path", function path() {
+    defineGetter(req, "path", function path3() {
       return parse(this).pathname;
     });
     defineGetter(req, "host", function host() {
@@ -22536,32 +22536,32 @@ var require_send = __commonJS({
     var escapeHtml = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
-    var fs = require("fs");
+    var fs2 = require("fs");
     var mime = require_mime_types();
     var ms = require_ms();
     var onFinished = require_on_finished();
     var parseRange = require_range_parser();
-    var path = require("path");
+    var path3 = require("path");
     var statuses = require_statuses2();
     var Stream = require("stream");
     var util = require("util");
-    var extname = path.extname;
-    var join = path.join;
-    var normalize = path.normalize;
-    var resolve = path.resolve;
-    var sep = path.sep;
+    var extname = path3.extname;
+    var join3 = path3.join;
+    var normalize = path3.normalize;
+    var resolve2 = path3.resolve;
+    var sep = path3.sep;
     var BYTES_RANGE_REGEXP = /^ *bytes=/;
     var MAX_MAXAGE = 60 * 60 * 24 * 365 * 1e3;
     var UP_PATH_REGEXP = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
     module2.exports = send;
-    function send(req, path2, options) {
-      return new SendStream(req, path2, options);
+    function send(req, path4, options) {
+      return new SendStream(req, path4, options);
     }
-    function SendStream(req, path2, options) {
+    function SendStream(req, path4, options) {
       Stream.call(this);
       var opts = options || {};
       this.options = opts;
-      this.path = path2;
+      this.path = path4;
       this.req = req;
       this._acceptRanges = opts.acceptRanges !== void 0 ? Boolean(opts.acceptRanges) : true;
       this._cacheControl = opts.cacheControl !== void 0 ? Boolean(opts.cacheControl) : true;
@@ -22577,7 +22577,7 @@ var require_send = __commonJS({
       this._maxage = opts.maxAge || opts.maxage;
       this._maxage = typeof this._maxage === "string" ? ms(this._maxage) : Number(this._maxage);
       this._maxage = !isNaN(this._maxage) ? Math.min(Math.max(0, this._maxage), MAX_MAXAGE) : 0;
-      this._root = opts.root ? resolve(opts.root) : null;
+      this._root = opts.root ? resolve2(opts.root) : null;
     }
     util.inherits(SendStream, Stream);
     SendStream.prototype.error = function error(status, err) {
@@ -22675,10 +22675,10 @@ var require_send = __commonJS({
       var lastModified = this.res.getHeader("Last-Modified");
       return parseHttpDate(lastModified) <= parseHttpDate(ifRange);
     };
-    SendStream.prototype.redirect = function redirect(path2) {
+    SendStream.prototype.redirect = function redirect(path4) {
       var res = this.res;
       if (hasListeners(this, "directory")) {
-        this.emit("directory", res, path2);
+        this.emit("directory", res, path4);
         return;
       }
       if (this.hasTrailingSlash()) {
@@ -22698,38 +22698,38 @@ var require_send = __commonJS({
     SendStream.prototype.pipe = function pipe(res) {
       var root = this._root;
       this.res = res;
-      var path2 = decode(this.path);
-      if (path2 === -1) {
+      var path4 = decode(this.path);
+      if (path4 === -1) {
         this.error(400);
         return res;
       }
-      if (~path2.indexOf("\0")) {
+      if (~path4.indexOf("\0")) {
         this.error(400);
         return res;
       }
       var parts;
       if (root !== null) {
-        if (path2) {
-          path2 = normalize("." + sep + path2);
+        if (path4) {
+          path4 = normalize("." + sep + path4);
         }
-        if (UP_PATH_REGEXP.test(path2)) {
-          debug('malicious path "%s"', path2);
+        if (UP_PATH_REGEXP.test(path4)) {
+          debug('malicious path "%s"', path4);
           this.error(403);
           return res;
         }
-        parts = path2.split(sep);
-        path2 = normalize(join(root, path2));
+        parts = path4.split(sep);
+        path4 = normalize(join3(root, path4));
       } else {
-        if (UP_PATH_REGEXP.test(path2)) {
-          debug('malicious path "%s"', path2);
+        if (UP_PATH_REGEXP.test(path4)) {
+          debug('malicious path "%s"', path4);
           this.error(403);
           return res;
         }
-        parts = normalize(path2).split(sep);
-        path2 = resolve(path2);
+        parts = normalize(path4).split(sep);
+        path4 = resolve2(path4);
       }
       if (containsDotFile(parts)) {
-        debug('%s dotfile "%s"', this._dotfiles, path2);
+        debug('%s dotfile "%s"', this._dotfiles, path4);
         switch (this._dotfiles) {
           case "allow":
             break;
@@ -22743,13 +22743,13 @@ var require_send = __commonJS({
         }
       }
       if (this._index.length && this.hasTrailingSlash()) {
-        this.sendIndex(path2);
+        this.sendIndex(path4);
         return res;
       }
-      this.sendFile(path2);
+      this.sendFile(path4);
       return res;
     };
-    SendStream.prototype.send = function send2(path2, stat) {
+    SendStream.prototype.send = function send2(path4, stat) {
       var len = stat.size;
       var options = this.options;
       var opts = {};
@@ -22761,9 +22761,9 @@ var require_send = __commonJS({
         this.headersAlreadySent();
         return;
       }
-      debug('pipe "%s"', path2);
-      this.setHeader(path2, stat);
-      this.type(path2);
+      debug('pipe "%s"', path4);
+      this.setHeader(path4, stat);
+      this.type(path4);
       if (this.isConditionalGET()) {
         if (this.isPreconditionFailure()) {
           this.error(412);
@@ -22812,30 +22812,30 @@ var require_send = __commonJS({
         res.end();
         return;
       }
-      this.stream(path2, opts);
+      this.stream(path4, opts);
     };
-    SendStream.prototype.sendFile = function sendFile(path2) {
+    SendStream.prototype.sendFile = function sendFile(path4) {
       var i = 0;
       var self = this;
-      debug('stat "%s"', path2);
-      fs.stat(path2, function onstat(err, stat) {
-        var pathEndsWithSep = path2[path2.length - 1] === sep;
-        if (err && err.code === "ENOENT" && !extname(path2) && !pathEndsWithSep) {
+      debug('stat "%s"', path4);
+      fs2.stat(path4, function onstat(err, stat) {
+        var pathEndsWithSep = path4[path4.length - 1] === sep;
+        if (err && err.code === "ENOENT" && !extname(path4) && !pathEndsWithSep) {
           return next(err);
         }
         if (err) return self.onStatError(err);
-        if (stat.isDirectory()) return self.redirect(path2);
+        if (stat.isDirectory()) return self.redirect(path4);
         if (pathEndsWithSep) return self.error(404);
-        self.emit("file", path2, stat);
-        self.send(path2, stat);
+        self.emit("file", path4, stat);
+        self.send(path4, stat);
       });
       function next(err) {
         if (self._extensions.length <= i) {
           return err ? self.onStatError(err) : self.error(404);
         }
-        var p = path2 + "." + self._extensions[i++];
+        var p = path4 + "." + self._extensions[i++];
         debug('stat "%s"', p);
-        fs.stat(p, function(err2, stat) {
+        fs2.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self.emit("file", p, stat);
@@ -22843,7 +22843,7 @@ var require_send = __commonJS({
         });
       }
     };
-    SendStream.prototype.sendIndex = function sendIndex(path2) {
+    SendStream.prototype.sendIndex = function sendIndex(path4) {
       var i = -1;
       var self = this;
       function next(err) {
@@ -22851,9 +22851,9 @@ var require_send = __commonJS({
           if (err) return self.onStatError(err);
           return self.error(404);
         }
-        var p = join(path2, self._index[i]);
+        var p = join3(path4, self._index[i]);
         debug('stat "%s"', p);
-        fs.stat(p, function(err2, stat) {
+        fs2.stat(p, function(err2, stat) {
           if (err2) return next(err2);
           if (stat.isDirectory()) return next();
           self.emit("file", p, stat);
@@ -22862,10 +22862,10 @@ var require_send = __commonJS({
       }
       next();
     };
-    SendStream.prototype.stream = function stream(path2, options) {
+    SendStream.prototype.stream = function stream(path4, options) {
       var self = this;
       var res = this.res;
-      var stream2 = fs.createReadStream(path2, options);
+      var stream2 = fs2.createReadStream(path4, options);
       this.emit("stream", stream2);
       stream2.pipe(res);
       function cleanup() {
@@ -22880,17 +22880,17 @@ var require_send = __commonJS({
         self.emit("end");
       });
     };
-    SendStream.prototype.type = function type(path2) {
+    SendStream.prototype.type = function type(path4) {
       var res = this.res;
       if (res.getHeader("Content-Type")) return;
-      var ext = extname(path2);
+      var ext = extname(path4);
       var type2 = mime.contentType(ext) || "application/octet-stream";
       debug("content-type %s", type2);
       res.setHeader("Content-Type", type2);
     };
-    SendStream.prototype.setHeader = function setHeader(path2, stat) {
+    SendStream.prototype.setHeader = function setHeader(path4, stat) {
       var res = this.res;
-      this.emit("headers", res, path2, stat);
+      this.emit("headers", res, path4, stat);
       if (this._acceptRanges && !res.getHeader("Accept-Ranges")) {
         debug("accept ranges");
         res.setHeader("Accept-Ranges", "bytes");
@@ -22948,9 +22948,9 @@ var require_send = __commonJS({
       }
       return err instanceof Error ? createError(status, err, { expose: false }) : createError(status, err);
     }
-    function decode(path2) {
+    function decode(path4) {
       try {
-        return decodeURIComponent(path2);
+        return decodeURIComponent(path4);
       } catch (err) {
         return -1;
       }
@@ -23093,7 +23093,7 @@ var require_response = __commonJS({
     var http = require("node:http");
     var onFinished = require_on_finished();
     var mime = require_mime_types();
-    var path = require("node:path");
+    var path3 = require("node:path");
     var pathIsAbsolute = require("node:path").isAbsolute;
     var statuses = require_statuses2();
     var sign = require_cookie_signature().sign;
@@ -23102,8 +23102,8 @@ var require_response = __commonJS({
     var setCharset = require_utils3().setCharset;
     var cookie = require_cookie();
     var send = require_send();
-    var extname = path.extname;
-    var resolve = path.resolve;
+    var extname = path3.extname;
+    var resolve2 = path3.resolve;
     var vary = require_vary();
     var res = Object.create(http.ServerResponse.prototype);
     module2.exports = res;
@@ -23248,26 +23248,26 @@ var require_response = __commonJS({
       this.type("txt");
       return this.send(body);
     };
-    res.sendFile = function sendFile(path2, options, callback) {
+    res.sendFile = function sendFile(path4, options, callback) {
       var done = callback;
       var req = this.req;
       var res2 = this;
       var next = req.next;
       var opts = options || {};
-      if (!path2) {
+      if (!path4) {
         throw new TypeError("path argument is required to res.sendFile");
       }
-      if (typeof path2 !== "string") {
+      if (typeof path4 !== "string") {
         throw new TypeError("path must be a string to res.sendFile");
       }
       if (typeof options === "function") {
         done = options;
         opts = {};
       }
-      if (!opts.root && !pathIsAbsolute(path2)) {
+      if (!opts.root && !pathIsAbsolute(path4)) {
         throw new TypeError("path must be absolute or specify root to res.sendFile");
       }
-      var pathname = encodeURI(path2);
+      var pathname = encodeURI(path4);
       opts.etag = this.app.enabled("etag");
       var file = send(req, pathname, opts);
       sendfile(res2, file, opts, function(err) {
@@ -23278,7 +23278,7 @@ var require_response = __commonJS({
         }
       });
     };
-    res.download = function download(path2, filename, options, callback) {
+    res.download = function download(path4, filename, options, callback) {
       var done = callback;
       var name = filename;
       var opts = options || null;
@@ -23295,7 +23295,7 @@ var require_response = __commonJS({
         opts = filename;
       }
       var headers = {
-        "Content-Disposition": contentDisposition(name || path2)
+        "Content-Disposition": contentDisposition(name || path4)
       };
       if (opts && opts.headers) {
         var keys = Object.keys(opts.headers);
@@ -23308,7 +23308,7 @@ var require_response = __commonJS({
       }
       opts = Object.create(opts);
       opts.headers = headers;
-      var fullPath = !opts.root ? resolve(path2) : path2;
+      var fullPath = !opts.root ? resolve2(path4) : path4;
       return this.sendFile(fullPath, opts, done);
     };
     res.contentType = res.type = function contentType(type) {
@@ -23548,7 +23548,7 @@ var require_serve_static = __commonJS({
     var encodeUrl = require_encodeurl();
     var escapeHtml = require_escape_html();
     var parseUrl = require_parseurl();
-    var resolve = require("path").resolve;
+    var resolve2 = require("path").resolve;
     var send = require_send();
     var url = require("url");
     module2.exports = serveStatic;
@@ -23567,7 +23567,7 @@ var require_serve_static = __commonJS({
         throw new TypeError("option setHeaders must be function");
       }
       opts.maxage = opts.maxage || opts.maxAge || 0;
-      opts.root = resolve(root);
+      opts.root = resolve2(root);
       var onDirectory = redirect ? createRedirectDirectoryListener() : createNotFoundDirectoryListener();
       return function serveStatic2(req, res, next) {
         if (req.method !== "GET" && req.method !== "HEAD") {
@@ -23582,11 +23582,11 @@ var require_serve_static = __commonJS({
         }
         var forwardError = !fallthrough;
         var originalUrl = parseUrl.original(req);
-        var path = parseUrl(req).pathname;
-        if (path === "/" && originalUrl.pathname.substr(-1) !== "/") {
-          path = "";
+        var path3 = parseUrl(req).pathname;
+        if (path3 === "/" && originalUrl.pathname.substr(-1) !== "/") {
+          path3 = "";
         }
-        var stream = send(req, path, opts);
+        var stream = send(req, path3, opts);
         stream.on("directory", onDirectory);
         if (setHeaders) {
           stream.on("headers", setHeaders);
@@ -23700,7 +23700,7 @@ __export(extension_exports, {
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
-var vscode2 = __toESM(require("vscode"));
+var vscode3 = __toESM(require("vscode"));
 
 // src/server/mcpServer.ts
 var import_express = __toESM(require_express2());
@@ -23760,12 +23760,12 @@ var MCPServer = class {
   }
   async tryStartOnPort(port) {
     this.port = port;
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       try {
         this.server = this.app.listen(port, "127.0.0.1", () => {
           this.isServerRunning = true;
           console.log(`MCP Server started on port ${port}`);
-          resolve();
+          resolve2();
         });
         this.server.on("error", (error) => {
           console.error(`MCP Server error on port ${port}:`, error);
@@ -23783,7 +23783,7 @@ var MCPServer = class {
       console.log("MCP Server is not running");
       return;
     }
-    return new Promise((resolve) => {
+    return new Promise((resolve2) => {
       const shutdownTimeout = setTimeout(() => {
         console.log("Forcing MCP Server shutdown after timeout");
         if (this.server) {
@@ -23791,13 +23791,13 @@ var MCPServer = class {
           this.server.close();
         }
         this.cleanup();
-        resolve();
+        resolve2();
       }, 5e3);
       this.server.close(() => {
         clearTimeout(shutdownTimeout);
         console.log("MCP Server stopped gracefully");
         this.cleanup();
-        resolve();
+        resolve2();
       });
     });
   }
@@ -23864,12 +23864,12 @@ var MCPServer = class {
   }
   // Utility method to check if a port is available
   async isPortAvailable(port) {
-    return new Promise((resolve) => {
+    return new Promise((resolve2) => {
       const server = require("net").createServer();
       server.listen(port, "127.0.0.1", () => {
-        server.close(() => resolve(true));
+        server.close(() => resolve2(true));
       });
-      server.on("error", () => resolve(false));
+      server.on("error", () => resolve2(false));
     });
   }
   // Get the next available port from fallback list
@@ -24107,11 +24107,132 @@ var WebviewManager = class {
   }
 };
 
+// src/mcp/mcpProvider.ts
+var vscode2 = __toESM(require("vscode"));
+var path = __toESM(require("path"));
+var fs = __toESM(require("fs"));
+var KiroConstellationMCPProvider = class {
+  extensionContext;
+  outputChannel;
+  constructor(context, outputChannel) {
+    this.extensionContext = context;
+    this.outputChannel = outputChannel;
+  }
+  /**
+   * Register the MCP provider with VS Code
+   * This is the main entry point for the POC test
+   */
+  async registerProvider() {
+    try {
+      this.log("[POC] Testing VS Code MCP API availability...");
+      if (!vscode2.lm || typeof vscode2.lm.registerMcpServerDefinitionProvider !== "function") {
+        this.log("[FAILURE] vscode.lm.registerMcpServerDefinitionProvider is not available");
+        this.log("[FAILURE] The standard MCP API is not supported in this IDE");
+        return false;
+      }
+      this.log("[SUCCESS] VS Code MCP API is available!");
+      this.log("[POC] Registering MCP server definition provider...");
+      this.log('[DEBUG] Attempting to register provider with ID: "kiro-constellation"');
+      const disposable = vscode2.lm.registerMcpServerDefinitionProvider(
+        "kiro-constellation",
+        {
+          provideMcpServerDefinitions: () => this.provideMcpServerDefinitions()
+        }
+      );
+      this.extensionContext.subscriptions.push(disposable);
+      this.log("[SUCCESS] MCP provider registered successfully");
+      this.log("[POC] Waiting for IDE to call provideMcpServerDefinitions...");
+      return true;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.log(`[FAILURE] Error registering MCP provider: ${errorMessage}`);
+      if (errorMessage.includes("package.json")) {
+        this.log("[DEBUG] This suggests the package.json mcpServerDefinitionProviders needs to match the registration ID");
+        this.log('[DEBUG] Current registration ID: "kiro-constellation"');
+        this.log("[DEBUG] Check package.json contributes.mcpServerDefinitionProviders array");
+      }
+      return false;
+    }
+  }
+  /**
+   * Provide MCP server definitions to VS Code
+   * This method is called by VS Code when it needs to discover MCP servers
+   */
+  async provideMcpServerDefinitions() {
+    try {
+      this.log("[POC] provideMcpServerDefinitions called by IDE - this is a SUCCESS indicator!");
+      const serverScriptPath = this.getServerScriptPath();
+      this.log(`[POC] MCP server script path: ${serverScriptPath}`);
+      const label = "Constellation MCP";
+      const finalLabel = typeof label === "string" && label.trim().length > 0 ? label.trim() : "Constellation MCP (default)";
+      const serverDefinition = {
+        id: "constellation-poc",
+        transport: "stdio",
+        command: process.execPath,
+        args: [serverScriptPath],
+        label: finalLabel,
+        cwd: this.extensionContext.extensionPath,
+        env: {}
+      };
+      this.log(`[DEBUG] Server definition label: "${serverDefinition.label}" (type=${typeof serverDefinition.label})`);
+      this.log(`[DEBUG] Server definition command: "${serverDefinition.command}"`);
+      this.log(`[DEBUG] Server definition transport: "${serverDefinition.transport}"`);
+      this.log(`[DEBUG] Server definition cwd: "${serverDefinition.cwd}"`);
+      this.log(`[DEBUG] Server definition args: [${serverDefinition.args.join(", ")}]`);
+      this.log(`[DEBUG] Full serverDefinition JSON: ${JSON.stringify(serverDefinition)}`);
+      const absoluteServerPath = path.resolve(this.extensionContext.extensionPath, "out", "mcp-server.js");
+      const exists = fs.existsSync(absoluteServerPath);
+      this.log(`[DEBUG] Checking if server script exists at: ${absoluteServerPath} (exists=${exists})`);
+      if (!exists) {
+        this.log("[ERROR] MCP server script not found. Did the MCP build complete? Run: npm run compile:mcp");
+      }
+      this.log("[SUCCESS] Returning MCP server definition to IDE");
+      return [serverDefinition];
+    } catch (error) {
+      this.log(`[FAILURE] Error in provideMcpServerDefinitions: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+  }
+  /**
+   * Get the absolute path to the bundled MCP server script
+   */
+  getServerScriptPath() {
+    const serverScriptPath = path.join(this.extensionContext.extensionPath, "out", "mcp-server.js");
+    this.log(`[POC] Resolved server script path from extensionPath: ${this.extensionContext.extensionPath}`);
+    return serverScriptPath;
+  }
+  /**
+   * Log messages to the output channel with timestamp
+   */
+  log(message) {
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+    const logMessage = `[${timestamp}] ${message}`;
+    console.log(logMessage);
+    this.outputChannel.appendLine(logMessage);
+  }
+  /**
+   * Test method to validate the provider can be called
+   */
+  async testProvider() {
+    this.log("[POC] Testing provider functionality...");
+    try {
+      const definitions = await this.provideMcpServerDefinitions();
+      this.log(`[POC] Provider test successful, returned ${definitions.length} server definition(s)`);
+    } catch (error) {
+      this.log(`[POC] Provider test failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+};
+
 // src/extension.ts
+var path2 = __toESM(require("path"));
+var import_child_process = require("child_process");
+var USE_STANDARD_PROVIDER_POC = true;
 var mcpServer = null;
 var webviewManager = null;
+var mcpProvider = null;
 async function activate(context) {
-  const output = vscode2.window.createOutputChannel("Kiro Constellation");
+  const output = vscode3.window.createOutputChannel("Kiro Constellation");
   context.subscriptions.push(output);
   const log = (msg) => {
     const line = `[${(/* @__PURE__ */ new Date()).toISOString()}] ${msg}`;
@@ -24119,24 +24240,82 @@ async function activate(context) {
     output.appendLine(line);
   };
   log("Extension activating...");
-  try {
-    mcpServer = new MCPServer();
-    await mcpServer.start();
-    log(`MCP Server started on port ${mcpServer.getPort()}`);
-  } catch (error) {
-    log(`Failed to start MCP Server: ${error instanceof Error ? error.message : String(error)}`);
-    vscode2.window.showErrorMessage("Failed to start Kiro Constellation MCP Server");
+  if (USE_STANDARD_PROVIDER_POC) {
+    log("[POC] VS Code Standard MCP Provider POC mode enabled");
+    log("[POC] Starting VS Code Standard MCP Provider POC...");
+    try {
+      mcpProvider = new KiroConstellationMCPProvider(context, output);
+      const success = await mcpProvider.registerProvider();
+      if (success) {
+        log("[POC] MCP Provider registration completed successfully");
+        log("[POC] Testing provider functionality...");
+        await mcpProvider.testProvider();
+      } else {
+        log("[POC] MCP Provider registration failed - API may not be available");
+      }
+    } catch (error) {
+      log(`[POC] Error in MCP Provider setup: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    webviewManager = new WebviewManager(null, output);
+  } else {
+    log("[PRODUCTION] Using existing Express.js MCP server");
+    try {
+      mcpServer = new MCPServer();
+      await mcpServer.start();
+      log(`MCP Server started on port ${mcpServer.getPort()}`);
+    } catch (error) {
+      log(`Failed to start MCP Server: ${error instanceof Error ? error.message : String(error)}`);
+      vscode3.window.showErrorMessage("Failed to start Kiro Constellation MCP Server");
+    }
+    webviewManager = new WebviewManager(mcpServer, output);
   }
-  webviewManager = new WebviewManager(mcpServer, output);
-  const helloWorldDisposable = vscode2.commands.registerCommand("kiro-constellation.helloWorld", () => {
+  const helloWorldDisposable = vscode3.commands.registerCommand("kiro-constellation.helloWorld", () => {
     log("Hello World command executed");
-    vscode2.window.showInformationMessage("Hello World from kiro-constellation!");
+    vscode3.window.showInformationMessage("Hello World from kiro-constellation!");
   });
-  const showPanelDisposable = vscode2.commands.registerCommand("kiro-constellation.showPanel", () => {
+  const showPanelDisposable = vscode3.commands.registerCommand("kiro-constellation.showPanel", () => {
     log("Show Panel command executed");
     webviewManager?.createOrShowPanel(context);
   });
-  context.subscriptions.push(helloWorldDisposable, showPanelDisposable);
+  const debugLaunchDisposable = vscode3.commands.registerCommand("kiro-constellation.debugLaunchMcp", async () => {
+    try {
+      const serverScriptPath = path2.join(context.extensionPath, "out", "mcp-server.js");
+      log(`[DEBUG] Spawning MCP server with: ${process.execPath} ${serverScriptPath}`);
+      const child = (0, import_child_process.spawn)(process.execPath, [serverScriptPath], {
+        cwd: context.extensionPath,
+        env: process.env
+      });
+      child.stdout.on("data", (data) => {
+        output.appendLine(`[MCP STDOUT] ${data.toString().trim()}`);
+      });
+      child.stderr.on("data", (data) => {
+        output.appendLine(`[MCP STDERR] ${data.toString().trim()}`);
+      });
+      child.on("exit", (code, signal) => {
+        output.appendLine(`[MCP EXIT] code=${code} signal=${signal ?? ""}`);
+      });
+      const init = {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "kiro-constellation", version: "dev" } }
+      };
+      const list = { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} };
+      const call = { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "constellation_example_tool", arguments: { message: "Hello from debug command" } } };
+      const ping = { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "constellation_ping", arguments: {} } };
+      child.stdin.write(`${JSON.stringify(init)}
+`);
+      child.stdin.write(`${JSON.stringify(list)}
+`);
+      child.stdin.write(`${JSON.stringify(call)}
+`);
+      child.stdin.write(`${JSON.stringify(ping)}
+`);
+    } catch (err) {
+      log(`[DEBUG] Failed to launch MCP server: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+  context.subscriptions.push(helloWorldDisposable, showPanelDisposable, debugLaunchDisposable);
 }
 async function deactivate() {
   console.log("Kiro Constellation extension is deactivating...");
@@ -24144,14 +24323,19 @@ async function deactivate() {
     webviewManager.dispose();
     webviewManager = null;
   }
-  if (mcpServer) {
-    try {
-      await mcpServer.stop();
-      console.log("MCP Server stopped successfully");
-    } catch (error) {
-      console.error("Error stopping MCP Server:", error);
+  if (USE_STANDARD_PROVIDER_POC) {
+    console.log("[POC] Cleaning up MCP Provider POC...");
+    mcpProvider = null;
+  } else {
+    if (mcpServer) {
+      try {
+        await mcpServer.stop();
+        console.log("MCP Server stopped successfully");
+      } catch (error) {
+        console.error("Error stopping MCP Server:", error);
+      }
+      mcpServer = null;
     }
-    mcpServer = null;
   }
 }
 // Annotate the CommonJS export names for ESM import in node:
