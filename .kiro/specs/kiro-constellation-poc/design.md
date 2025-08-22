@@ -88,7 +88,7 @@ interface WebviewManager {
 }
 ```
 
-### 2. MCP Server (`src/server/mcpServer.ts`)
+### 2. MCP Server (`src/mcp/mcpStdioServer.ts`)
 
 **Responsibilities:**
 - Express.js server initialization

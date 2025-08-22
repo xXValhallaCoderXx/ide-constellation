@@ -7,7 +7,9 @@
   "engines": {
     "vscode": "^1.70.0"
   },
-  "extensionKind": ["workspace"],
+  "extensionKind": [
+    "workspace"
+  ],
   "categories": [
     "Other"
   ],
@@ -26,6 +28,16 @@
       {
         "command": "kiro-constellation.showPanel",
         "title": "Kiro Constellation: Show Panel"
+      },
+      {
+        "command": "kiro-constellation.debugLaunchMcp",
+        "title": "Kiro Constellation: Debug Launch MCP (stdio)"
+      }
+    ],
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "kiro-constellation",
+        "label": "Constellation MCP (POC)"
       }
     ]
   },
@@ -34,6 +46,7 @@
     "compile": "npm run check-types && npm run lint && node esbuild.js",
     "compile:extension": "node esbuild.js --extension-only",
     "compile:webview": "node esbuild.js --webview-only",
+    "compile:mcp": "node esbuild.js --mcp-only",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
@@ -46,7 +59,6 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/express": "^5.0.3",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/vscode": "^1.103.0",
@@ -60,7 +72,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "express": "^5.1.0",
+    "@modelcontextprotocol/sdk": "^1.17.3",
     "preact": "^10.27.1"
   }
 }

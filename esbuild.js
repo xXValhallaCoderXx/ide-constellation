@@ -4,6 +4,7 @@ const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
 const extensionOnly = process.argv.includes('--extension-only');
 const webviewOnly = process.argv.includes('--webview-only');
+const mcpOnly = process.argv.includes('--mcp-only');
 
 /**
  * @type {import('esbuild').Plugin}
@@ -29,7 +30,7 @@ async function main() {
 	const contexts = [];
 
 	// Extension build configuration
-	if (!webviewOnly) {
+	if (!webviewOnly && !mcpOnly) {
 		const extensionCtx = await esbuild.context({
 			entryPoints: [
 				'src/extension.ts'
@@ -52,7 +53,7 @@ async function main() {
 	}
 
 	// Webview build configuration
-	if (!extensionOnly) {
+	if (!extensionOnly && !mcpOnly) {
 		const webviewCtx = await esbuild.context({
 			entryPoints: [
 				'src/webview/index.tsx'
@@ -72,6 +73,28 @@ async function main() {
 			],
 		});
 		contexts.push(webviewCtx);
+	}
+
+	// MCP Server build configuration
+	if (!extensionOnly && !webviewOnly) {
+		const mcpServerCtx = await esbuild.context({
+			entryPoints: [
+				'src/mcp/mcpStdioServer.ts'
+			],
+			bundle: true,
+			format: 'cjs',
+			minify: production,
+			sourcemap: !production,
+			sourcesContent: false,
+			platform: 'node',
+			outfile: 'out/mcp-server.js',
+			external: [],
+			logLevel: 'silent',
+			plugins: [
+				esbuildProblemMatcherPlugin,
+			],
+		});
+		contexts.push(mcpServerCtx);
 	}
 
 	if (watch) {
