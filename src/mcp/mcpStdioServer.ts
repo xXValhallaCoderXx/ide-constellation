@@ -6,13 +6,7 @@ import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types';
-import {
-    MCPErrorCode,
-    CONSTELLATION_EXAMPLE_TOOL,
-    CONSTELLATION_PING_TOOL,
-    ToolCallParams,
-    ToolCallResult
-} from '../types/mcp';
+import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL } from '../types/mcp';
 
 /**
  * MCP Server implementation for VS Code Standard Provider POC
