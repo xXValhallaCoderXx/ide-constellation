@@ -24,7 +24,7 @@ Provide a zero-friction path for an IDE (and eventually any MCP-aware agent) to 
 |------|---------|-------|
 | Config Generation | `src/config/configurationManager.ts` | Validates shape & writes `.vscode/mcp.json` |
 | MCP Types | `src/types/mcp.ts` | Central JSON-RPC + tool descriptor types |
-| Stdio Server | `src/stdio/mcpServer.ts` | Handles initialize/list/call, one sample tool |
+| Stdio Server | `src/mcp/mcpStdioServer.ts` | SDK-based stdio server bundled to `out/mcp-server.js` |
 | Auto-Config Constants | `src/config/constants.ts` | Paths, IDs, tool descriptor |
 | Client (Agent Emulation) | `src/mcp/mcpClient.ts` | Spawns server(s), caches tools, invokes calls |
 | Extension Integration | `src/extension.ts` | Commands + auto-config flow + client usage |
