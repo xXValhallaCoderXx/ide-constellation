@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { MCPStdioServer } from './mcpStdioServer';
 
 /**
  * VS Code MCP Provider for registering the Kiro Constellation MCP Server
@@ -9,10 +10,13 @@ import * as fs from 'fs';
 export class KiroConstellationMCPProvider {
     private extensionContext: vscode.ExtensionContext;
     private outputChannel: vscode.OutputChannel;
+    private serverInstance: MCPStdioServer | null = null;
 
     constructor(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel) {
         this.extensionContext = context;
         this.outputChannel = outputChannel;
+        // Create a server instance for direct method calls
+        this.serverInstance = new MCPStdioServer();
     }
 
     /**
@@ -234,6 +238,31 @@ export class KiroConstellationMCPProvider {
             this.log(`[POC] Provider test successful, returned ${definitions.length} server definition(s)`);
         } catch (error) {
             this.log(`[POC] Provider test failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
+     * Get the server instance for direct method calls
+     */
+    public getServerInstance(): MCPStdioServer | null {
+        return this.serverInstance;
+    }
+
+    /**
+     * Scan project using the server instance
+     */
+    public async scanProject(targetPath: string = '.'): Promise<void> {
+        if (!this.serverInstance) {
+            throw new Error('MCP server instance not available');
+        }
+        
+        this.log(`[SCAN] Starting project scan for path: ${targetPath}`);
+        try {
+            await this.serverInstance.scanProject(targetPath);
+            this.log('[SCAN] Project scan completed successfully');
+        } catch (error) {
+            this.log(`[SCAN] Project scan failed: ${error instanceof Error ? error.message : String(error)}`);
+            throw error;
         }
     }
 }

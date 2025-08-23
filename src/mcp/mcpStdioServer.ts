@@ -7,6 +7,23 @@ import {
     ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types';
 import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL } from '../types/mcp';
+import { Worker } from 'worker_threads';
+import * as path from 'path';
+
+interface ScanWorkerMessage {
+    type: 'status' | 'result' | 'error';
+    data: {
+        status?: 'starting' | 'complete';
+        result?: any;
+        error?: string;
+        timestamp: string;
+    };
+}
+
+interface ScanWorkerData {
+    targetPath: string;
+    workspaceRoot: string;
+}
 
 /**
  * MCP Server implementation for VS Code Standard Provider POC
@@ -156,6 +173,82 @@ export class MCPStdioServer {
      */
     getIsRunning(): boolean {
         return this.isRunning;
+    }
+
+    /**
+     * Execute scan in worker thread
+     */
+    private async executeScanInWorker(targetPath: string = '.'): Promise<any> {
+        return new Promise((resolve, reject) => {
+            // The MCP server is built to out/mcp-server.js, so workers are at ../dist/workers/
+            const workerPath = path.join(__dirname, '../dist/workers/scanWorker.mjs');
+            const worker = new Worker(workerPath, {
+                workerData: {
+                    targetPath,
+                    workspaceRoot: process.cwd()
+                } as ScanWorkerData
+            });
+
+            worker.on('message', (message: ScanWorkerMessage) => {
+                this.handleWorkerMessage(message, resolve, reject);
+            });
+
+            worker.on('error', (error) => {
+                console.error('[SCAN ERROR]', error.message);
+                reject(error);
+            });
+
+            worker.on('exit', (code) => {
+                if (code !== 0) {
+                    reject(new Error(`Worker stopped with exit code ${code}`));
+                }
+            });
+        });
+    }
+
+    /**
+     * Handle worker thread messages
+     */
+    private handleWorkerMessage(
+        message: ScanWorkerMessage, 
+        resolve: Function, 
+        reject: Function
+    ): void {
+        const { type, data } = message;
+        
+        switch (type) {
+            case 'status':
+                console.error(`[SCAN STATUS] ${data.status} at ${data.timestamp}`);
+                break;
+                
+            case 'result':
+                console.error(`[SCAN COMPLETE] at ${data.timestamp}`);
+                console.error('[SCAN RESULTS]', JSON.stringify(data.result, null, 2));
+                resolve({
+                    content: [{
+                        type: 'text' as const,
+                        text: `Scan completed successfully. Results logged to output channel.`
+                    }]
+                });
+                break;
+                
+            case 'error':
+                console.error(`[SCAN ERROR] ${data.error} at ${data.timestamp}`);
+                reject(new Error(data.error));
+                break;
+        }
+    }
+
+    /**
+     * Public method to scan project (called directly from extension)
+     */
+    async scanProject(targetPath: string = '.'): Promise<void> {
+        try {
+            await this.executeScanInWorker(targetPath);
+        } catch (error) {
+            console.error('[SCAN PROJECT ERROR]', error instanceof Error ? error.message : String(error));
+            throw error;
+        }
     }
 }
 

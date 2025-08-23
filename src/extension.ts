@@ -64,6 +64,24 @@ export async function activate(context: vscode.ExtensionContext) {
 		webviewManager?.createOrShowPanel(context);
 	});
 
+	// Register the Scan Project command
+	const scanProjectDisposable = vscode.commands.registerCommand('constellation.scanProject', async () => {
+		log('Scan Project command executed');
+		try {
+			if (mcpProvider) {
+				await mcpProvider.scanProject();
+				vscode.window.showInformationMessage('Project scan completed. Check the output channel for results.');
+			} else {
+				log('[ERROR] MCP Provider not available for scanning');
+				vscode.window.showErrorMessage('MCP Provider not available. Cannot perform scan.');
+			}
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			log(`[ERROR] Scan Project command failed: ${errorMessage}`);
+			vscode.window.showErrorMessage(`Scan failed: ${errorMessage}`);
+		}
+	});
+
 	// Register a debug command to manually launch the MCP stdio server
 	const debugLaunchDisposable = vscode.commands.registerCommand('kiro-constellation.debugLaunchMcp', async () => {
 		if (!IS_DEV) {
@@ -107,7 +125,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(helloWorldDisposable, showPanelDisposable, debugLaunchDisposable);
+	context.subscriptions.push(helloWorldDisposable, showPanelDisposable, scanProjectDisposable, debugLaunchDisposable);
 }
 
 export async function deactivate() {
