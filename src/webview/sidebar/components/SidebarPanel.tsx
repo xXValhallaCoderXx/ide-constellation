@@ -1,6 +1,6 @@
 import { JSX } from 'preact';
 import { ShowMapButton } from './ShowMapButton';
-import '../../types/vscode-api.types';
+import '../../../types/vscode-api.types';
 
 export function SidebarPanel(): JSX.Element {
   const handleShowMap = () => {

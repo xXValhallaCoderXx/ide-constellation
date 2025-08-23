@@ -55,9 +55,10 @@ async function main() {
 
 	// Webview build configuration
 	if (!extensionOnly && !mcpOnly && !workersOnly) {
+		// Main constellation panel build
 		const webviewCtx = await esbuild.context({
 			entryPoints: [
-				'src/webview/index.tsx'
+				'src/webview/panels/constellation/index.tsx'
 			],
 			bundle: true,
 			format: 'iife',
@@ -78,7 +79,7 @@ async function main() {
 		// Sidebar build configuration
 		const sidebarCtx = await esbuild.context({
 			entryPoints: [
-				'src/sidebar/index.tsx'
+				'src/webview/sidebar/index.tsx'
 			],
 			bundle: true,
 			format: 'iife',

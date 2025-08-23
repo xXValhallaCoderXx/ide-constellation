@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { StatusIndicator } from './StatusIndicator';
 import { ServerStatusButton } from './ServerStatusButton';
-import '../../types/vscode-api.types';
+import '../../../../types/vscode-api.types';
 
 interface ServerStatus {
   status: 'ok' | 'error' | 'unknown';
@@ -95,5 +95,3 @@ export function ConstellationPanel() {
     </div>
   );
 }
-
-import '../../types/vscode-api.types';

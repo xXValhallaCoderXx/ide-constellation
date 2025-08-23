@@ -21,7 +21,7 @@ export class ConstellationSidebarProvider implements vscode.WebviewViewProvider 
       enableScripts: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
-        vscode.Uri.joinPath(this.context.extensionUri, 'src', 'sidebar', 'styles')
+        vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'sidebar', 'styles')
       ]
     };
 
@@ -59,7 +59,7 @@ export class ConstellationSidebarProvider implements vscode.WebviewViewProvider 
     );
 
     const cssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'src', 'sidebar', 'styles', 'sidebar.css')
+      vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'sidebar', 'styles', 'sidebar.css')
     );
 
     return `<!DOCTYPE html>
