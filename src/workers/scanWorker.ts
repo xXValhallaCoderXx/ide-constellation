@@ -1,20 +1,6 @@
 import { parentPort, workerData } from 'worker_threads';
 import { cruise } from 'dependency-cruiser';
-
-interface ScanWorkerData {
-  targetPath: string;
-  workspaceRoot: string;
-}
-
-interface ScanWorkerMessage {
-  type: 'status' | 'result' | 'error';
-  data: {
-    status?: 'starting' | 'complete';
-    result?: any;
-    error?: string;
-    timestamp: string;
-  };
-}
+import { ScanWorkerData, ScanWorkerMessage } from '../types/scanner';
 
 const sendMessage = (message: ScanWorkerMessage) => {
   if (parentPort) {

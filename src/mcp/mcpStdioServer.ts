@@ -9,21 +9,7 @@ import {
 import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL } from '../types/mcp';
 import { Worker } from 'worker_threads';
 import * as path from 'path';
-
-interface ScanWorkerMessage {
-    type: 'status' | 'result' | 'error';
-    data: {
-        status?: 'starting' | 'complete';
-        result?: any;
-        error?: string;
-        timestamp: string;
-    };
-}
-
-interface ScanWorkerData {
-    targetPath: string;
-    workspaceRoot: string;
-}
+import { ScanWorkerData, ScanWorkerMessage } from '../types/scanner';
 
 /**
  * MCP Server implementation for VS Code Standard Provider POC
