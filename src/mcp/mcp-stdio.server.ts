@@ -7,7 +7,7 @@ import {
     ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types';
 import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL } from '../types/mcp.types';
-import { Worker } from 'worker_threads';
+import { GraphService } from '../services/graph.service';
 import * as path from 'path';
 
 // Conditional vscode import - only available in extension context
@@ -20,7 +20,7 @@ try {
     console.error('[MCP DEBUG] Running in standalone mode - vscode module not available');
 }
 
-import { ScanWorkerData, ScanWorkerMessage } from '../types/scanner.types';
+
 
 /**
  * MCP Server implementation for VS Code Standard Provider POC
@@ -185,114 +185,68 @@ export class MCPStdioServer {
     }
 
     /**
-     * Execute scan in worker thread with security validation and ExtensionContext
+     * Execute scan using GraphService with caching support
      * Only available when running in extension context (library mode)
      */
-    private async executeScanInWorker(targetPath: string = '.', extensionContext: any): Promise<any> {
-        return new Promise((resolve, reject) => {
-            try {
-                // Check if vscode module is available
-                if (!vscode) {
-                    reject(new Error('Scan functionality not available in standalone mode - requires VS Code extension context'));
-                    return;
-                }
-
-                // Validate ExtensionContext is provided
-                if (!extensionContext) {
-                    reject(new Error('Extension context required for secure worker path resolution'));
-                    return;
-                }
-
-                // Get workspace root and validate it exists
-                const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                if (!workspaceRoot) {
-                    reject(new Error('No workspace folder open - cannot perform scan'));
-                    return;
-                }
-
-                // Validate and secure target path to prevent directory traversal attacks
-                const resolvedTargetPath = path.resolve(workspaceRoot, targetPath);
-                if (!resolvedTargetPath.startsWith(workspaceRoot)) {
-                    reject(new Error('Target path must be within workspace bounds - directory traversal not allowed'));
-                    return;
-                }
-
-                // Use ExtensionContext for reliable worker path resolution
-                const workerUri = vscode.Uri.joinPath(extensionContext.extensionUri, 'dist/workers/scanWorker.mjs');
-                const workerPath = workerUri.fsPath;
-
-                console.error(`[SCAN DEBUG] Using worker path: ${workerPath}`);
-                console.error(`[SCAN DEBUG] Workspace root: ${workspaceRoot}`);
-                console.error(`[SCAN DEBUG] Target path: ${resolvedTargetPath}`);
-
-                const worker = new Worker(workerPath, {
-                    workerData: {
-                        targetPath: resolvedTargetPath,
-                        workspaceRoot
-                    } as ScanWorkerData
-                });
-
-                worker.on('message', (message: ScanWorkerMessage) => {
-                    this.handleWorkerMessage(message, resolve, reject, worker);
-                });
-
-                worker.on('error', (error) => {
-                    console.error('[SCAN ERROR]', error.message);
-                    worker.terminate().catch(() => {/* noop */ });
-                    reject(new Error(`Worker thread error: ${error.message}`));
-                });
-
-                worker.on('exit', (code) => {
-                    if (code !== 0) {
-                        reject(new Error(`Worker stopped with exit code ${code}`));
-                    }
-                });
-
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                console.error('[SCAN SETUP ERROR]', errorMessage);
-                reject(new Error(`Failed to setup worker thread: ${errorMessage}`));
+    private async executeScanWithGraphService(targetPath: string = '.', extensionContext: any): Promise<any> {
+        try {
+            // Check if vscode module is available
+            if (!vscode) {
+                throw new Error('Scan functionality not available in standalone mode - requires VS Code extension context');
             }
-        });
-    }
 
-    /**
-     * Handle worker thread messages
-     */
-    private handleWorkerMessage(
-        message: ScanWorkerMessage,
-        resolve: Function,
-        reject: Function,
-        worker: Worker
-    ): void {
-        const { type, data } = message;
+            // Validate ExtensionContext is provided
+            if (!extensionContext) {
+                throw new Error('Extension context required for secure worker path resolution');
+            }
 
-        switch (type) {
-            case 'status':
-                console.error(`[SCAN STATUS] ${data.status} at ${data.timestamp}`);
-                break;
+            // Get workspace root and validate it exists
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!workspaceRoot) {
+                throw new Error('No workspace folder open - cannot perform scan');
+            }
 
-            case 'result':
-                console.error(`[SCAN COMPLETE] at ${data.timestamp}`);
-                console.error('[SCAN RESULTS]', JSON.stringify(data.result, null, 2));
-                // Terminate worker after successful completion
-                worker.terminate().catch(() => {/* noop */ });
-                resolve({
-                    content: [{
-                        type: 'text' as const,
-                        text: `Scan completed successfully. Results logged to output channel.`
-                    }]
-                });
-                break;
+            // Validate and secure target path to prevent directory traversal attacks
+            const resolvedTargetPath = path.resolve(workspaceRoot, targetPath);
+            if (!resolvedTargetPath.startsWith(workspaceRoot)) {
+                throw new Error('Target path must be within workspace bounds - directory traversal not allowed');
+            }
 
-            case 'error':
-                console.error(`[SCAN ERROR] ${data.error} at ${data.timestamp}`);
-                // Terminate worker after error
-                worker.terminate().catch(() => {/* noop */ });
-                reject(new Error(data.error));
-                break;
+            console.error(`[SCAN DEBUG] Workspace root: ${workspaceRoot}`);
+            console.error(`[SCAN DEBUG] Target path: ${resolvedTargetPath}`);
+
+            // Use GraphService to load graph (with caching)
+            const graphService = GraphService.getInstance();
+            const graph = await graphService.loadGraph(workspaceRoot, targetPath, extensionContext);
+
+            console.error(`[SCAN COMPLETE] Loaded graph with ${graph.nodes.length} nodes and ${graph.edges.length} edges`);
+            
+            // Count reverse-dependency index entries
+            let indexSize = 0;
+            const allNodes = graph.nodes.map(n => n.id);
+            for (const nodeId of allNodes) {
+                const dependents = graphService.getDependentsOf(nodeId);
+                if (dependents.length > 0) {
+                    indexSize++;
+                }
+            }
+            console.error(`[SCAN COMPLETE] Reverse-dependency index built for ${indexSize} files`);
+
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: `Scan completed successfully. Graph loaded with ${graph.nodes.length} nodes and ${graph.edges.length} edges. Reverse-dependency index built for ${indexSize} files. Results cached for future use.`
+                }]
+            };
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error('[SCAN ERROR]', errorMessage);
+            throw new Error(`Scan failed: ${errorMessage}`);
         }
     }
+
+
 
     /**
      * Public method to scan project (called directly from extension)
@@ -306,7 +260,7 @@ export class MCPStdioServer {
             if (!extensionContext) {
                 throw new Error('Extension context required for secure worker path resolution');
             }
-            await this.executeScanInWorker(targetPath, extensionContext);
+            await this.executeScanWithGraphService(targetPath, extensionContext);
         } catch (error) {
             console.error('[SCAN PROJECT ERROR]', error instanceof Error ? error.message : String(error));
             throw error;
