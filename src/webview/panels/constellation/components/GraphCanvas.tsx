@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import cytoscape from 'cytoscape';
 import { IConstellationGraph } from '../../../../types/graph.types';
+import { AUTO_PAN_ANIMATION_MS, AUTO_PAN_VISIBILITY_THRESHOLD, AUTO_PAN_MAX_ZOOM, AUTO_PAN_MIN_ZOOM, computeTargetZoom } from '../../../../constants/sync.constants';
 import { transformGraphToCytoscape, validateGraphData } from '../../../../utils/graph-transform.utils';
 
 /**
@@ -11,7 +12,7 @@ function sampleLargeGraph(graph: IConstellationGraph, maxNodes: number): IConste
     return graph;
   }
 
-  console.log(`Sampling graph from ${graph.nodes.length} to ${maxNodes} nodes for performance`);
+  // Removed verbose sampling log (cleanup task 14.1)
 
   // Sort nodes by connection count (degree centrality) to keep most connected nodes
   const nodeConnections = new Map<string, number>();
@@ -104,9 +105,12 @@ function getOptimalLayout(nodeCount: number) {
 interface GraphCanvasProps {
   graph: IConstellationGraph | null;
   searchQuery?: string;
-  onNodeClick?: (nodeId: string) => void;
+  /** Report node click with resolved open mode */
+  onNodeClick?: (nodeId: string, openMode: 'default' | 'split') => void;
   onError?: (error: string) => void;
   onSearchResultsChange?: (count: number) => void;
+  /** Highlight state from extension (FR6/FR11) */
+  activeHighlight?: { fileId: string | null; reason?: string };
 }
 
 interface GraphCanvasState {
@@ -116,7 +120,7 @@ interface GraphCanvasState {
   cytoscapeInstance: cytoscape.Core | null;
 }
 
-export function GraphCanvas({ graph, searchQuery, onNodeClick, onError, onSearchResultsChange }: GraphCanvasProps) {
+export function GraphCanvas({ graph, searchQuery, onNodeClick, onError, onSearchResultsChange, activeHighlight }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
   const [state, setState] = useState<GraphCanvasState>({
@@ -224,6 +228,16 @@ export function GraphCanvas({ graph, searchQuery, onNodeClick, onError, onSearch
             style: {
               'opacity': 0.2
             }
+          },
+          // Active node style appended late for precedence (FR9, FR13)
+          {
+            selector: 'node.active-node',
+            style: {
+              'border-width': 4,
+              'border-color': 'var(--vscode-focusBorder)',
+              'background-color': 'var(--vscode-charts-orange)',
+              'z-index': 20
+            }
           }
         ],
         layout: getOptimalLayout(cytoscapeElements.nodes.length),
@@ -242,7 +256,12 @@ export function GraphCanvas({ graph, searchQuery, onNodeClick, onError, onSearch
       // Add node click handler
       cyRef.current.on('tap', 'node', (event) => {
         const nodeId = event.target.id();
-        onNodeClick?.(nodeId);
+        // Detect modifier keys from the original event (mouse or touch)
+        const orig: any = event.originalEvent || {};
+        const meta = !!orig.metaKey;
+        const ctrl = !!orig.ctrlKey;
+        const openMode: 'default' | 'split' = (meta || ctrl) ? 'split' : 'default';
+        onNodeClick?.(nodeId, openMode);
       });
 
       // Add viewport-based performance optimizations
@@ -275,13 +294,7 @@ export function GraphCanvas({ graph, searchQuery, onNodeClick, onError, onSearch
       // Performance monitoring
       const renderEndTime = performance.now();
       const renderDuration = renderEndTime - (performance.now() - 100); // Approximate start time
-      console.log(`GraphCanvas: Rendered ${cytoscapeElements.nodes.length} nodes and ${cytoscapeElements.edges.length} edges in ${renderDuration.toFixed(2)}ms`);
-      
-      // Memory usage monitoring (if available)
-      if ('memory' in performance) {
-        const memInfo = (performance as any).memory;
-        console.log(`Memory usage: ${(memInfo.usedJSHeapSize / 1024 / 1024).toFixed(2)}MB`);
-      }
+      // Removed detailed performance + memory logs (cleanup task 14.1)
 
       // Performance warning for large graphs
       if (cytoscapeElements.nodes.length > 1000) {
@@ -304,6 +317,58 @@ export function GraphCanvas({ graph, searchQuery, onNodeClick, onError, onSearch
       }
     };
   }, [graph, onNodeClick, onError]);
+
+  /**
+   * Apply active highlight & auto-pan logic.
+   * FR9: Highlight precedence - we only manipulate the 'active-node' class, preserving '.highlighted'.
+   * FR8: Auto-pan when target node is outside an inset visibility threshold (AUTO_PAN_VISIBILITY_THRESHOLD).
+   */
+  useEffect(() => {
+    if (!cyRef.current) return;
+    const cy = cyRef.current;
+    const fileId = activeHighlight?.fileId ?? null;
+    // Remove previous active highlight (FR9 precedence: keep .highlighted search class)
+    cy.nodes('.active-node').removeClass('active-node');
+    if (!fileId) return; // clear only
+    const node = cy.getElementById(fileId);
+    if (!node || node.empty()) return;
+    node.addClass('active-node');
+    try {
+      const extent = cy.extent();
+      const vpW = extent.x2 - extent.x1;
+      const vpH = extent.y2 - extent.y1;
+      const inset = AUTO_PAN_VISIBILITY_THRESHOLD; // e.g. 0.25 => 25% margin
+      const thresholdX1 = extent.x1 + vpW * inset;
+      const thresholdX2 = extent.x2 - vpW * inset;
+      const thresholdY1 = extent.y1 + vpH * inset;
+      const thresholdY2 = extent.y2 - vpH * inset;
+      const pos = node.position();
+      const outOfView = pos.x < thresholdX1 || pos.x > thresholdX2 || pos.y < thresholdY1 || pos.y > thresholdY2;
+      if (outOfView) {
+        // Cancel in-flight animations to prevent queue build-up (FR8)
+        cy.stop(true);
+        const nodeCount = cy.nodes().length;
+        const heuristicZoom = computeTargetZoom(nodeCount);
+        const targetZoom = Math.min(AUTO_PAN_MAX_ZOOM, Math.max(AUTO_PAN_MIN_ZOOM, heuristicZoom));
+        const currentZoom = cy.zoom();
+        const animateOptions: any = { center: { eles: node }, duration: AUTO_PAN_ANIMATION_MS };
+        if (Math.abs(currentZoom - targetZoom) > 0.05) {
+          animateOptions.zoom = targetZoom;
+        }
+        cy.animate(animateOptions);
+        console.log(`Auto-pan (FR8) center=${fileId} zoom=${animateOptions.zoom ?? 'same'} duration=${AUTO_PAN_ANIMATION_MS}ms`);
+      }
+    } catch (e) {
+      console.warn('Auto-pan failed', e);
+    }
+  }, [activeHighlight]);
+
+  // Task 10.3: Warn if highlight messages arrive before Cytoscape initialized
+  useEffect(() => {
+    if (activeHighlight && !cyRef.current) {
+      console.warn('[GraphCanvas] Highlight received before Cytoscape ready (FR18 resilience)');
+    }
+  }, [activeHighlight]);
 
   // Handle search highlighting when searchQuery prop changes
   useEffect(() => {

@@ -48,5 +48,36 @@ export interface GraphErrorMessage extends WebviewMessage {
   };
 }
 
-export type WebviewToExtensionMessage = CheckStatusMessage | GraphRequestMessage;
-export type ExtensionToWebviewMessage = StatusUpdateMessage | ServerInfoMessage | GraphResponseMessage | GraphErrorMessage;
+/** Editor -> Extension open file request (FR1, FR2, FR3, FR16) */
+export interface EditorOpenMessage extends WebviewMessage {
+  command: 'editor:open';
+  data: {
+    /** Workspace-relative file identifier (same as graph node id) */
+    fileId: string;
+    /** Open mode requested */
+    openMode: 'default' | 'split';
+  };
+}
+
+/** Extension -> Webview highlight graph node (FR6, FR8, FR9, FR11) */
+export interface GraphHighlightNodeMessage extends WebviewMessage {
+  command: 'graph:highlightNode';
+  data: {
+    /** File id to highlight; null to clear */
+    fileId: string | null;
+    /** Optional reason for null highlight */
+    reason?: 'notInGraph';
+  };
+}
+
+// Type guards (optional safety - FR1.4)
+export function isEditorOpenMessage(msg: WebviewMessage): msg is EditorOpenMessage {
+  return msg.command === 'editor:open' && !!msg.data && typeof msg.data.fileId === 'string';
+}
+
+export function isGraphHighlightNodeMessage(msg: WebviewMessage): msg is GraphHighlightNodeMessage {
+  return msg.command === 'graph:highlightNode';
+}
+
+export type WebviewToExtensionMessage = CheckStatusMessage | GraphRequestMessage | EditorOpenMessage;
+export type ExtensionToWebviewMessage = StatusUpdateMessage | ServerInfoMessage | GraphResponseMessage | GraphErrorMessage | GraphHighlightNodeMessage;

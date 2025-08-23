@@ -4,6 +4,10 @@ import { KiroConstellationMCPProvider } from './mcp/mcp.provider';
 import { ConstellationSidebarProvider } from './webview/providers/sidebar.provider';
 import * as path from 'path';
 import { spawn } from 'child_process';
+import { SYNC_DEBOUNCE_MS } from './constants/sync.constants';
+import { GraphService } from './services/graph.service';
+import { STATUS_BAR_TIMEOUT_MS } from './constants/sync.constants';
+import { debounce } from './utils/debounce';
 
 // POC Configuration Flag
 // Set to true to use the VS Code Standard MCP Provider POC
@@ -128,6 +132,64 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(sidebarDisposable, showGraphDisposable, scanProjectDisposable, debugLaunchDisposable);
+
+	// (FR4/FR5/FR6) Active editor tracking -> highlight graph node (debounced per FR5)
+	let statusTimer: NodeJS.Timeout | null = null;
+	let statusItem: vscode.StatusBarItem | null = null;
+	/**
+	 * Show a temporary status bar message for missing node scenarios.
+	 * FR7: Transient status feedback.
+	 */
+	const showTransientStatus = (text: string) => {
+		if (!statusItem) {
+			statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+			context.subscriptions.push(statusItem);
+		}
+		statusItem.text = text;
+		statusItem.show();
+		if (statusTimer) { clearTimeout(statusTimer); }
+		statusTimer = setTimeout(() => { statusItem?.hide(); }, STATUS_BAR_TIMEOUT_MS);
+	};
+	/**
+	 * Dispatch highlight message to webview for active editor file.
+	 * FR4/FR6: Synchronize active editor -> graph highlight.
+	 * Guards for panel existence and file membership.
+	 */
+	const sendHighlight = async (editor: vscode.TextEditor | undefined) => {
+		if (!webviewManager) { return; }
+		const panel = (webviewManager as any).currentPanel as vscode.WebviewPanel | undefined; // access private for now
+		if (!panel) { return; }
+		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+		if (!workspaceRoot) { return; }
+		if (!editor || editor.document.isUntitled || editor.document.uri.scheme !== 'file') {
+			panel.webview.postMessage({ command: 'graph:highlightNode', data: { fileId: null } }); // Task 10.1 guard already ensured
+			return;
+		}
+		const rel = path.relative(workspaceRoot, editor.document.uri.fsPath).replace(/\\/g, '/');
+		const graph = GraphService.getInstance().getGraph();
+		const exists = !!graph?.nodes.find(n => n.id === rel);
+		if (exists) {
+			panel.webview.postMessage({ command: 'graph:highlightNode', data: { fileId: rel } });
+		} else {
+			panel.webview.postMessage({ command: 'graph:highlightNode', data: { fileId: null, reason: 'notInGraph' } });
+			showTransientStatus('Constellation: File not in graph');
+		}
+	};
+
+	const debouncedHighlight = debounce((ed: vscode.TextEditor | undefined) => {
+		sendHighlight(ed);
+	}, SYNC_DEBOUNCE_MS); // FR5 debounce
+	vscode.window.onDidChangeActiveTextEditor((ed) => {
+		debouncedHighlight(ed);
+	}, null, context.subscriptions);
+
+	// Task 10.4: Log unhandled promise rejections for resilience diagnostics
+	if (!(global as any).__constellationUnhandledRejectionHookInstalled) {
+		process.on('unhandledRejection', (reason) => {
+			console.warn('[Constellation] Unhandled promise rejection:', reason);
+		});
+		(global as any).__constellationUnhandledRejectionHookInstalled = true;
+	}
 }
 
 export async function deactivate() {

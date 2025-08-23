@@ -1,22 +1,8 @@
 import { useState, useEffect } from 'preact/hooks';
-import { StatusIndicator } from './StatusIndicator';
-import { ServerStatusButton } from './ServerStatusButton';
 import { InteractiveGraphCanvas } from './InteractiveGraphCanvas';
 import { IConstellationGraph } from '../../../../types/graph.types';
 import '../../../../types/vscode-api.types';
 
-interface ServerStatus {
-  status: 'ok' | 'error' | 'unknown';
-  timestamp?: string;
-  port?: number;
-  error?: string;
-}
-
-interface ServerInfo {
-  isRunning: boolean;
-  port?: number;
-  uptime?: number;
-}
 
 interface GraphState {
   graph: IConstellationGraph | null;
@@ -25,33 +11,24 @@ interface GraphState {
 }
 
 export function ConstellationPanel() {
-  const [serverStatus, setServerStatus] = useState<ServerStatus>({
-    status: 'unknown'
-  });
-  const [serverInfo, setServerInfo] = useState<ServerInfo>({
-    isRunning: false
-  });
-  const [isChecking, setIsChecking] = useState(false);
+  // Removed server status UI (simplified panel)
   const [graphState, setGraphState] = useState<GraphState>({
     graph: null,
     isLoading: false,
     error: null
   });
+  const [activeHighlight, setActiveHighlight] = useState<{ fileId: string | null; reason?: string }>({ fileId: null });
 
   useEffect(() => {
     // Listen for messages from the extension
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
-      console.log('Received message from extension:', message);
       
       switch (message.command) {
         case 'statusUpdate':
-          setServerStatus(message.data);
-          setIsChecking(false);
-          break;
+          break; // ignored in simplified view
         case 'serverInfo':
-          setServerInfo(message.data);
-          break;
+          break; // ignored in simplified view
         case 'graph:response':
           setGraphState({
             graph: message.data.graph,
@@ -66,6 +43,9 @@ export function ConstellationPanel() {
             error: message.data.error
           }));
           break;
+        case 'graph:highlightNode':
+          setActiveHighlight({ fileId: message.data.fileId, reason: message.data.reason });
+          break;
         default:
           console.warn('Unknown message command:', message.command);
       }
@@ -76,40 +56,24 @@ export function ConstellationPanel() {
     // Send initial status check and graph request on component mount
     setTimeout(() => {
       if (window.vscode) {
-        window.vscode.postMessage({ command: 'checkStatus' });
-        setIsChecking(true);
-        
-        // Request graph data
+        // Request graph data only
         setGraphState(prev => ({ ...prev, isLoading: true, error: null }));
         window.vscode.postMessage({ command: 'graph:request' });
       }
-    }, 100);
+    }, 50);
 
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const handleCheckStatus = () => {
-    setIsChecking(true);
-    setServerStatus(prev => ({ ...prev, status: 'unknown' }));
-    
-    // Send message to extension
-    if (window.vscode) {
-      window.vscode.postMessage({ command: 'checkStatus' });
-    } else {
-      // Fallback if VS Code API is not available
-      console.error('VS Code API not available');
-      setIsChecking(false);
-      setServerStatus({
-        status: 'error',
-        timestamp: new Date().toISOString(),
-        error: 'VS Code API not available'
-      });
-    }
-  };
+  // Removed handleCheckStatus (status UI removed)
 
-  const handleNodeClick = (nodeId: string) => {
-    console.log('Node clicked in ConstellationPanel:', nodeId);
-    // TODO: Implement file opening functionality
+  const handleNodeClick = (nodeId: string, openMode: 'default' | 'split') => {
+    // Task 10.1: Guard postMessage with existence check
+    if (window?.vscode) {
+      window.vscode.postMessage({ command: 'editor:open', data: { fileId: nodeId, openMode } });
+    } else {
+      console.warn('[ConstellationPanel] VS Code API not available for editor:open');
+    }
   };
 
   const handleGraphError = (error: string) => {
@@ -117,24 +81,9 @@ export function ConstellationPanel() {
   };
 
   return (
-    <div className="constellation-panel">
-      <div className="container">
-        <h1>Kiro Constellation POC</h1>
-        <div className="status-section">
-          <StatusIndicator 
-            status={serverStatus} 
-            serverInfo={serverInfo}
-            isChecking={isChecking}
-          />
-          <ServerStatusButton 
-            onClick={handleCheckStatus}
-            disabled={isChecking}
-          />
-        </div>
-        
-        {/* Graph visualization section */}
-        <div style={{ marginTop: '20px' }}>
-          <h2>Codebase Dependency Graph</h2>
+    <div className="constellation-panel" style={{ paddingTop: '10px' }}>
+      <div className="container" style={{ maxWidth: '1100px' }}>
+        <h2 style={{ marginTop: 0 }}>Codebase Dependency Graph</h2>
           
           {graphState.isLoading && (
             <div style={{ 
@@ -159,14 +108,14 @@ export function ConstellationPanel() {
             </div>
           )}
           
-          {!graphState.isLoading && !graphState.error && (
-            <InteractiveGraphCanvas
-              graph={graphState.graph}
-              onNodeClick={handleNodeClick}
-              onError={handleGraphError}
-            />
-          )}
-        </div>
+        {!graphState.isLoading && !graphState.error && (
+          <InteractiveGraphCanvas
+            graph={graphState.graph}
+            onNodeClick={handleNodeClick}
+            onError={handleGraphError}
+            activeHighlight={activeHighlight}
+          />
+        )}
       </div>
     </div>
   );

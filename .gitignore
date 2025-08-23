@@ -5,3 +5,4 @@ dist
 .github
 tasks
 .env
+.constellation-cache
