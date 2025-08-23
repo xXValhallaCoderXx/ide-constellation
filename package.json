@@ -1,0 +1,98 @@
+{
+  "name": "kiro-constellation",
+  "publisher": "xXValhallaCoderXx",
+  "displayName": "kiro-constellation",
+  "description": "",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "*"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kiro-constellation",
+          "title": "Kiro Constellation",
+          "icon": "$(graph)"
+        }
+      ]
+    },
+    "views": {
+      "kiro-constellation": [
+        {
+          "id": "kiro-constellation.sidebar",
+          "name": "Constellation",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "kiro-constellation.showGraph",
+        "title": "Constellation: Show Codebase Map"
+      },
+      {
+        "command": "kiro-constellation.debugLaunchMcp",
+        "title": "Kiro Constellation: Debug Launch MCP (stdio)"
+      },
+      {
+        "command": "constellation.scanProject",
+        "title": "Constellation: Scan Project"
+      }
+    ],
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "kiro-constellation",
+        "label": "Constellation MCP (POC)"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "compile:extension": "node esbuild.js --extension-only",
+    "compile:webview": "node esbuild.js --webview-only",
+    "compile:mcp": "node esbuild.js --mcp-only",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "@types/vscode": "^1.103.0",
+    "@typescript-eslint/eslint-plugin": "^8.31.1",
+    "@typescript-eslint/parser": "^8.31.1",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.25.3",
+    "eslint": "^9.25.1",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.3",
+    "@types/cytoscape": "^3.21.9",
+    "cytoscape": "^3.33.1",
+    "dependency-cruiser": "^17.0.1",
+    "preact": "^10.27.1"
+  }
+}
