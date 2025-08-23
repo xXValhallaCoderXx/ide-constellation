@@ -1,47 +1,59 @@
-# Technology Stack
+---
+inclusion: always
+---
+
+# Technology Stack & Development Standards
 
 ## Core Technologies
-- **TypeScript** - Primary language (ES2022 target, Node16 modules)
-- **VS Code Extension API** - Core platform integration
+- **TypeScript** - Primary language (ES2022 target, Node16 modules, strict mode enabled)
+- **VS Code Extension API** - Core platform integration (minimum v1.103.0)
 - **Node.js** - Runtime environment (v20.x types)
+- **React** - UI framework for webview components
 
 ## Build System & Tooling
-- **esbuild** - Fast bundling and compilation
-- **ESLint** - Code linting with TypeScript rules
-- **Mocha** - Testing framework
-- **npm** - Package management
+- **esbuild** - Fast bundling and compilation (single bundle output)
+- **ESLint** - Code linting with TypeScript-specific rules
+- **Mocha** - Testing framework for unit and integration tests
+- **npm** - Package management and script execution
 
-## Development Workflow
+## Required Development Commands
+When working with this codebase, use these npm scripts:
 
-### Common Commands
 ```bash
-# Development
-npm run compile          # Type check, lint, and build
-npm run watch           # Watch mode for development
-npm run check-types     # TypeScript type checking only
-npm run lint            # ESLint code analysis
+# Development workflow
+npm run compile          # Full build: type check, lint, and bundle
+npm run watch           # Development mode with file watching
+npm run check-types     # TypeScript validation only
+npm run lint            # Code quality analysis
 
 # Testing
-npm run test            # Run all tests
-npm run compile-tests   # Compile test files
-npm run pretest         # Full pre-test pipeline
+npm run test            # Execute all test suites
+npm run pretest         # Complete pre-test pipeline (compile + lint)
 
 # Production
-npm run package         # Production build
-npm run vscode:prepublish # Pre-publish preparation
+npm run package         # Production-ready build
 ```
 
-## Code Quality Standards
-- Strict TypeScript configuration enabled
-- ESLint with TypeScript-specific rules
-- Naming conventions enforced (camelCase/PascalCase for imports)
-- Semicolons required
-- Curly braces enforced
-- Strict equality checks (===)
+## Code Quality Requirements
+All code must adhere to these standards:
+- **TypeScript strict mode** - No implicit any, strict null checks
+- **ESLint compliance** - All rules must pass without warnings
+- **Naming conventions** - camelCase for variables/functions, PascalCase for classes/interfaces
+- **Semicolons required** - Explicit statement termination
+- **Curly braces enforced** - Always use braces for control structures
+- **Strict equality** - Use `===` and `!==` operators only
 
-## Build Configuration
-- Bundle target: CommonJS for Node.js compatibility
-- Source maps enabled in development
-- Minification in production builds
-- External dependency: `vscode` (provided by host)
-- Output: Single bundled file at `dist/extension.js`
+## Architecture Constraints
+- **Single bundle output** - All code compiles to `dist/extension.js`
+- **CommonJS target** - Node.js compatibility required
+- **External vscode dependency** - VS Code API provided by host environment
+- **Source maps** - Enabled in development, optional in production
+- **ES6 modules** - Use import/export syntax throughout codebase
+
+## File Organization Rules
+- TypeScript files use `.ts` extension
+- React components use `.tsx` extension
+- Test files use `.test.ts` suffix
+- Worker files use `.worker.ts` suffix
+- Service files use `.service.ts` suffix
+- All imports must be explicit (no implicit any)
