@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { StatusIndicator } from './StatusIndicator';
 import { ServerStatusButton } from './ServerStatusButton';
+import '../../types/vscode-api.types';
 
 interface ServerStatus {
   status: 'ok' | 'error' | 'unknown';
@@ -95,11 +96,4 @@ export function ConstellationPanel() {
   );
 }
 
-// Extend window interface for VS Code API
-declare global {
-  interface Window {
-    vscode?: {
-      postMessage: (message: any) => void;
-    };
-  }
-}
+import '../../types/vscode-api.types';

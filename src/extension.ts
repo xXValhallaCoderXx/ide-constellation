@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { WebviewManager } from './webview/webview.service';
 import { KiroConstellationMCPProvider } from './mcp/mcp.provider';
+import { ConstellationSidebarProvider } from './sidebar/sidebar.provider';
 import * as path from 'path';
 import { spawn } from 'child_process';
 
@@ -52,15 +53,16 @@ export async function activate(context: vscode.ExtensionContext) {
 		webviewManager = new WebviewManager(null, output);
 	}
 
-	// Register the Hello World command (keeping for compatibility)
-	const helloWorldDisposable = vscode.commands.registerCommand('kiro-constellation.helloWorld', () => {
-		log('Hello World command executed');
-		vscode.window.showInformationMessage('Hello World from kiro-constellation!');
-	});
+	// Register the sidebar provider
+	const sidebarProvider = new ConstellationSidebarProvider(context);
+	const sidebarDisposable = vscode.window.registerWebviewViewProvider(
+		'kiro-constellation.sidebar',
+		sidebarProvider
+	);
 
-	// Register the Show Panel command
-	const showPanelDisposable = vscode.commands.registerCommand('kiro-constellation.showPanel', () => {
-		log('Show Panel command executed');
+	// Register the Show Graph command
+	const showGraphDisposable = vscode.commands.registerCommand('kiro-constellation.showGraph', () => {
+		log('Show Graph command executed');
 		webviewManager?.createOrShowPanel(context);
 	});
 
@@ -125,7 +127,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(helloWorldDisposable, showPanelDisposable, scanProjectDisposable, debugLaunchDisposable);
+	context.subscriptions.push(sidebarDisposable, showGraphDisposable, scanProjectDisposable, debugLaunchDisposable);
 }
 
 export async function deactivate() {

@@ -74,6 +74,27 @@ async function main() {
 			],
 		});
 		contexts.push(webviewCtx);
+
+		// Sidebar build configuration
+		const sidebarCtx = await esbuild.context({
+			entryPoints: [
+				'src/sidebar/index.tsx'
+			],
+			bundle: true,
+			format: 'iife',
+			minify: production,
+			sourcemap: !production,
+			sourcesContent: false,
+			platform: 'browser',
+			outfile: 'dist/sidebar.js',
+			jsx: 'automatic',
+			jsxImportSource: 'preact',
+			logLevel: 'silent',
+			plugins: [
+				esbuildProblemMatcherPlugin,
+			],
+		});
+		contexts.push(sidebarCtx);
 	}
 
 	// MCP Server build configuration
