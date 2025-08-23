@@ -47,13 +47,7 @@ const executeScan = async (data: ScanWorkerData) => {
           ]
         },
         // Include common source file extensions
-        includeOnly: '\\.(js|jsx|ts|tsx|mjs|cjs)$',
-        // Key setting: exclude external modules (npm packages)
-        exclude: {
-          // Exclude any module that doesn't start with . or / (relative/absolute paths)
-          // This excludes npm packages like 'react', 'vite', etc.
-          path: '^[^./]'
-        }
+        includeOnly: '\\.(js|jsx|ts|tsx|mjs|cjs)$'
       }
     };
 
