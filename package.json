@@ -32,6 +32,10 @@
       {
         "command": "kiro-constellation.debugLaunchMcp",
         "title": "Kiro Constellation: Debug Launch MCP (stdio)"
+      },
+      {
+        "command": "constellation.scanProject",
+        "title": "Constellation: Scan Project"
       }
     ],
     "mcpServerDefinitionProviders": [
@@ -73,6 +77,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.3",
+    "dependency-cruiser": "^17.0.1",
     "preact": "^10.27.1"
   }
 }

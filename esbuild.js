@@ -5,6 +5,7 @@ const watch = process.argv.includes('--watch');
 const extensionOnly = process.argv.includes('--extension-only');
 const webviewOnly = process.argv.includes('--webview-only');
 const mcpOnly = process.argv.includes('--mcp-only');
+const workersOnly = process.argv.includes('--workers-only');
 
 /**
  * @type {import('esbuild').Plugin}
@@ -30,7 +31,7 @@ async function main() {
 	const contexts = [];
 
 	// Extension build configuration
-	if (!webviewOnly && !mcpOnly) {
+	if (!webviewOnly && !mcpOnly && !workersOnly) {
 		const extensionCtx = await esbuild.context({
 			entryPoints: [
 				'src/extension.ts'
@@ -53,7 +54,7 @@ async function main() {
 	}
 
 	// Webview build configuration
-	if (!extensionOnly && !mcpOnly) {
+	if (!extensionOnly && !mcpOnly && !workersOnly) {
 		const webviewCtx = await esbuild.context({
 			entryPoints: [
 				'src/webview/index.tsx'
@@ -76,10 +77,10 @@ async function main() {
 	}
 
 	// MCP Server build configuration
-	if (!extensionOnly && !webviewOnly) {
+	if (!extensionOnly && !webviewOnly && !workersOnly) {
 		const mcpServerCtx = await esbuild.context({
 			entryPoints: [
-				'src/mcp/mcpStdioServer.ts'
+				'src/mcp/mcp-stdio.server.ts'
 			],
 			bundle: true,
 			format: 'cjs',
@@ -88,13 +89,35 @@ async function main() {
 			sourcesContent: false,
 			platform: 'node',
 			outfile: 'out/mcp-server.js',
-			external: [],
+			external: ['vscode'],
 			logLevel: 'silent',
 			plugins: [
 				esbuildProblemMatcherPlugin,
 			],
 		});
 		contexts.push(mcpServerCtx);
+	}
+
+	// Worker threads build configuration
+	if (!extensionOnly && !webviewOnly && !mcpOnly) {
+		const workersCtx = await esbuild.context({
+			entryPoints: [
+				'src/workers/scan-project.worker.ts'
+			],
+			bundle: true,
+			format: 'esm',
+			minify: production,
+			sourcemap: !production,
+			sourcesContent: false,
+			platform: 'node',
+			outfile: 'dist/workers/scanWorker.mjs',
+			external: ['dependency-cruiser'],
+			logLevel: 'silent',
+			plugins: [
+				esbuildProblemMatcherPlugin,
+			],
+		});
+		contexts.push(workersCtx);
 	}
 
 	if (watch) {

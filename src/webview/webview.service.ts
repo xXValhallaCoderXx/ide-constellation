@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 // Removed MCPServer dependency; webview status is synthesized
-import { WebviewToExtensionMessage, ExtensionToWebviewMessage } from '../types/messages';
+import { WebviewToExtensionMessage, ExtensionToWebviewMessage } from '../types/messages.types';
 
 export class WebviewManager {
   private currentPanel: vscode.WebviewPanel | undefined = undefined;
