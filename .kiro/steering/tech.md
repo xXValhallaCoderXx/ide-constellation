@@ -8,7 +8,7 @@ inclusion: always
 - **TypeScript** - Primary language (ES2022 target, Node16 modules, strict mode enabled)
 - **VS Code Extension API** - Core platform integration (minimum v1.103.0)
 - **Node.js** - Runtime environment (v20.x types)
-- **React** - UI framework for webview components
+- **Preact** - UI framework for webview components
 
 ## Build System & Tooling
 - **esbuild** - Fast bundling and compilation (single bundle output)

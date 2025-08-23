@@ -11,7 +11,7 @@
 }
 
 .container {
-  max-width: 600px;
+  max-width: 1100px;
   margin: 0 auto;
 }
 
@@ -88,4 +88,25 @@ h1 {
 .check-button:focus {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 2px;
+}
+/* Graph header container (FR12) */
+.graph-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem 0.5rem 0.5rem;
+  box-sizing: border-box;
+  margin: 0 0 0.5rem 0;
+}
+
+.graph-header>* {
+  flex: 0 1 auto;
+}
+
+/* Allow search box (inline style container) to grow a bit more within header */
+.graph-header .search-box,
+.graph-header [data-role="search-container"] {
+  flex: 1 1 240px;
+  min-width: 160px;
 }

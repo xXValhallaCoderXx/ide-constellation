@@ -55,9 +55,10 @@ async function main() {
 
 	// Webview build configuration
 	if (!extensionOnly && !mcpOnly && !workersOnly) {
+		// Main constellation panel build
 		const webviewCtx = await esbuild.context({
 			entryPoints: [
-				'src/webview/index.tsx'
+				'src/webview/panels/constellation/index.tsx'
 			],
 			bundle: true,
 			format: 'iife',
@@ -74,6 +75,27 @@ async function main() {
 			],
 		});
 		contexts.push(webviewCtx);
+
+		// Sidebar build configuration
+		const sidebarCtx = await esbuild.context({
+			entryPoints: [
+				'src/webview/sidebar/index.tsx'
+			],
+			bundle: true,
+			format: 'iife',
+			minify: production,
+			sourcemap: !production,
+			sourcesContent: false,
+			platform: 'browser',
+			outfile: 'dist/sidebar.js',
+			jsx: 'automatic',
+			jsxImportSource: 'preact',
+			logLevel: 'silent',
+			plugins: [
+				esbuildProblemMatcherPlugin,
+			],
+		});
+		contexts.push(sidebarCtx);
 	}
 
 	// MCP Server build configuration

@@ -15,19 +15,32 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onCommand:kiro-constellation.showPanel",
     "*"
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kiro-constellation",
+          "title": "Kiro Constellation",
+          "icon": "$(graph)"
+        }
+      ]
+    },
+    "views": {
+      "kiro-constellation": [
+        {
+          "id": "kiro-constellation.sidebar",
+          "name": "Constellation",
+          "type": "webview"
+        }
+      ]
+    },
     "commands": [
       {
-        "command": "kiro-constellation.helloWorld",
-        "title": "Hello World"
-      },
-      {
-        "command": "kiro-constellation.showPanel",
-        "title": "Kiro Constellation: Show Panel"
+        "command": "kiro-constellation.showGraph",
+        "title": "Constellation: Show Codebase Map"
       },
       {
         "command": "kiro-constellation.debugLaunchMcp",
@@ -77,6 +90,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.3",
+    "@types/cytoscape": "^3.21.9",
+    "cytoscape": "^3.33.1",
     "dependency-cruiser": "^17.0.1",
     "preact": "^10.27.1"
   }

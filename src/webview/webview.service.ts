@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
 // Removed MCPServer dependency; webview status is synthesized
-import { WebviewToExtensionMessage, ExtensionToWebviewMessage } from '../types/messages.types';
+import { WebviewToExtensionMessage, ExtensionToWebviewMessage, GraphResponseMessage, GraphErrorMessage, EditorOpenMessage } from '../types/messages.types';
+import { GraphService } from '../services/graph.service';
+import { resolveWorkspacePath } from 'src/utils/path.utils';
 
 export class WebviewManager {
   private currentPanel: vscode.WebviewPanel | undefined = undefined;
   private output?: vscode.OutputChannel;
+  private statusBarItem: vscode.StatusBarItem | null = null; // for future FR7 usage
 
   constructor(_mcpServer: unknown | null, output?: vscode.OutputChannel) {
     this.output = output;
@@ -67,9 +70,64 @@ export class WebviewManager {
       case 'checkStatus':
         await this.handleStatusCheck();
         break;
+      case 'graph:request':
+        await this.handleGraphRequest();
+        break;
+      case 'editor:open':
+        await this.handleEditorOpen(message as EditorOpenMessage);
+        break;
       default:
-        console.warn('Unknown webview message command:', message.command);
+        console.warn('Unknown webview message command:', (message as any).command);
     }
+  }
+
+  /**
+   * Handle editor:open message (FR2/FR3/FR16). Full security validation & split handling added in later subtasks.
+   */
+  private async handleEditorOpen(message: EditorOpenMessage): Promise<void> {
+    const { fileId, openMode } = message.data || {};
+    const timestamp = new Date().toISOString();
+    this.output?.appendLine(`[${timestamp}] editor:open request ${fileId} (${openMode})`);
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot || !fileId) {
+      return;
+    }
+
+    try {
+      const resolved = await this.resolveWorkspaceFile(workspaceRoot, fileId);
+      if (!resolved.withinWorkspace) {
+        vscode.window.showErrorMessage(`Blocked attempt to open outside workspace: ${fileId}`);
+        this.output?.appendLine(`[${timestamp}] Security: rejected path outside workspace: ${fileId}`);
+        return;
+      }
+      if (!resolved.exists) {
+        vscode.window.showErrorMessage(`File not found: ${fileId}`);
+        this.output?.appendLine(`[${timestamp}] editor:open file missing ${fileId}`);
+        return;
+      }
+      const doc = await vscode.workspace.openTextDocument(resolved.uri);
+      const viewColumn = openMode === 'split' ? vscode.ViewColumn.Beside : undefined;
+      await vscode.window.showTextDocument(doc, { preview: true, viewColumn });
+      this.output?.appendLine(`[${timestamp}] editor:open success ${fileId}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(`Failed to open file: ${fileId}`);
+      this.output?.appendLine(`[${timestamp}] editor:open failed for ${fileId}: ${msg}`);
+    }
+  }
+
+  /**
+   * Resolve a workspace-relative file path and perform security + existence checks (FR3, FR15)
+   */
+  private async resolveWorkspaceFile(workspaceRoot: string, fileId: string): Promise<{ uri: vscode.Uri; exists: boolean; withinWorkspace: boolean }> {
+    // FR3 / FR13: Path traversal & workspace containment guard centralization
+    const { abs, within } = resolveWorkspacePath(workspaceRoot, fileId);
+    const uri = vscode.Uri.file(abs);
+    let exists = false;
+    if (within) {
+      try { await vscode.workspace.fs.stat(uri); exists = true; } catch { exists = false; }
+    }
+    return { uri, exists, withinWorkspace: within };
   }
 
   private async handleStatusCheck(): Promise<void> {
@@ -81,7 +139,10 @@ export class WebviewManager {
         timestamp: new Date().toISOString()
       }
     };
-    this.currentPanel?.webview.postMessage(statusMessage);
+    // Task 10.1: Guard postMessage
+    if (this.currentPanel) {
+      this.currentPanel.webview.postMessage(statusMessage);
+    }
     this.output?.appendLine(`[${new Date().toISOString()}] Sent statusUpdate to webview: ${JSON.stringify(statusMessage.data)}`);
 
     const serverInfoMessage: ExtensionToWebviewMessage = {
@@ -90,8 +151,60 @@ export class WebviewManager {
         isRunning: true
       }
     };
-    this.currentPanel?.webview.postMessage(serverInfoMessage);
+    if (this.currentPanel) {
+      this.currentPanel.webview.postMessage(serverInfoMessage);
+    }
     this.output?.appendLine(`[${new Date().toISOString()}] Sent serverInfo to webview: ${JSON.stringify(serverInfoMessage.data)}`);
+  }
+
+  private async handleGraphRequest(): Promise<void> {
+    this.output?.appendLine(`[${new Date().toISOString()}] Handling graph request...`);
+    
+    try {
+      const graphService = GraphService.getInstance();
+      
+      // Get current workspace root
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!workspaceRoot) {
+        throw new Error('No workspace folder found');
+      }
+
+      // Try to get existing graph or load new one
+      let graph = graphService.getGraph();
+      if (!graph) {
+        this.output?.appendLine(`[${new Date().toISOString()}] Loading graph data...`);
+        graph = await graphService.loadGraph(workspaceRoot, '.');
+      }
+
+      const response: GraphResponseMessage = {
+        command: 'graph:response',
+        data: {
+          graph,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      if (this.currentPanel) {
+        this.currentPanel.webview.postMessage(response);
+      }
+      this.output?.appendLine(`[${new Date().toISOString()}] Sent graph data to webview: ${graph.nodes.length} nodes, ${graph.edges.length} edges`);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.output?.appendLine(`[${new Date().toISOString()}] Graph request error: ${errorMessage}`);
+
+      const errorResponse: GraphErrorMessage = {
+        command: 'graph:error',
+        data: {
+          error: errorMessage,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      if (this.currentPanel) {
+        this.currentPanel.webview.postMessage(errorResponse);
+      }
+    }
   }
 
   private getWebviewContent(context: vscode.ExtensionContext): string {
