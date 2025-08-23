@@ -46,3 +46,50 @@ export interface ICacheValidationResult {
   /** Timestamp of the newest key file that invalidated the cache */
   keyFileTimestamp?: Date;
 }
+
+/**
+ * Summary response types for constellation_get_graph_summary MCP tool
+ */
+
+export interface ITopHub {
+  /** File ID of the hub */
+  id: string;
+  /** Number of connections (incoming + outgoing dependencies) */
+  connectionCount: number;
+}
+
+export interface ISummaryMetrics {
+  /** Total number of files in the graph */
+  fileCount: number;
+  /** Total number of dependencies between files */
+  dependencyCount: number;
+  /** Breakdown of files by extension type */
+  fileTypeBreakdown: Record<string, number>;
+}
+
+export interface ISummaryInsights {
+  /** Top connected files acting as architectural hubs */
+  topHubs: ITopHub[];
+  /** Circular dependency chains detected in the codebase */
+  circularDependencies: string[][];
+  /** Files with no incoming or outgoing dependencies */
+  orphanFiles: string[];
+}
+
+export interface ISummaryMetadata {
+  /** Time taken to generate the summary in milliseconds */
+  scanDurationMs: number;
+  /** Whether cached data was used for this summary */
+  cacheUsed: boolean;
+}
+
+export interface ISummaryResponse {
+  /** Human-readable narrative summary of the codebase analysis */
+  summary: string;
+  /** Key metrics about the codebase structure */
+  metrics: ISummaryMetrics;
+  /** Actionable architectural insights */
+  insights: ISummaryInsights;
+  /** Metadata about the summary generation process */
+  metadata: ISummaryMetadata;
+}

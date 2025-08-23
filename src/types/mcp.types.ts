@@ -51,3 +51,25 @@ export const CONSTELLATION_PING_TOOL: ToolDefinition = {
         required: []
     }
 };
+
+// Smart summary tool for codebase analysis
+export const CONSTELLATION_GET_GRAPH_SUMMARY_TOOL: ToolDefinition = {
+    name: 'constellation_get_graph_summary',
+    description: 'Get intelligent summary of codebase with architectural insights. Automatically uses cache or triggers refresh as needed. Trigger terms: summary, analyze, overview, insights, architecture, dependencies.',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            forceRefresh: {
+                type: 'boolean',
+                description: 'Force a fresh scan instead of using cached data',
+                default: false
+            },
+            workspaceRoot: {
+                type: 'string',
+                description: 'Path to the workspace root directory to analyze (defaults to current working directory)',
+                default: ''
+            }
+        },
+        required: []
+    }
+};

@@ -6,8 +6,10 @@ import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types';
-import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL } from '../types/mcp.types';
+import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL } from '../types/mcp.types';
 import { GraphService } from '../services/graph.service';
+import { GraphCache } from '../services/graph-cache.service';
+import { SummaryGenerator } from '../services/summary-generator.service';
 import * as path from 'path';
 
 // Conditional vscode import - only available in extension context
@@ -30,8 +32,11 @@ try {
 export class MCPStdioServer {
     private server: Server;
     private isRunning = false;
+    private extensionContext: any = null;
 
-    constructor() {
+    constructor(extensionContext?: any) {
+        // Store extension context if provided (when running in extension mode)
+        this.extensionContext = extensionContext;
         this.server = new Server(
             {
                 name: 'kiro-constellation-mcp-server',
@@ -45,7 +50,8 @@ export class MCPStdioServer {
                     'Constellation MCP tools:',
                     '- constellation_ping: returns "pong" for connectivity checks.',
                     '- constellation_example_tool: echoes an optional "message" string.',
-                    'Prefer using tools when asked to validate MCP connectivity or echo a message.'
+                    '- constellation_get_graph_summary: provides intelligent codebase analysis with architectural insights.',
+                    'Prefer using tools when asked to validate MCP connectivity, echo a message, or analyze the codebase.'
                 ].join('\n')
             }
         );
@@ -62,7 +68,7 @@ export class MCPStdioServer {
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
             console.error('[MCP DEBUG] Received tools/list request');
             return {
-                tools: [CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL],
+                tools: [CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL],
             };
         });
 
@@ -78,6 +84,41 @@ export class MCPStdioServer {
                         { type: 'text' as const, text: 'pong' }
                     ]
                 };
+            }
+
+            if (name === CONSTELLATION_GET_GRAPH_SUMMARY_TOOL.name) {
+                console.error('[MCP DEBUG] GRAPH SUMMARY tool executed');
+                const forceRefresh = (args?.forceRefresh as boolean) || false;
+                const providedWorkspaceRoot = (args?.workspaceRoot as string) || '';
+                
+                // Determine the workspace root to analyze
+                let workspaceRoot: string;
+                
+                if (providedWorkspaceRoot && providedWorkspaceRoot.trim()) {
+                    // Use provided workspace root (most reliable when called from external tools like Kiro)
+                    workspaceRoot = path.resolve(providedWorkspaceRoot.trim());
+                    console.error(`[SUMMARY] Using provided workspace root: ${workspaceRoot}`);
+                } else if (vscode && vscode.workspace && vscode.workspace.workspaceFolders) {
+                    // Extension mode - use VS Code workspace API
+                    workspaceRoot = vscode.workspace.workspaceFolders[0]?.uri.fsPath;
+                    if (!workspaceRoot) {
+                        throw new Error('No workspace folder open - cannot generate graph summary');
+                    }
+                    console.error(`[SUMMARY] Using VS Code workspace root: ${workspaceRoot}`);
+                } else {
+                    // Standalone mode fallback - use current working directory as workspace root
+                    workspaceRoot = process.cwd();
+                    console.error(`[SUMMARY] Using current working directory as workspace root: ${workspaceRoot}`);
+                }
+                
+                // Validate workspace root exists
+                const fs = require('fs');
+                if (!fs.existsSync(workspaceRoot)) {
+                    throw new Error(`Workspace root does not exist: ${workspaceRoot}`);
+                }
+                
+                // Use stored extension context from constructor (may be null for standalone mode)
+                return await this.executeGetGraphSummary(workspaceRoot, forceRefresh, this.extensionContext);
             }
 
             if (name !== CONSTELLATION_EXAMPLE_TOOL.name) {
@@ -186,19 +227,11 @@ export class MCPStdioServer {
 
     /**
      * Execute scan using GraphService with caching support
-     * Only available when running in extension context (library mode)
+     * Works in both extension and standalone modes
      */
     private async executeScanWithGraphService(targetPath: string = '.', extensionContext: any): Promise<any> {
         try {
-            // Check if vscode module is available
-            if (!vscode) {
-                throw new Error('Scan functionality not available in standalone mode - requires VS Code extension context');
-            }
-
-            // Validate ExtensionContext is provided
-            if (!extensionContext) {
-                throw new Error('Extension context required for secure worker path resolution');
-            }
+            // Extension context is optional - GraphService handles both extension and standalone modes
 
             // Get workspace root and validate it exists
             const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -249,17 +282,153 @@ export class MCPStdioServer {
 
 
     /**
+     * Execute graph summary with smart cache logic
+     * Works in both extension and standalone modes
+     */
+    private async executeGetGraphSummary(
+        workspaceRoot: string, 
+        forceRefresh: boolean, 
+        extensionContext: any
+    ): Promise<any> {
+        const startTime = Date.now();
+        let cacheUsed = false;
+        let graph: any;
+
+        try {
+            // Validate inputs
+            if (!workspaceRoot || typeof workspaceRoot !== 'string') {
+                throw new Error('Invalid workspace root provided');
+            }
+
+            // Extension context is optional - GraphService will handle both modes
+            console.error(`[SUMMARY] Extension context available: ${!!extensionContext}`);
+            console.error(`[SUMMARY] Starting graph summary (forceRefresh: ${forceRefresh})`);
+            console.error(`[SUMMARY] Workspace: ${workspaceRoot}`);
+
+            if (!forceRefresh) {
+                // Try cache first
+                console.error('[SUMMARY] Checking cache validity');
+                try {
+                    const validation = await GraphCache.validateCache(workspaceRoot);
+                    
+                    if (validation.isValid) {
+                        console.error('[SUMMARY] Cache is valid, attempting to load');
+                        const cachedGraph = await GraphCache.load(workspaceRoot);
+                        if (cachedGraph) {
+                            console.error('[SUMMARY] Successfully loaded cached graph data');
+                            graph = cachedGraph;
+                            cacheUsed = true;
+                        } else {
+                            // Cache validation passed but load failed - fall back to scan
+                            console.error('[SUMMARY] Cache load failed despite valid cache, performing fresh scan');
+                            graph = await this.performFreshScan(workspaceRoot, extensionContext);
+                        }
+                    } else {
+                        console.error(`[SUMMARY] Cache invalid: ${validation.reason}`);
+                        graph = await this.performFreshScan(workspaceRoot, extensionContext);
+                    }
+                } catch (cacheError) {
+                    const cacheErrorMessage = cacheError instanceof Error ? cacheError.message : String(cacheError);
+                    console.error(`[SUMMARY] Cache operation failed: ${cacheErrorMessage}`);
+                    console.error('[SUMMARY] Falling back to fresh scan');
+                    graph = await this.performFreshScan(workspaceRoot, extensionContext);
+                }
+            } else {
+                console.error('[SUMMARY] Force refresh requested, skipping cache');
+                graph = await this.performFreshScan(workspaceRoot, extensionContext);
+            }
+
+            // Validate graph data
+            if (!graph || !graph.nodes || !graph.edges) {
+                throw new Error('Invalid graph data received - missing nodes or edges');
+            }
+
+            console.error(`[SUMMARY] Graph loaded: ${graph.nodes.length} nodes, ${graph.edges.length} edges`);
+
+            // Check for very large graphs and warn
+            if (graph.nodes.length > 5000) {
+                console.error(`[SUMMARY] Large graph detected (${graph.nodes.length} nodes) - some analysis may be limited for performance`);
+            }
+
+            // Generate summary with timeout protection
+            const scanDurationMs = Date.now() - startTime;
+            console.error('[SUMMARY] Generating summary with insights');
+            
+            const summaryStartTime = Date.now();
+            const summary = SummaryGenerator.generate(graph, scanDurationMs, cacheUsed);
+            const summaryDuration = Date.now() - summaryStartTime;
+            
+            console.error(`[SUMMARY] Summary generation took ${summaryDuration}ms`);
+
+            console.error(`[SUMMARY COMPLETE] Generated summary in ${scanDurationMs}ms (cache: ${cacheUsed})`);
+            console.error(`[SUMMARY COMPLETE] Summary length: ${summary.summary.length} chars`);
+            console.error(`[SUMMARY COMPLETE] Insights: ${summary.insights.topHubs.length} hubs, ${summary.insights.circularDependencies.length} cycles, ${summary.insights.orphanFiles.length} orphans`);
+
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify(summary, null, 2)
+                }]
+            };
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorStack = error instanceof Error ? error.stack : undefined;
+            
+            console.error('[SUMMARY ERROR]', errorMessage);
+            if (errorStack) {
+                console.error('[SUMMARY ERROR STACK]', errorStack);
+            }
+
+            // Provide user-friendly error messages for common issues
+            let userFriendlyMessage = errorMessage;
+            if (errorMessage.includes('No workspace folder open')) {
+                userFriendlyMessage = 'Please open a workspace folder in VS Code to generate a graph summary.';
+            } else if (errorMessage.includes('Extension context')) {
+                userFriendlyMessage = 'Graph summary functionality requires VS Code extension context.';
+            } else if (errorMessage.includes('Worker thread')) {
+                userFriendlyMessage = 'Failed to analyze project dependencies. Please check that the project contains valid source files.';
+            } else if (errorMessage.includes('Permission denied') || errorMessage.includes('EACCES')) {
+                userFriendlyMessage = 'Permission denied accessing project files. Please check file permissions.';
+            } else if (errorMessage.includes('dependency-cruiser')) {
+                userFriendlyMessage = 'Failed to analyze project dependencies. The project structure may not be supported.';
+            }
+
+            throw new Error(`Graph summary failed: ${userFriendlyMessage}`);
+        }
+    }
+
+    /**
+     * Perform fresh scan using GraphService with enhanced error handling
+     */
+    private async performFreshScan(workspaceRoot: string, extensionContext: any): Promise<any> {
+        try {
+            console.error('[SUMMARY] Starting fresh dependency scan');
+            const graphService = GraphService.getInstance();
+            const graph = await graphService.loadGraph(workspaceRoot, '.', extensionContext);
+            
+            if (!graph) {
+                throw new Error('GraphService returned null graph');
+            }
+            
+            console.error(`[SUMMARY] Fresh scan completed: ${graph.nodes?.length || 0} nodes, ${graph.edges?.length || 0} edges`);
+            return graph;
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(`[SUMMARY] Fresh scan failed: ${errorMessage}`);
+            
+            // Re-throw with more context
+            throw new Error(`Failed to perform fresh dependency scan: ${errorMessage}`);
+        }
+    }
+
+    /**
      * Public method to scan project (called directly from extension)
-     * Only available when running in extension context (library mode)
+     * Works in both extension and standalone modes
      */
     async scanProject(targetPath: string = '.', extensionContext?: any): Promise<void> {
         try {
-            if (!vscode) {
-                throw new Error('Scan functionality not available in standalone mode - requires VS Code extension context');
-            }
-            if (!extensionContext) {
-                throw new Error('Extension context required for secure worker path resolution');
-            }
+            // Extension context is optional - GraphService handles both extension and standalone modes
             await this.executeScanWithGraphService(targetPath, extensionContext);
         } catch (error) {
             console.error('[SCAN PROJECT ERROR]', error instanceof Error ? error.message : String(error));

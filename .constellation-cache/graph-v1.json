@@ -1,0 +1,194 @@
+{
+  "nodes": [
+    {
+      "id": "eslint.config.mjs",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/eslint.config.mjs",
+      "label": "eslint.config.mjs"
+    },
+    {
+      "id": "src/extension.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/extension.ts",
+      "label": "extension.ts"
+    },
+    {
+      "id": "src/mcp/mcp.provider.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/mcp/mcp.provider.ts",
+      "label": "mcp.provider.ts"
+    },
+    {
+      "id": "src/mcp/mcp-stdio.server.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/mcp/mcp-stdio.server.ts",
+      "label": "mcp-stdio.server.ts"
+    },
+    {
+      "id": "@modelcontextprotocol/sdk/server",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/@modelcontextprotocol/sdk/server",
+      "label": "server"
+    },
+    {
+      "id": "@modelcontextprotocol/sdk/server/stdio",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/@modelcontextprotocol/sdk/server/stdio",
+      "label": "stdio"
+    },
+    {
+      "id": "@modelcontextprotocol/sdk/types",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/@modelcontextprotocol/sdk/types",
+      "label": "types"
+    },
+    {
+      "id": "src/services/graph-cache.service.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/services/graph-cache.service.ts",
+      "label": "graph-cache.service.ts"
+    },
+    {
+      "id": "src/services/graph.service.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/services/graph.service.ts",
+      "label": "graph.service.ts"
+    },
+    {
+      "id": "src/services/graph-transformer.service.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/services/graph-transformer.service.ts",
+      "label": "graph-transformer.service.ts"
+    },
+    {
+      "id": "src/services/summary-generator.service.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/services/summary-generator.service.ts",
+      "label": "summary-generator.service.ts"
+    },
+    {
+      "id": "src/types/mcp.types.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/types/mcp.types.ts",
+      "label": "mcp.types.ts"
+    },
+    {
+      "id": "src/webview/webview.service.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/webview/webview.service.ts",
+      "label": "webview.service.ts"
+    },
+    {
+      "id": "src/types/graph.types.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/types/graph.types.ts",
+      "label": "graph.types.ts"
+    },
+    {
+      "id": "src/types/messages.types.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/types/messages.types.ts",
+      "label": "messages.types.ts"
+    },
+    {
+      "id": "src/types/scanner.types.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/types/scanner.types.ts",
+      "label": "scanner.types.ts"
+    },
+    {
+      "id": "src/webview/components/ConstellationPanel.tsx",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/webview/components/ConstellationPanel.tsx",
+      "label": "ConstellationPanel.tsx"
+    },
+    {
+      "id": "src/webview/components/ServerStatusButton.tsx",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/webview/components/ServerStatusButton.tsx",
+      "label": "ServerStatusButton.tsx"
+    },
+    {
+      "id": "src/webview/components/StatusIndicator.tsx",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/webview/components/StatusIndicator.tsx",
+      "label": "StatusIndicator.tsx"
+    },
+    {
+      "id": "src/webview/index.tsx",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/webview/index.tsx",
+      "label": "index.tsx"
+    },
+    {
+      "id": "src/workers/scan-project.worker.ts",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/src/workers/scan-project.worker.ts",
+      "label": "scan-project.worker.ts"
+    },
+    {
+      "id": "test-mcp-tool.js",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/test-mcp-tool.js",
+      "label": "test-mcp-tool.js"
+    },
+    {
+      "id": "validate-kiro-integration.js",
+      "path": "/home/odin/Dungeon/Personal/ide-constellation/validate-kiro-integration.js",
+      "label": "validate-kiro-integration.js"
+    }
+  ],
+  "edges": [
+    {
+      "source": "src/extension.ts",
+      "target": "src/mcp/mcp.provider.ts"
+    },
+    {
+      "source": "src/extension.ts",
+      "target": "src/services/graph.service.ts"
+    },
+    {
+      "source": "src/extension.ts",
+      "target": "src/webview/webview.service.ts"
+    },
+    {
+      "source": "src/mcp/mcp.provider.ts",
+      "target": "src/mcp/mcp-stdio.server.ts"
+    },
+    {
+      "source": "src/mcp/mcp-stdio.server.ts",
+      "target": "src/services/graph-cache.service.ts"
+    },
+    {
+      "source": "src/mcp/mcp-stdio.server.ts",
+      "target": "src/services/graph.service.ts"
+    },
+    {
+      "source": "src/mcp/mcp-stdio.server.ts",
+      "target": "src/services/summary-generator.service.ts"
+    },
+    {
+      "source": "src/mcp/mcp-stdio.server.ts",
+      "target": "src/types/mcp.types.ts"
+    },
+    {
+      "source": "src/mcp/mcp-stdio.server.ts",
+      "target": "@modelcontextprotocol/sdk/server"
+    },
+    {
+      "source": "src/mcp/mcp-stdio.server.ts",
+      "target": "@modelcontextprotocol/sdk/server/stdio"
+    },
+    {
+      "source": "src/mcp/mcp-stdio.server.ts",
+      "target": "@modelcontextprotocol/sdk/types"
+    },
+    {
+      "source": "src/services/graph.service.ts",
+      "target": "src/services/graph-cache.service.ts"
+    },
+    {
+      "source": "src/services/graph.service.ts",
+      "target": "src/services/graph-transformer.service.ts"
+    },
+    {
+      "source": "src/webview/components/ConstellationPanel.tsx",
+      "target": "src/webview/components/ServerStatusButton.tsx"
+    },
+    {
+      "source": "src/webview/components/ConstellationPanel.tsx",
+      "target": "src/webview/components/StatusIndicator.tsx"
+    },
+    {
+      "source": "src/webview/index.tsx",
+      "target": "src/webview/components/ConstellationPanel.tsx"
+    },
+    {
+      "source": "src/workers/scan-project.worker.ts",
+      "target": "src/services/graph-transformer.service.ts"
+    }
+  ],
+  "metadata": {
+    "timestamp": "2025-08-23T11:19:28.760Z",
+    "workspaceRoot": "/home/odin/Dungeon/Personal/ide-constellation",
+    "scanPath": "."
+  }
+}

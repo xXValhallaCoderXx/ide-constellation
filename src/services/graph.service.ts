@@ -126,11 +126,6 @@ export class GraphService {
   private async performScan(workspaceRoot: string, scanPath: string, extensionContext?: any): Promise<any> {
     return new Promise((resolve, reject) => {
       try {
-        if (!extensionContext) {
-          reject(new Error('Extension context required for worker path resolution'));
-          return;
-        }
-
         // Resolve target path within workspace bounds
         const resolvedTargetPath = path.resolve(workspaceRoot, scanPath);
         if (!resolvedTargetPath.startsWith(workspaceRoot)) {
@@ -138,10 +133,65 @@ export class GraphService {
           return;
         }
 
-        // Use vscode.Uri API for robust worker path resolution
-        const vscode = require('vscode');
-        const workerUri = vscode.Uri.joinPath(extensionContext.extensionUri, 'dist/workers/scanWorker.mjs');
-        const workerPath = workerUri.fsPath;
+        // Resolve worker path - handle both extension context and standalone modes
+        let workerPath: string = '';
+        
+        if (extensionContext && extensionContext.extensionUri) {
+          // Extension mode - use vscode.Uri API for robust path resolution
+          const vscode = require('vscode');
+          const workerUri = vscode.Uri.joinPath(extensionContext.extensionUri, 'dist/workers/scanWorker.mjs');
+          workerPath = workerUri.fsPath;
+          console.log(`[GraphService] Using extension context worker path: ${workerPath}`);
+        } else {
+          // Standalone mode - resolve relative to the MCP server location, not current working directory
+          const fs = require('fs');
+          
+          // Get the directory where the MCP server script is located
+          // In standalone mode, we need to find the worker relative to where the server was started from
+          let serverDir = __dirname;
+          
+          // If we're in the compiled bundle, __dirname might be the bundle location
+          // Try to find the actual project root by looking for package.json or dist directory
+          let projectRoot = serverDir;
+          while (projectRoot !== path.dirname(projectRoot)) {
+            if (fs.existsSync(path.join(projectRoot, 'package.json')) || 
+                fs.existsSync(path.join(projectRoot, 'dist'))) {
+              break;
+            }
+            projectRoot = path.dirname(projectRoot);
+          }
+          
+          // Try multiple possible paths for the worker file, prioritizing paths relative to the project root
+          const possiblePaths = [
+            // First try relative to the detected project root
+            path.resolve(projectRoot, 'dist/workers/scanWorker.mjs'),          // Most likely location
+            path.resolve(projectRoot, 'out/workers/scanWorker.mjs'),           // Alternative build location
+            
+            // Try relative to the current file location (compiled bundle location)
+            path.resolve(serverDir, '../dist/workers/scanWorker.mjs'),         // Up one level then down to dist/workers
+            path.resolve(serverDir, '../../dist/workers/scanWorker.mjs'),      // Up two levels then down to dist/workers
+            path.resolve(serverDir, '../workers/scanWorker.mjs'),              // Relative to current file (if workers are in same dir)
+            
+            // Fallback to current working directory (less reliable when called from different locations)
+            path.resolve(process.cwd(), 'dist/workers/scanWorker.mjs'),        // From current working directory
+            path.resolve(process.cwd(), 'out/workers/scanWorker.mjs'),         // Alternative build location from cwd
+          ];
+          
+          let found = false;
+          for (const possiblePath of possiblePaths) {
+            if (fs.existsSync(possiblePath)) {
+              workerPath = possiblePath;
+              found = true;
+              console.log(`[GraphService] Found worker at: ${workerPath}`);
+              break;
+            }
+          }
+          
+          if (!found) {
+            reject(new Error(`Worker file not found. Tried paths: ${possiblePaths.join(', ')}`));
+            return;
+          }
+        }
         
         console.log(`[GraphService] Starting scan worker: ${workerPath}`);
         console.log(`[GraphService] Target path: ${resolvedTargetPath}`);
