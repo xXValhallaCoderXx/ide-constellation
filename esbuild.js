@@ -80,7 +80,7 @@ async function main() {
 	if (!extensionOnly && !webviewOnly && !workersOnly) {
 		const mcpServerCtx = await esbuild.context({
 			entryPoints: [
-				'src/mcp/mcpStdioServer.ts'
+				'src/mcp/mcp-stdio.server.ts'
 			],
 			bundle: true,
 			format: 'cjs',
@@ -89,7 +89,7 @@ async function main() {
 			sourcesContent: false,
 			platform: 'node',
 			outfile: 'out/mcp-server.js',
-			external: [],
+			external: ['vscode'],
 			logLevel: 'silent',
 			plugins: [
 				esbuildProblemMatcherPlugin,
@@ -102,7 +102,7 @@ async function main() {
 	if (!extensionOnly && !webviewOnly && !mcpOnly) {
 		const workersCtx = await esbuild.context({
 			entryPoints: [
-				'src/workers/scanWorker.ts'
+				'src/workers/scan-project.worker.ts'
 			],
 			bundle: true,
 			format: 'esm',

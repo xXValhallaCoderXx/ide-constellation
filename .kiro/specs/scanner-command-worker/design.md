@@ -83,7 +83,8 @@ sequenceDiagram
 const scanProjectDisposable = vscode.commands.registerCommand('constellation.scanProject', async () => {
   log('Scan Project command executed');
   if (mcpProvider) {
-    await mcpProvider.callTool('scan_project', {});
+    // FIXED: Pass extension context for reliable worker path resolution
+    await mcpProvider.callTool('scan_project', { extensionContext: context });
   }
 });
 ```
@@ -114,7 +115,13 @@ export const CONSTELLATION_SCAN_TOOL: ToolDefinition = {
 // In MCPStdioServer class
 if (name === CONSTELLATION_SCAN_TOOL.name) {
   const targetPath = (args?.targetPath as string) || '.';
-  return await this.executeScanInWorker(targetPath);
+  const extensionContext = args?.extensionContext as vscode.ExtensionContext;
+  
+  if (!extensionContext) {
+    throw new Error('Extension context required for worker path resolution');
+  }
+  
+  return await this.executeScanInWorker(targetPath, extensionContext);
 }
 ```
 
@@ -165,14 +172,25 @@ const executeScan = async (data: ScanWorkerData) => {
       }
     };
 
-    // Execute scan
-    const result = cruise([data.targetPath], config);
+    // FIXED: cruise() is async - await the result and validate structure
+    const cruiseResult = await cruise([data.targetPath], config);
+    
+    // FIXED: Validate result structure before accessing properties
+    if (!cruiseResult || typeof cruiseResult !== 'object') {
+      throw new Error('Invalid result from dependency-cruiser');
+    }
+    
+    // FIXED: Check if output property exists and has expected structure
+    const output = cruiseResult.output || cruiseResult;
+    if (!output) {
+      throw new Error('No output data from dependency-cruiser');
+    }
 
     // Send results
     parentPort?.postMessage({
       type: 'result',
       data: { 
-        result: result.output,
+        result: output,
         timestamp: new Date().toISOString()
       }
     });
@@ -198,13 +216,29 @@ if (workerData) {
 **Worker Management Methods:**
 ```typescript
 // In MCPStdioServer class
-private async executeScanInWorker(targetPath: string): Promise<any> {
+private async executeScanInWorker(targetPath: string, extensionContext: vscode.ExtensionContext): Promise<any> {
   return new Promise((resolve, reject) => {
-    const workerPath = path.join(__dirname, '../workers/scanWorker.js');
+    // FIXED: Use ExtensionContext for reliable path resolution
+    const workerUri = vscode.Uri.joinPath(extensionContext.extensionUri, 'dist/workers/scanWorker.mjs');
+    const workerPath = workerUri.fsPath;
+    
+    // FIXED: Validate target path to prevent directory traversal
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot) {
+      reject(new Error('No workspace folder open'));
+      return;
+    }
+    
+    const resolvedTargetPath = path.resolve(workspaceRoot, targetPath);
+    if (!resolvedTargetPath.startsWith(workspaceRoot)) {
+      reject(new Error('Target path must be within workspace'));
+      return;
+    }
+
     const worker = new Worker(workerPath, {
       workerData: {
-        targetPath,
-        workspaceRoot: process.cwd()
+        targetPath: resolvedTargetPath,
+        workspaceRoot
       }
     });
 
@@ -345,6 +379,8 @@ interface ErrorMessage extends BaseWorkerMessage {
 - **Memory/Resource Constraints**: Proper cleanup and error reporting
 
 ### Dependency-Cruiser Integration
+- **API Safety**: CRITICAL - Validate dependency-cruiser result structure before accessing properties to prevent runtime errors
+- **Async API Handling**: cruise() function is asynchronous and must be awaited properly
 - **Configuration Errors**: Validate configuration before execution
 - **Large Project Handling**: Monitor memory usage and provide progress feedback
 - **Unsupported File Types**: Handle gracefully with appropriate filtering
@@ -375,6 +411,37 @@ interface ErrorMessage extends BaseWorkerMessage {
 - **Edge Cases**: Empty projects, circular dependencies, missing dependencies
 - **Configuration Variations**: Test different dependency-cruiser configurations
 
+## Build Configuration Requirements
+
+### Critical Build Path Alignment
+The build system must be configured to ensure worker thread files are compiled to the exact paths expected by the runtime code:
+
+**esbuild Configuration:**
+```javascript
+// In esbuild.js - Worker thread build configuration
+{
+  entryPoints: ['src/workers/scanWorker.ts'],
+  outfile: 'dist/workers/scanWorker.mjs', // CRITICAL: Must match runtime path
+  format: 'esm',
+  platform: 'node',
+  target: 'node16',
+  bundle: true,
+  external: ['dependency-cruiser']
+}
+```
+
+**Runtime Path Resolution:**
+```typescript
+// In MCPStdioServer - Must match build output exactly
+const workerUri = vscode.Uri.joinPath(extensionContext.extensionUri, 'dist/workers/scanWorker.mjs');
+```
+
+### Build System Validation
+- Build output path MUST exactly match the path used in `new Worker()` constructor
+- Worker files MUST be compiled as ES modules (.mjs) for proper Node.js worker thread support
+- Build process MUST ensure worker files are included in the extension bundle
+- Extension packaging MUST include the compiled worker files in the correct directory structure
+
 ## Implementation Notes
 
 ### Technology Choices
@@ -385,8 +452,9 @@ interface ErrorMessage extends BaseWorkerMessage {
 
 ### Security Considerations
 - **File System Access**: Worker threads inherit parent process permissions
-- **Path Validation**: Validate target paths to prevent directory traversal
+- **Path Validation**: CRITICAL - All target paths must be validated to ensure they are within the workspace root to prevent directory traversal attacks
 - **Resource Limits**: Consider implementing timeouts and memory limits for worker threads
+- **Worker Path Resolution**: Use VS Code ExtensionContext for reliable and secure worker file path resolution
 
 ### Performance Considerations
 - **Non-Blocking Architecture**: Worker threads prevent main thread blocking

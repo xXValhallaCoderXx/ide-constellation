@@ -211,9 +211,9 @@ export class KiroConstellationMCPProvider {
     private getServerScriptPath(): string {
         // Use extensionPath to resolve the bundled server script
         // This works in local development, remote containers, and Codespaces
-    const serverScriptPath = path.join(this.extensionContext.extensionPath, 'out', 'mcp-server.js');
+        const serverScriptPath = path.join(this.extensionContext.extensionPath, 'out', 'mcp-server.js');
 
-    this.log(`[POC] Bundled MCP server script path: ${serverScriptPath}`);
+        this.log(`[POC] Bundled MCP server script path: ${serverScriptPath}`);
 
         return serverScriptPath;
     }
@@ -255,10 +255,10 @@ export class KiroConstellationMCPProvider {
         if (!this.serverInstance) {
             throw new Error('MCP server instance not available');
         }
-        
+
         this.log(`[SCAN] Starting project scan for path: ${targetPath}`);
         try {
-            await this.serverInstance.scanProject(targetPath);
+            await this.serverInstance.scanProject(targetPath, this.extensionContext);
             this.log('[SCAN] Project scan completed successfully');
         } catch (error) {
             this.log(`[SCAN] Project scan failed: ${error instanceof Error ? error.message : String(error)}`);

@@ -9,6 +9,17 @@ import {
 import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL } from '../types/mcp.types';
 import { Worker } from 'worker_threads';
 import * as path from 'path';
+
+// Conditional vscode import - only available in extension context
+let vscode: any = null;
+try {
+    // This will only work when running within VS Code extension host
+    vscode = require('vscode');
+} catch (error) {
+    // Running as standalone server - vscode module not available
+    console.error('[MCP DEBUG] Running in standalone mode - vscode module not available');
+}
+
 import { ScanWorkerData, ScanWorkerMessage } from '../types/scanner.types';
 
 /**
@@ -48,10 +59,10 @@ export class MCPStdioServer {
      */
     private setupHandlers(): void {
         // Handle tools/list requests
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+        this.server.setRequestHandler(ListToolsRequestSchema, async () => {
             console.error('[MCP DEBUG] Received tools/list request');
             return {
-        tools: [CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL],
+                tools: [CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL],
             };
         });
 
@@ -92,27 +103,39 @@ export class MCPStdioServer {
      * Set up process signal handlers for graceful shutdown
      */
     private setupProcessHandlers(): void {
-        const shutdown = async () => {
-            if (this.isRunning) {
-                console.error('Shutting down MCP server...');
-                await this.stop();
-                process.exit(0);
-            }
-        };
+        // Only set up process handlers when running as standalone server
+        if (require.main === module) {
+            const shutdown = async () => {
+                if (this.isRunning) {
+                    console.error('Shutting down MCP server...');
+                    await this.stop();
+                    process.exit(0);
+                }
+            };
 
-        process.on('SIGINT', shutdown);
-        process.on('SIGTERM', shutdown);
-        process.on('SIGUSR2', shutdown);
+            process.on('SIGINT', shutdown);
+            process.on('SIGTERM', shutdown);
+            process.on('SIGUSR2', shutdown);
 
-        process.on('uncaughtException', (error) => {
-            console.error('Uncaught exception in MCP server:', error);
-            process.exit(1);
-        });
+            process.on('uncaughtException', (error) => {
+                console.error('Uncaught exception in MCP server:', error);
+                process.exit(1);
+            });
 
-        process.on('unhandledRejection', (reason, promise) => {
-            console.error('Unhandled rejection in MCP server:', reason);
-            process.exit(1);
-        });
+            process.on('unhandledRejection', (reason, promise) => {
+                console.error('Unhandled rejection in MCP server:', reason);
+                process.exit(1);
+            });
+        } else {
+            // When used as a library, just log errors without exiting
+            process.on('uncaughtException', (error) => {
+                console.error('Uncaught exception in MCP server (library mode):', error);
+            });
+
+            process.on('unhandledRejection', (reason, promise) => {
+                console.error('Unhandled rejection in MCP server (library mode):', reason);
+            });
+        }
     }
 
     /**
@@ -162,33 +185,73 @@ export class MCPStdioServer {
     }
 
     /**
-     * Execute scan in worker thread
+     * Execute scan in worker thread with security validation and ExtensionContext
+     * Only available when running in extension context (library mode)
      */
-    private async executeScanInWorker(targetPath: string = '.'): Promise<any> {
+    private async executeScanInWorker(targetPath: string = '.', extensionContext: any): Promise<any> {
         return new Promise((resolve, reject) => {
-            // The MCP server is built to out/mcp-server.js, so workers are at ../dist/workers/
-            const workerPath = path.join(__dirname, '../dist/workers/scanWorker.mjs');
-            const worker = new Worker(workerPath, {
-                workerData: {
-                    targetPath,
-                    workspaceRoot: process.cwd()
-                } as ScanWorkerData
-            });
-
-            worker.on('message', (message: ScanWorkerMessage) => {
-                this.handleWorkerMessage(message, resolve, reject);
-            });
-
-            worker.on('error', (error) => {
-                console.error('[SCAN ERROR]', error.message);
-                reject(error);
-            });
-
-            worker.on('exit', (code) => {
-                if (code !== 0) {
-                    reject(new Error(`Worker stopped with exit code ${code}`));
+            try {
+                // Check if vscode module is available
+                if (!vscode) {
+                    reject(new Error('Scan functionality not available in standalone mode - requires VS Code extension context'));
+                    return;
                 }
-            });
+
+                // Validate ExtensionContext is provided
+                if (!extensionContext) {
+                    reject(new Error('Extension context required for secure worker path resolution'));
+                    return;
+                }
+
+                // Get workspace root and validate it exists
+                const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if (!workspaceRoot) {
+                    reject(new Error('No workspace folder open - cannot perform scan'));
+                    return;
+                }
+
+                // Validate and secure target path to prevent directory traversal attacks
+                const resolvedTargetPath = path.resolve(workspaceRoot, targetPath);
+                if (!resolvedTargetPath.startsWith(workspaceRoot)) {
+                    reject(new Error('Target path must be within workspace bounds - directory traversal not allowed'));
+                    return;
+                }
+
+                // Use ExtensionContext for reliable worker path resolution
+                const workerUri = vscode.Uri.joinPath(extensionContext.extensionUri, 'dist/workers/scanWorker.mjs');
+                const workerPath = workerUri.fsPath;
+
+                console.error(`[SCAN DEBUG] Using worker path: ${workerPath}`);
+                console.error(`[SCAN DEBUG] Workspace root: ${workspaceRoot}`);
+                console.error(`[SCAN DEBUG] Target path: ${resolvedTargetPath}`);
+
+                const worker = new Worker(workerPath, {
+                    workerData: {
+                        targetPath: resolvedTargetPath,
+                        workspaceRoot
+                    } as ScanWorkerData
+                });
+
+                worker.on('message', (message: ScanWorkerMessage) => {
+                    this.handleWorkerMessage(message, resolve, reject);
+                });
+
+                worker.on('error', (error) => {
+                    console.error('[SCAN ERROR]', error.message);
+                    reject(new Error(`Worker thread error: ${error.message}`));
+                });
+
+                worker.on('exit', (code) => {
+                    if (code !== 0) {
+                        reject(new Error(`Worker stopped with exit code ${code}`));
+                    }
+                });
+
+            } catch (error) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                console.error('[SCAN SETUP ERROR]', errorMessage);
+                reject(new Error(`Failed to setup worker thread: ${errorMessage}`));
+            }
         });
     }
 
@@ -196,17 +259,17 @@ export class MCPStdioServer {
      * Handle worker thread messages
      */
     private handleWorkerMessage(
-        message: ScanWorkerMessage, 
-        resolve: Function, 
+        message: ScanWorkerMessage,
+        resolve: Function,
         reject: Function
     ): void {
         const { type, data } = message;
-        
+
         switch (type) {
             case 'status':
                 console.error(`[SCAN STATUS] ${data.status} at ${data.timestamp}`);
                 break;
-                
+
             case 'result':
                 console.error(`[SCAN COMPLETE] at ${data.timestamp}`);
                 console.error('[SCAN RESULTS]', JSON.stringify(data.result, null, 2));
@@ -217,7 +280,7 @@ export class MCPStdioServer {
                     }]
                 });
                 break;
-                
+
             case 'error':
                 console.error(`[SCAN ERROR] ${data.error} at ${data.timestamp}`);
                 reject(new Error(data.error));
@@ -227,10 +290,17 @@ export class MCPStdioServer {
 
     /**
      * Public method to scan project (called directly from extension)
+     * Only available when running in extension context (library mode)
      */
-    async scanProject(targetPath: string = '.'): Promise<void> {
+    async scanProject(targetPath: string = '.', extensionContext?: any): Promise<void> {
         try {
-            await this.executeScanInWorker(targetPath);
+            if (!vscode) {
+                throw new Error('Scan functionality not available in standalone mode - requires VS Code extension context');
+            }
+            if (!extensionContext) {
+                throw new Error('Extension context required for secure worker path resolution');
+            }
+            await this.executeScanInWorker(targetPath, extensionContext);
         } catch (error) {
             console.error('[SCAN PROJECT ERROR]', error instanceof Error ? error.message : String(error));
             throw error;
