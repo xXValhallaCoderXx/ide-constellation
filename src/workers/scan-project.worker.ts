@@ -1,6 +1,7 @@
 import { parentPort, workerData } from 'worker_threads';
 import { cruise } from 'dependency-cruiser';
 import { ScanWorkerData, ScanWorkerMessage } from '../types/scanner.types';
+import { GraphTransformer } from '../services/graph-transformer.service';
 
 const sendMessage = (message: ScanWorkerMessage) => {
   if (parentPort) {
@@ -77,11 +78,15 @@ const executeScan = async (data: ScanWorkerData) => {
       throw new Error('dependency-cruiser returned empty output');
     }
 
-    // Send results with validated output
+    // Transform raw output to graph domain model
+    const transformedGraph = GraphTransformer.transform(output, data.workspaceRoot, data.targetPath);
+
+    // Send results with both raw output and transformed graph
     sendMessage({
       type: 'result',
       data: {
         result: output,
+        transformedGraph,
         timestamp: new Date().toISOString()
       }
     });

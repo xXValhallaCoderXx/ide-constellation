@@ -132,6 +132,16 @@ export async function deactivate() {
 	// No output channel at this point; keep a console log for host logs
 	console.log('Kiro Constellation extension is deactivating...');
 	
+	// Clean up GraphService singleton
+	try {
+		const { GraphService } = await import('./services/graph.service');
+		const graphService = GraphService.getInstance();
+		graphService.clear();
+		console.log('GraphService singleton cleared');
+	} catch (error) {
+		console.warn('Failed to clear GraphService singleton:', error);
+	}
+	
 	// Clean up webview manager
 	if (webviewManager) {
 		webviewManager.dispose();
