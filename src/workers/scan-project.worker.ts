@@ -1,6 +1,6 @@
 import { parentPort, workerData } from 'worker_threads';
 import { cruise } from 'dependency-cruiser';
-import { ScanWorkerData, ScanWorkerMessage } from '../types/scanner';
+import { ScanWorkerData, ScanWorkerMessage } from '../types/scanner.types';
 
 const sendMessage = (message: ScanWorkerMessage) => {
   if (parentPort) {

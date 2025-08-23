@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { MCPStdioServer } from './mcpStdioServer';
+import { MCPStdioServer } from './mcp-stdio.server';
 
 /**
  * VS Code MCP Provider for registering the Kiro Constellation MCP Server

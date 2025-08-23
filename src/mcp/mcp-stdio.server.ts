@@ -6,10 +6,10 @@ import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types';
-import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL } from '../types/mcp';
+import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL } from '../types/mcp.types';
 import { Worker } from 'worker_threads';
 import * as path from 'path';
-import { ScanWorkerData, ScanWorkerMessage } from '../types/scanner';
+import { ScanWorkerData, ScanWorkerMessage } from '../types/scanner.types';
 
 /**
  * MCP Server implementation for VS Code Standard Provider POC

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { WebviewManager } from './webview/webviewManager';
-import { KiroConstellationMCPProvider } from './mcp/mcpProvider';
+import { WebviewManager } from './webview/webview.service';
+import { KiroConstellationMCPProvider } from './mcp/mcp.provider';
 import * as path from 'path';
 import { spawn } from 'child_process';
 
