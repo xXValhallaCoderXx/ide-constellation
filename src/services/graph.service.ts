@@ -138,8 +138,10 @@ export class GraphService {
           return;
         }
 
-        // Get worker path from extension context
-        const workerPath = path.join(extensionContext.extensionPath, 'dist/workers/scanWorker.mjs');
+        // Use vscode.Uri API for robust worker path resolution
+        const vscode = require('vscode');
+        const workerUri = vscode.Uri.joinPath(extensionContext.extensionUri, 'dist/workers/scanWorker.mjs');
+        const workerPath = workerUri.fsPath;
         
         console.log(`[GraphService] Starting scan worker: ${workerPath}`);
         console.log(`[GraphService] Target path: ${resolvedTargetPath}`);

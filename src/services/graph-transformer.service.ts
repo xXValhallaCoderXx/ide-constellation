@@ -62,26 +62,33 @@ export class GraphTransformer {
    * Create a constellation node from a dependency-cruiser module
    */
   private static createNode(module: any, workspaceRoot: string): IConstellationNode | null {
-    if (!module || !module.source) {
+    if (!module || !module.source || typeof module.source !== 'string') {
       return null;
     }
 
-    const absolutePath = path.resolve(workspaceRoot, module.source);
-    const id = this.normalizeId(module.source, workspaceRoot);
-    const label = path.basename(module.source);
-    const packageName = this.extractPackageName(module.source, workspaceRoot);
+    try {
+      const id = this.normalizeId(module.source, workspaceRoot);
+      const absolutePath = path.isAbsolute(module.source) ? 
+        module.source : 
+        path.resolve(workspaceRoot, module.source);
+      const label = path.basename(module.source);
+      const packageName = this.extractPackageName(module.source, workspaceRoot);
 
-    const node: IConstellationNode = {
-      id,
-      path: absolutePath,
-      label
-    };
+      const node: IConstellationNode = {
+        id,
+        path: absolutePath,
+        label
+      };
 
-    if (packageName) {
-      node.package = packageName;
+      if (packageName) {
+        node.package = packageName;
+      }
+
+      return node;
+    } catch (error) {
+      console.warn(`[GraphTransformer] Failed to create node for module ${module.source}:`, error);
+      return null;
     }
-
-    return node;
   }
 
   /**
@@ -97,39 +104,69 @@ export class GraphTransformer {
       return [];
     }
 
-    const sourceId = this.normalizeId(module.source, workspaceRoot);
-    const edges: IConstellationEdge[] = [];
+    try {
+      const sourceId = this.normalizeId(module.source, workspaceRoot);
+      const edges: IConstellationEdge[] = [];
 
-    for (const dependency of module.dependencies) {
-      if (dependency && dependency.resolved) {
-        // Skip external package dependencies
-        if (this.isExternalPackage(dependency.resolved)) {
-          continue;
+      for (const dependency of module.dependencies) {
+        if (dependency && dependency.resolved && typeof dependency.resolved === 'string') {
+          try {
+            // Skip external package dependencies
+            if (this.isExternalPackage(dependency.resolved)) {
+              continue;
+            }
+
+            const targetId = this.normalizeId(dependency.resolved, workspaceRoot);
+            edges.push({
+              source: sourceId,
+              target: targetId
+            });
+          } catch (error) {
+            console.warn(`[GraphTransformer] Failed to create edge for dependency ${dependency.resolved}:`, error);
+            // Continue processing other dependencies
+          }
         }
-
-        const targetId = this.normalizeId(dependency.resolved, workspaceRoot);
-        edges.push({
-          source: sourceId,
-          target: targetId
-        });
       }
-    }
 
-    return edges;
+      return edges;
+    } catch (error) {
+      console.warn(`[GraphTransformer] Failed to create edges for module ${module.source}:`, error);
+      return [];
+    }
   }
 
   /**
-   * Normalize file path to workspace-relative ID
+   * Normalize file path to workspace-relative ID with security validation
    */
   private static normalizeId(filePath: string, workspaceRoot: string): string {
-    // Handle both absolute and relative paths
-    const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(workspaceRoot, filePath);
-    
-    // Convert to workspace-relative path
-    const relativePath = path.relative(workspaceRoot, absolutePath);
-    
-    // Normalize path separators to forward slashes for consistency
-    return relativePath.replace(/\\/g, '/');
+    if (!filePath || !workspaceRoot) {
+      throw new Error('Invalid file path or workspace root provided to normalizeId');
+    }
+
+    try {
+      // Resolve to absolute path first
+      const absolutePath = path.isAbsolute(filePath) ? 
+        path.resolve(filePath) : 
+        path.resolve(workspaceRoot, filePath);
+      
+      // Security check: ensure the resolved path is within workspace bounds
+      const normalizedWorkspaceRoot = path.resolve(workspaceRoot);
+      const relativePath = path.relative(normalizedWorkspaceRoot, absolutePath);
+      
+      // Check for path traversal attempts
+      if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+        console.warn(`[GraphTransformer] Path outside workspace bounds: ${filePath} -> ${absolutePath}`);
+        // For security, use the original filePath as-is rather than the resolved path
+        return filePath.replace(/\\/g, '/');
+      }
+      
+      // Normalize path separators to forward slashes for consistency across platforms
+      return relativePath.replace(/\\/g, '/');
+    } catch (error) {
+      console.warn(`[GraphTransformer] Error normalizing path ${filePath}:`, error);
+      // Fallback: return the original path with normalized separators
+      return filePath.replace(/\\/g, '/');
+    }
   }
 
   /**
@@ -140,29 +177,36 @@ export class GraphTransformer {
       return false;
     }
 
-    // External packages typically:
-    // 1. Don't start with ./ or / (relative/absolute paths)
-    // 2. Don't have file extensions
-    // 3. Are npm package names like 'react', 'vite', '@vitejs/plugin-react'
-    
-    // Check if it starts with relative or absolute path indicators
-    if (modulePath.startsWith('./') || modulePath.startsWith('../') || modulePath.startsWith('/')) {
-      return false;
-    }
-
-    // Check if it has a file extension (local files usually do)
-    if (/\.(js|jsx|ts|tsx|mjs|cjs|css|json)$/i.test(modulePath)) {
-      return false;
-    }
-
-    // Check if it contains node_modules in the path
+    // Check if it contains node_modules in the path (definitely external)
     if (modulePath.includes('node_modules')) {
       return true;
     }
 
-    // If it doesn't start with path indicators and has no extension, it's likely an npm package
+    // Check if it's an absolute path (local file on any platform)
+    if (path.isAbsolute(modulePath)) {
+      return false;
+    }
+
+    // Check if it starts with relative path indicators (local file)
+    if (modulePath.startsWith('./') || modulePath.startsWith('../')) {
+      return false;
+    }
+
+    // Check if it has a file extension (likely a local file)
+    if (/\.(js|jsx|ts|tsx|mjs|cjs|css|json)$/i.test(modulePath)) {
+      return false;
+    }
+
+    // Check for "bare" specifiers (npm package names)
+    // These are module names that don't start with ./ ../ or / and have no extension
     // Examples: 'react', 'vite', '@vitejs/plugin-react', 'vitest'
-    return true;
+    // This regex matches bare specifiers: starts with letter/@ and contains only valid npm name chars
+    if (/^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/i.test(modulePath)) {
+      return true;
+    }
+
+    // Default to false for safety - include unknown patterns rather than exclude them
+    return false;
   }
 
   /**
