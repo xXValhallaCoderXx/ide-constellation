@@ -233,11 +233,12 @@ export class MCPStdioServer {
                 });
 
                 worker.on('message', (message: ScanWorkerMessage) => {
-                    this.handleWorkerMessage(message, resolve, reject);
+                    this.handleWorkerMessage(message, resolve, reject, worker);
                 });
 
                 worker.on('error', (error) => {
                     console.error('[SCAN ERROR]', error.message);
+                    worker.terminate().catch(() => {/* noop */ });
                     reject(new Error(`Worker thread error: ${error.message}`));
                 });
 
@@ -261,7 +262,8 @@ export class MCPStdioServer {
     private handleWorkerMessage(
         message: ScanWorkerMessage,
         resolve: Function,
-        reject: Function
+        reject: Function,
+        worker: Worker
     ): void {
         const { type, data } = message;
 
@@ -273,6 +275,8 @@ export class MCPStdioServer {
             case 'result':
                 console.error(`[SCAN COMPLETE] at ${data.timestamp}`);
                 console.error('[SCAN RESULTS]', JSON.stringify(data.result, null, 2));
+                // Terminate worker after successful completion
+                worker.terminate().catch(() => {/* noop */ });
                 resolve({
                     content: [{
                         type: 'text' as const,
@@ -283,6 +287,8 @@ export class MCPStdioServer {
 
             case 'error':
                 console.error(`[SCAN ERROR] ${data.error} at ${data.timestamp}`);
+                // Terminate worker after error
+                worker.terminate().catch(() => {/* noop */ });
                 reject(new Error(data.error));
                 break;
         }
