@@ -15,8 +15,8 @@ export class KiroConstellationMCPProvider {
     constructor(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel) {
         this.extensionContext = context;
         this.outputChannel = outputChannel;
-        // Create a server instance for direct method calls
-        this.serverInstance = new MCPStdioServer();
+        // Create a server instance for direct method calls with extension context
+        this.serverInstance = new MCPStdioServer(context);
     }
 
     /**
