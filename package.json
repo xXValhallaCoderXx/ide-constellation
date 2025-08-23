@@ -90,6 +90,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.3",
+    "@types/cytoscape": "^3.21.9",
+    "cytoscape": "^3.33.1",
     "dependency-cruiser": "^17.0.1",
     "preact": "^10.27.1"
   }

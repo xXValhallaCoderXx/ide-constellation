@@ -28,5 +28,25 @@ export interface ServerInfoMessage extends WebviewMessage {
   };
 }
 
-export type WebviewToExtensionMessage = CheckStatusMessage;
-export type ExtensionToWebviewMessage = StatusUpdateMessage | ServerInfoMessage;
+export interface GraphRequestMessage extends WebviewMessage {
+  command: 'graph:request';
+}
+
+export interface GraphResponseMessage extends WebviewMessage {
+  command: 'graph:response';
+  data: {
+    graph: import('./graph.types').IConstellationGraph;
+    timestamp: string;
+  };
+}
+
+export interface GraphErrorMessage extends WebviewMessage {
+  command: 'graph:error';
+  data: {
+    error: string;
+    timestamp: string;
+  };
+}
+
+export type WebviewToExtensionMessage = CheckStatusMessage | GraphRequestMessage;
+export type ExtensionToWebviewMessage = StatusUpdateMessage | ServerInfoMessage | GraphResponseMessage | GraphErrorMessage;

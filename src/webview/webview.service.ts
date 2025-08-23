@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 // Removed MCPServer dependency; webview status is synthesized
-import { WebviewToExtensionMessage, ExtensionToWebviewMessage } from '../types/messages.types';
+import { WebviewToExtensionMessage, ExtensionToWebviewMessage, GraphResponseMessage, GraphErrorMessage } from '../types/messages.types';
+import { GraphService } from '../services/graph.service';
 
 export class WebviewManager {
   private currentPanel: vscode.WebviewPanel | undefined = undefined;
@@ -67,8 +68,11 @@ export class WebviewManager {
       case 'checkStatus':
         await this.handleStatusCheck();
         break;
+      case 'graph:request':
+        await this.handleGraphRequest();
+        break;
       default:
-        console.warn('Unknown webview message command:', message.command);
+        console.warn('Unknown webview message command:', (message as any).command);
     }
   }
 
@@ -92,6 +96,52 @@ export class WebviewManager {
     };
     this.currentPanel?.webview.postMessage(serverInfoMessage);
     this.output?.appendLine(`[${new Date().toISOString()}] Sent serverInfo to webview: ${JSON.stringify(serverInfoMessage.data)}`);
+  }
+
+  private async handleGraphRequest(): Promise<void> {
+    this.output?.appendLine(`[${new Date().toISOString()}] Handling graph request...`);
+    
+    try {
+      const graphService = GraphService.getInstance();
+      
+      // Get current workspace root
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!workspaceRoot) {
+        throw new Error('No workspace folder found');
+      }
+
+      // Try to get existing graph or load new one
+      let graph = graphService.getGraph();
+      if (!graph) {
+        this.output?.appendLine(`[${new Date().toISOString()}] Loading graph data...`);
+        graph = await graphService.loadGraph(workspaceRoot, '.');
+      }
+
+      const response: GraphResponseMessage = {
+        command: 'graph:response',
+        data: {
+          graph,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      this.currentPanel?.webview.postMessage(response);
+      this.output?.appendLine(`[${new Date().toISOString()}] Sent graph data to webview: ${graph.nodes.length} nodes, ${graph.edges.length} edges`);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.output?.appendLine(`[${new Date().toISOString()}] Graph request error: ${errorMessage}`);
+
+      const errorResponse: GraphErrorMessage = {
+        command: 'graph:error',
+        data: {
+          error: errorMessage,
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      this.currentPanel?.webview.postMessage(errorResponse);
+    }
   }
 
   private getWebviewContent(context: vscode.ExtensionContext): string {

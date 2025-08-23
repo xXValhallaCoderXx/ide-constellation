@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'preact/hooks';
 import { StatusIndicator } from './StatusIndicator';
 import { ServerStatusButton } from './ServerStatusButton';
+import { InteractiveGraphCanvas } from './InteractiveGraphCanvas';
+import { IConstellationGraph } from '../../../../types/graph.types';
 import '../../../../types/vscode-api.types';
 
 interface ServerStatus {
@@ -16,6 +18,12 @@ interface ServerInfo {
   uptime?: number;
 }
 
+interface GraphState {
+  graph: IConstellationGraph | null;
+  isLoading: boolean;
+  error: string | null;
+}
+
 export function ConstellationPanel() {
   const [serverStatus, setServerStatus] = useState<ServerStatus>({
     status: 'unknown'
@@ -24,6 +32,11 @@ export function ConstellationPanel() {
     isRunning: false
   });
   const [isChecking, setIsChecking] = useState(false);
+  const [graphState, setGraphState] = useState<GraphState>({
+    graph: null,
+    isLoading: false,
+    error: null
+  });
 
   useEffect(() => {
     // Listen for messages from the extension
@@ -39,6 +52,20 @@ export function ConstellationPanel() {
         case 'serverInfo':
           setServerInfo(message.data);
           break;
+        case 'graph:response':
+          setGraphState({
+            graph: message.data.graph,
+            isLoading: false,
+            error: null
+          });
+          break;
+        case 'graph:error':
+          setGraphState(prev => ({
+            ...prev,
+            isLoading: false,
+            error: message.data.error
+          }));
+          break;
         default:
           console.warn('Unknown message command:', message.command);
       }
@@ -46,11 +73,15 @@ export function ConstellationPanel() {
 
     window.addEventListener('message', handleMessage);
     
-    // Send initial status check on component mount
+    // Send initial status check and graph request on component mount
     setTimeout(() => {
       if (window.vscode) {
         window.vscode.postMessage({ command: 'checkStatus' });
         setIsChecking(true);
+        
+        // Request graph data
+        setGraphState(prev => ({ ...prev, isLoading: true, error: null }));
+        window.vscode.postMessage({ command: 'graph:request' });
       }
     }, 100);
 
@@ -76,6 +107,15 @@ export function ConstellationPanel() {
     }
   };
 
+  const handleNodeClick = (nodeId: string) => {
+    console.log('Node clicked in ConstellationPanel:', nodeId);
+    // TODO: Implement file opening functionality
+  };
+
+  const handleGraphError = (error: string) => {
+    setGraphState(prev => ({ ...prev, error }));
+  };
+
   return (
     <div className="constellation-panel">
       <div className="container">
@@ -90,6 +130,42 @@ export function ConstellationPanel() {
             onClick={handleCheckStatus}
             disabled={isChecking}
           />
+        </div>
+        
+        {/* Graph visualization section */}
+        <div style={{ marginTop: '20px' }}>
+          <h2>Codebase Dependency Graph</h2>
+          
+          {graphState.isLoading && (
+            <div style={{ 
+              padding: '20px', 
+              textAlign: 'center',
+              color: 'var(--vscode-descriptionForeground)'
+            }}>
+              Loading graph data...
+            </div>
+          )}
+          
+          {graphState.error && (
+            <div style={{ 
+              padding: '15px',
+              backgroundColor: 'var(--vscode-inputValidation-errorBackground)',
+              border: '1px solid var(--vscode-inputValidation-errorBorder)',
+              borderRadius: '4px',
+              color: 'var(--vscode-inputValidation-errorForeground)',
+              marginBottom: '15px'
+            }}>
+              Error loading graph: {graphState.error}
+            </div>
+          )}
+          
+          {!graphState.isLoading && !graphState.error && (
+            <InteractiveGraphCanvas
+              graph={graphState.graph}
+              onNodeClick={handleNodeClick}
+              onError={handleGraphError}
+            />
+          )}
         </div>
       </div>
     </div>
