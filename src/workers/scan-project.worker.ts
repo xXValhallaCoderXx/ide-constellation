@@ -47,7 +47,22 @@ const executeScan = async (data: ScanWorkerData) => {
           ]
         },
         // Include common source file extensions
-        includeOnly: '\\.(js|jsx|ts|tsx|mjs|cjs)$'
+        includeOnly: '\\.(js|jsx|ts|tsx|mjs|cjs)$',
+        // Exclude external dependencies for efficiency
+        exclude: {
+          // Exclude any dependency resolved from node_modules
+          path: 'node_modules',
+          // Exclude npm packages by dependency type
+          dependencyTypes: [
+            'npm',
+            'npm-dev',
+            'npm-optional',
+            'npm-peer',
+            'npm-bundled'
+          ]
+        },
+        // Focus only on local/workspace dependencies
+        focus: '\\.(js|jsx|ts|tsx|mjs|cjs)$'
       }
     };
 
