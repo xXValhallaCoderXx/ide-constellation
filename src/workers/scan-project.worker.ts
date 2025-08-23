@@ -48,21 +48,12 @@ const executeScan = async (data: ScanWorkerData) => {
         },
         // Include common source file extensions
         includeOnly: '\\.(js|jsx|ts|tsx|mjs|cjs)$',
-        // Exclude external dependencies for efficiency
+        // Key setting: exclude external modules (npm packages)
         exclude: {
-          // Exclude any dependency resolved from node_modules
-          path: 'node_modules',
-          // Exclude npm packages by dependency type
-          dependencyTypes: [
-            'npm',
-            'npm-dev',
-            'npm-optional',
-            'npm-peer',
-            'npm-bundled'
-          ]
-        },
-        // Focus only on local/workspace dependencies
-        focus: '\\.(js|jsx|ts|tsx|mjs|cjs)$'
+          // Exclude any module that doesn't start with . or / (relative/absolute paths)
+          // This excludes npm packages like 'react', 'vite', etc.
+          path: '^[^./]'
+        }
       }
     };
 

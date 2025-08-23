@@ -26,6 +26,11 @@ export class GraphTransformer {
     // Process each module from dependency-cruiser
     for (const module of modules) {
       try {
+        // Skip external npm packages - they don't start with ./ or / and don't contain file extensions
+        if (this.isExternalPackage(module.source)) {
+          continue;
+        }
+
         // Create node for this module
         const node = this.createNode(module, workspaceRoot);
         if (node && !processedNodes.has(node.id)) {
@@ -33,7 +38,7 @@ export class GraphTransformer {
           processedNodes.add(node.id);
         }
 
-        // Create edges for this module's dependencies
+        // Create edges for this module's dependencies (also filter external packages)
         const moduleEdges = this.createEdges(module, workspaceRoot);
         edges.push(...moduleEdges);
       } catch (error) {
@@ -87,11 +92,21 @@ export class GraphTransformer {
       return [];
     }
 
+    // Skip if source is external package
+    if (this.isExternalPackage(module.source)) {
+      return [];
+    }
+
     const sourceId = this.normalizeId(module.source, workspaceRoot);
     const edges: IConstellationEdge[] = [];
 
     for (const dependency of module.dependencies) {
       if (dependency && dependency.resolved) {
+        // Skip external package dependencies
+        if (this.isExternalPackage(dependency.resolved)) {
+          continue;
+        }
+
         const targetId = this.normalizeId(dependency.resolved, workspaceRoot);
         edges.push({
           source: sourceId,
@@ -115,6 +130,39 @@ export class GraphTransformer {
     
     // Normalize path separators to forward slashes for consistency
     return relativePath.replace(/\\/g, '/');
+  }
+
+  /**
+   * Check if a module path represents an external npm package
+   */
+  private static isExternalPackage(modulePath: string): boolean {
+    if (!modulePath) {
+      return false;
+    }
+
+    // External packages typically:
+    // 1. Don't start with ./ or / (relative/absolute paths)
+    // 2. Don't have file extensions
+    // 3. Are npm package names like 'react', 'vite', '@vitejs/plugin-react'
+    
+    // Check if it starts with relative or absolute path indicators
+    if (modulePath.startsWith('./') || modulePath.startsWith('../') || modulePath.startsWith('/')) {
+      return false;
+    }
+
+    // Check if it has a file extension (local files usually do)
+    if (/\.(js|jsx|ts|tsx|mjs|cjs|css|json)$/i.test(modulePath)) {
+      return false;
+    }
+
+    // Check if it contains node_modules in the path
+    if (modulePath.includes('node_modules')) {
+      return true;
+    }
+
+    // If it doesn't start with path indicators and has no extension, it's likely an npm package
+    // Examples: 'react', 'vite', '@vitejs/plugin-react', 'vitest'
+    return true;
   }
 
   /**
