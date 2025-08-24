@@ -6,6 +6,9 @@ inclusion: always
 # Core Override Directive
 Instructions noted in this file are to be followed strictly.
 
+## Space Naming
+- Increment the spec folder name and increment by 1 based on previous one
+
 ## Documentation
 Once you have completed a spec This is all the tasks or once the user says this task is complete - you must do the following 2 phases:
 

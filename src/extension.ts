@@ -51,6 +51,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		// Initialize Webview Manager (always available)
 		webviewManager = new WebviewManager(null, output);
+		webviewManager.initialize(context);
 		// Inject into provider for visualInstruction routing
 		if (mcpProvider && typeof (mcpProvider as any).setWebviewManager === 'function') {
 			(mcpProvider as any).setWebviewManager(webviewManager);
@@ -59,6 +60,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		// Legacy HTTP server path removed; MCP provider is the default
 		log('[PRODUCTION] MCP provider path active');
 		webviewManager = new WebviewManager(null, output);
+		webviewManager.initialize(context);
 		if (mcpProvider && typeof (mcpProvider as any).setWebviewManager === 'function') {
 			(mcpProvider as any).setWebviewManager(webviewManager);
 		}
@@ -95,9 +97,169 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	// Register the Analyze Health command
+	// Register the Health Report command (new dual-view dashboard)
+	const healthReportDisposable = vscode.commands.registerCommand('constellation.healthReport', async () => {
+		log('Health Report command executed');
+		
+		// Show progress indicator
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: 'Generating health report...',
+			cancellable: false
+		}, async (progress) => {
+			try {
+				const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+				if (!workspaceRoot) {
+					throw new Error('No workspace folder found. Please open a workspace first.');
+				}
+
+				progress.report({ increment: 20, message: 'Initializing health analyzer...' });
+				
+				// Import services dynamically to avoid circular dependencies
+				const { HealthAnalyzer } = await import('./services/health-analyzer.service');
+				
+				// Get or create HealthAnalyzer instance
+				const healthAnalyzer = HealthAnalyzer.getInstance(workspaceRoot);
+				
+				progress.report({ increment: 30, message: 'Checking graph data...' });
+				
+				// Ensure we have graph data
+				const graphService = GraphService.getInstance();
+				let graph = graphService.getGraph();
+				
+				if (!graph) {
+					progress.report({ increment: 0, message: 'No graph data found. Scanning project first...' });
+					
+					// Trigger a scan first
+					if (mcpProvider) {
+						await mcpProvider.scanProject();
+						graph = graphService.getGraph();
+					}
+					
+					if (!graph) {
+						throw new Error('Unable to load graph data. Please run "Constellation: Scan Project" first.');
+					}
+				}
+				
+				progress.report({ increment: 20, message: 'Analyzing file complexity and churn...' });
+				
+				// Perform health analysis
+				const analysis = await healthAnalyzer.analyzeCodebase(graph);
+				
+				progress.report({ increment: 30, message: 'Opening health dashboard...' });
+				
+				// Display health analysis in dashboard
+				if (webviewManager) {
+					webviewManager.createOrShowHealthDashboard();
+					await webviewManager.displayHealthAnalysis(analysis);
+				}
+				
+				// Show success message
+				const summaryMessage = `Health Report: ${analysis.healthScore}/100 score, ${analysis.distribution.critical} critical files`;
+				vscode.window.showInformationMessage(summaryMessage);
+				
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				log(`[ERROR] Health report failed: ${errorMessage}`);
+				vscode.window.showErrorMessage(`Health report failed: ${errorMessage}`);
+			}
+		});
+	});
+
+	// Register the Health Report with Graph command (direct graph access)
+	const healthReportGraphDisposable = vscode.commands.registerCommand('constellation.healthReportGraph', async () => {
+		log('Health Report Graph command executed');
+		
+		// Show progress indicator
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: 'Generating health report with heatmap...',
+			cancellable: false
+		}, async (progress) => {
+			try {
+				const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+				if (!workspaceRoot) {
+					throw new Error('No workspace folder found. Please open a workspace first.');
+				}
+
+				progress.report({ increment: 20, message: 'Initializing health analyzer...' });
+				
+				// Import services dynamically to avoid circular dependencies
+				const { HealthAnalyzer } = await import('./services/health-analyzer.service');
+				
+				// Get or create HealthAnalyzer instance
+				const healthAnalyzer = HealthAnalyzer.getInstance(workspaceRoot);
+				
+				progress.report({ increment: 30, message: 'Checking graph data...' });
+				
+				// Ensure we have graph data
+				const graphService = GraphService.getInstance();
+				let graph = graphService.getGraph();
+				
+				if (!graph) {
+					progress.report({ increment: 0, message: 'No graph data found. Scanning project first...' });
+					
+					// Trigger a scan first
+					if (mcpProvider) {
+						await mcpProvider.scanProject();
+						graph = graphService.getGraph();
+					}
+					
+					if (!graph) {
+						throw new Error('Unable to load graph data. Please run "Constellation: Scan Project" first.');
+					}
+				}
+				
+				progress.report({ increment: 20, message: 'Analyzing file complexity and churn...' });
+				
+				// Perform health analysis
+				const analysis = await healthAnalyzer.analyzeCodebase(graph);
+				
+				progress.report({ increment: 30, message: 'Applying heatmap to graph...' });
+				
+				// Apply heatmap directly to graph
+				if (webviewManager) {
+					await webviewManager.navigateFromDashboardToGraph(analysis.riskScores);
+				}
+				
+				// Show success message
+				const summaryMessage = `Health Heatmap Applied: ${analysis.healthScore}/100 score, ${analysis.distribution.critical} critical files highlighted`;
+				vscode.window.showInformationMessage(summaryMessage);
+				
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				log(`[ERROR] Health report graph failed: ${errorMessage}`);
+				vscode.window.showErrorMessage(`Health report graph failed: ${errorMessage}`);
+			}
+		});
+	});
+
+	// Register the Clear Heatmap command
+	const clearHeatmapDisposable = vscode.commands.registerCommand('constellation.clearHeatmap', () => {
+		log('Clear Heatmap command executed');
+		
+		try {
+			if (webviewManager) {
+				const panel = (webviewManager as any).currentPanel as vscode.WebviewPanel | undefined;
+				if (panel) {
+					panel.webview.postMessage({
+						command: 'graph:clearHeatmap'
+					});
+					vscode.window.showInformationMessage('Health heatmap cleared from graph');
+				} else {
+					vscode.window.showWarningMessage('No graph panel is currently open');
+				}
+			}
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			log(`[ERROR] Clear heatmap failed: ${errorMessage}`);
+			vscode.window.showErrorMessage(`Clear heatmap failed: ${errorMessage}`);
+		}
+	});
+
+	// Register the legacy Analyze Health command (for backward compatibility)
 	const analyzeHealthDisposable = vscode.commands.registerCommand('constellation.analyzeHealth', async () => {
-		log('Analyze Health command executed');
+		log('Analyze Health command executed (legacy)');
 		
 		// Show progress indicator
 		await vscode.window.withProgress({
@@ -208,7 +370,16 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(sidebarDisposable, showGraphDisposable, scanProjectDisposable, analyzeHealthDisposable, debugLaunchDisposable);
+	context.subscriptions.push(
+		sidebarDisposable, 
+		showGraphDisposable, 
+		scanProjectDisposable, 
+		healthReportDisposable,
+		healthReportGraphDisposable,
+		clearHeatmapDisposable,
+		analyzeHealthDisposable, 
+		debugLaunchDisposable
+	);
 
 	// (FR4/FR5/FR6) Active editor tracking -> highlight graph node (debounced per FR5)
 	let statusTimer: NodeJS.Timeout | null = null;

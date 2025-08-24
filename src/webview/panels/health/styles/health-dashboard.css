@@ -1,0 +1,1106 @@
+/* Health Dashboard Styles */
+
+.health-dashboard {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-editor-background);
+  padding: 20px;
+  margin: 0;
+  min-height: 100vh;
+  max-width: 1200px;
+  margin: 0 auto;
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Enhanced animations and transitions */
+.health-dashboard * {
+  box-sizing: border-box;
+}
+
+/* Smooth entrance animation */
+@keyframes dashboardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.health-dashboard {
+  animation: dashboardFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Loading State */
+.health-dashboard.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-container {
+  text-align: center;
+  padding: 40px;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--vscode-progressBar-background);
+  border-top: 3px solid var(--vscode-button-background);
+  border-radius: 50%;
+  animation: spin 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Enhanced loading state with pulse effect */
+.loading-container {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Error State */
+.health-dashboard.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.error-container {
+  text-align: center;
+  padding: 40px;
+  background-color: var(--vscode-inputValidation-errorBackground);
+  border: 1px solid var(--vscode-inputValidation-errorBorder);
+  border-radius: 8px;
+  max-width: 500px;
+}
+
+.error-message {
+  color: var(--vscode-inputValidation-errorForeground);
+  margin: 15px 0;
+  font-size: 14px;
+}
+
+.retry-button {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--vscode-font-family);
+  font-weight: 500;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.retry-button:hover {
+  background-color: var(--vscode-button-hoverBackground);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.retry-button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.retry-button:focus {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* Ripple effect for buttons */
+.retry-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: width 0.3s, height 0.3s;
+}
+
+.retry-button:active::before {
+  width: 100px;
+  height: 100px;
+}
+
+/* Empty State */
+.health-dashboard.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-container {
+  text-align: center;
+  padding: 40px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Dashboard Header */
+.dashboard-header {
+  margin-bottom: 30px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  padding-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dashboard-header h1 {
+  color: var(--vscode-titleBar-activeForeground);
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.timestamp {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  font-style: italic;
+  flex: 1;
+}
+
+/* Health Score Section */
+.health-score-section {
+  margin-bottom: 30px;
+}
+
+.health-score-card {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  padding: 25px;
+  background-color: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.health-score-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, 
+    var(--vscode-button-background) 0%, 
+    var(--vscode-button-hoverBackground) 100%);
+  opacity: 0;
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.health-score-card:hover::before {
+  opacity: 1;
+}
+
+.health-score-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.score-circle {
+  width: 120px;
+  height: 120px;
+  border: 6px solid;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.score-circle::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    var(--vscode-button-background) 90deg,
+    transparent 180deg
+  );
+  opacity: 0;
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: -1;
+}
+
+.health-score-card:hover .score-circle::before {
+  opacity: 0.3;
+  animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.score-value {
+  font-size: 32px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.score-label {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  margin-top: 4px;
+}
+
+.score-details {
+  flex: 1;
+}
+
+.score-description {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0 0 8px 0;
+}
+
+.files-analyzed {
+  color: var(--vscode-descriptionForeground);
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Risk Distribution */
+.risk-distribution-section {
+  margin-bottom: 30px;
+}
+
+.risk-distribution-section h2 {
+  color: var(--vscode-titleBar-activeForeground);
+  margin: 0 0 15px 0;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.distribution-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.distribution-item {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 20px;
+  background-color: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.distribution-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--vscode-button-background);
+  transform: scaleY(0);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: bottom;
+}
+
+.distribution-item:hover::before {
+  transform: scaleY(1);
+}
+
+.distribution-item:hover {
+  transform: translateY(-3px) translateX(2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  border-color: var(--vscode-focusBorder);
+}
+
+.distribution-item:focus-within {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.distribution-icon {
+  font-size: 24px;
+}
+
+.distribution-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.distribution-count {
+  font-size: 24px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.distribution-label {
+  font-size: 14px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.distribution-percentage {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  font-weight: 500;
+}
+
+/* Dashboard Actions */
+.dashboard-actions {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 30px;
+  flex-wrap: wrap;
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: var(--vscode-font-family);
+  font-weight: 500;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.action-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.action-button:active::before {
+  width: 200px;
+  height: 200px;
+}
+
+.action-button.primary {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.action-button.primary:hover {
+  background-color: var(--vscode-button-hoverBackground);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.action-button.secondary {
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 1px solid var(--vscode-button-border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+.action-button.secondary:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+  transform: translateY(-2px);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.15);
+  border-color: var(--vscode-focusBorder);
+}
+
+.action-button:focus {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.button-icon {
+  font-size: 16px;
+}
+
+/* Top Risk Files */
+.top-risks-section {
+  margin-bottom: 30px;
+}
+
+.top-risks-section h2 {
+  color: var(--vscode-titleBar-activeForeground);
+  margin: 0 0 15px 0;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.risk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.risk-item {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px;
+  background-color: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.risk-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--vscode-button-background);
+  transform: scaleY(0);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center;
+}
+
+.risk-item:hover::before {
+  transform: scaleY(1);
+}
+
+.risk-item:hover {
+  background-color: var(--vscode-list-hoverBackground);
+  transform: translateX(6px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border-color: var(--vscode-focusBorder);
+}
+
+.risk-item.selected {
+  background-color: var(--vscode-list-activeSelectionBackground);
+  border-color: var(--vscode-focusBorder);
+  transform: translateX(6px);
+}
+
+.risk-item.selected::before {
+  transform: scaleY(1);
+  background: var(--vscode-focusBorder);
+}
+
+.risk-item:focus {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.risk-rank {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--vscode-descriptionForeground);
+  min-width: 30px;
+  text-align: center;
+}
+
+.risk-icon {
+  font-size: 20px;
+}
+
+.risk-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.risk-file-name {
+  font-weight: 500;
+  font-size: 14px;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.risk-file-path {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.risk-metrics {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.metric {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  background-color: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.risk-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 80px;
+}
+
+.risk-score-bar {
+  width: 60px;
+  height: 6px;
+  border-radius: 3px;
+  position: relative;
+}
+
+.risk-score-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-descriptionForeground);
+}
+
+.navigate-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  color: var(--vscode-descriptionForeground);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.7;
+  position: relative;
+  overflow: hidden;
+}
+
+.navigate-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: var(--vscode-button-background);
+  transform: translate(-50%, -50%);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.2;
+}
+
+.navigate-button:hover::before {
+  width: 40px;
+  height: 40px;
+}
+
+.navigate-button:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+  opacity: 1;
+  transform: scale(1.15);
+  color: var(--vscode-foreground);
+}
+
+.navigate-button:active {
+  transform: scale(1.05);
+}
+
+.navigate-button:focus {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.navigate-button .button-icon {
+  font-size: 14px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Recommendations */
+.recommendations-section h2 {
+  color: var(--vscode-titleBar-activeForeground);
+  margin: 0 0 15px 0;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.recommendations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recommendation-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 15px;
+  background-color: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-left: 4px solid var(--vscode-button-background);
+  border-radius: 8px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.recommendation-item:hover {
+  transform: translateX(4px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border-left-width: 6px;
+}
+
+.recommendation-icon {
+  font-size: 16px;
+  margin-top: 2px;
+}
+
+.recommendation-text {
+  flex: 1;
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .health-dashboard {
+    padding: 15px;
+  }
+  
+  .header-actions {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .timestamp {
+    flex: none;
+  }
+  
+  .health-score-card {
+    flex-direction: column;
+    text-align: center;
+    gap: 20px;
+  }
+  
+  .distribution-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .dashboard-actions {
+    flex-direction: column;
+  }
+  
+  .action-button {
+    justify-content: center;
+  }
+  
+  .risk-item {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  
+  .risk-metrics {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* Enhanced Focus and Accessibility */
+.action-button:focus,
+.risk-item:focus,
+.navigate-button:focus,
+.retry-button:focus,
+.distribution-item:focus-within {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* Skip to content link for screen readers */
+.skip-to-content {
+  position: absolute;
+  top: -40px;
+  left: 6px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  padding: 8px;
+  text-decoration: none;
+  border-radius: 4px;
+  z-index: 1000;
+  transition: top 0.3s;
+}
+
+.skip-to-content:focus {
+  top: 6px;
+}
+
+/* Enhanced keyboard navigation */
+.risk-item[tabindex="0"]:focus,
+.distribution-item[tabindex="0"]:focus {
+  outline: 3px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+  background-color: var(--vscode-list-focusBackground);
+}
+
+/* Screen reader only content */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .distribution-item,
+  .risk-item,
+  .recommendation-item,
+  .health-score-card {
+    border-width: 2px;
+  }
+  
+  .action-button {
+    border-width: 2px;
+  }
+  
+  .score-circle {
+    border-width: 4px;
+  }
+  
+  /* Ensure sufficient contrast for interactive elements */
+  .action-button:hover,
+  .risk-item:hover,
+  .navigate-button:hover {
+    border: 2px solid var(--vscode-contrastBorder);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .health-dashboard,
+  .loading-container,
+  .health-score-card,
+  .distribution-item,
+  .action-button,
+  .risk-item,
+  .navigate-button,
+  .recommendation-item,
+  .score-circle,
+  .retry-button {
+    animation: none !important;
+    transition: none !important;
+  }
+  
+  .health-score-card:hover,
+  .distribution-item:hover,
+  .risk-item:hover,
+  .action-button:hover,
+  .navigate-button:hover {
+    transform: none !important;
+  }
+}
+
+/* Color blind friendly indicators */
+.risk-level-critical::before,
+.risk-level-high::before,
+.risk-level-medium::before,
+.risk-level-low::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.risk-level-critical::before {
+  background: var(--vscode-errorForeground);
+  box-shadow: 0 0 0 2px var(--vscode-errorForeground);
+}
+
+.risk-level-high::before {
+  background: var(--vscode-notificationsWarningIcon-foreground);
+  box-shadow: 0 0 0 2px var(--vscode-notificationsWarningIcon-foreground);
+}
+
+.risk-level-medium::before {
+  background: var(--vscode-notificationsInfoIcon-foreground);
+  box-shadow: 0 0 0 2px var(--vscode-notificationsInfoIcon-foreground);
+}
+
+.risk-level-low::before {
+  background: var(--vscode-testing-iconPassed);
+  box-shadow: 0 0 0 2px var(--vscode-testing-iconPassed);
+}
+/* Addit
+ional Visual Polish and Animations */
+
+/* Staggered animation for dashboard sections */
+.dashboard-header {
+  animation: slideInFromTop 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.health-score-section {
+  animation: slideInFromLeft 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.1s both;
+}
+
+.risk-distribution-section {
+  animation: slideInFromRight 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.2s both;
+}
+
+.dashboard-actions {
+  animation: slideInFromBottom 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.3s both;
+}
+
+.top-risks-section {
+  animation: slideInFromLeft 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.4s both;
+}
+
+.recommendations-section {
+  animation: slideInFromRight 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.5s both;
+}
+
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Enhanced loading states */
+.health-dashboard.loading .loading-container {
+  animation: fadeInScale 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Micro-interactions for better UX */
+.risk-score-bar {
+  position: relative;
+  overflow: hidden;
+}
+
+.risk-score-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255, 255, 255, 0.3) 50%, 
+    transparent 100%);
+  animation: scoreBarShimmer 2s infinite;
+  animation-delay: 1s;
+}
+
+@keyframes scoreBarShimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* Enhanced tooltip-like effects */
+.metric:hover {
+  transform: scale(1.05);
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Improved visual hierarchy */
+.dashboard-header h1 {
+  position: relative;
+}
+
+.dashboard-header h1::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 0;
+  width: 60px;
+  height: 3px;
+  background: linear-gradient(90deg, 
+    var(--vscode-button-background) 0%, 
+    var(--vscode-button-hoverBackground) 100%);
+  border-radius: 2px;
+}
+
+/* Enhanced section headers */
+.risk-distribution-section h2,
+.top-risks-section h2,
+.recommendations-section h2 {
+  position: relative;
+  padding-left: 15px;
+}
+
+.risk-distribution-section h2::before,
+.top-risks-section h2::before,
+.recommendations-section h2::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 20px;
+  background: var(--vscode-button-background);
+  border-radius: 2px;
+  transform: translateY(-50%);
+}
+
+/* Disable animations for reduced motion users */
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-header,
+  .health-score-section,
+  .risk-distribution-section,
+  .dashboard-actions,
+  .top-risks-section,
+  .recommendations-section,
+  .loading-container {
+    animation: none !important;
+  }
+  
+  .risk-score-bar::after {
+    display: none;
+  }
+}
+
+/* Enhanced dark mode support */
+@media (prefers-color-scheme: dark) {
+  .health-score-card,
+  .distribution-item,
+  .risk-item,
+  .recommendation-item {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+  
+  .health-score-card:hover,
+  .distribution-item:hover,
+  .risk-item:hover {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* Print styles */
+@media print {
+  .health-dashboard {
+    background: white;
+    color: black;
+    padding: 0;
+    animation: none;
+  }
+  
+  .action-button,
+  .navigate-button {
+    display: none;
+  }
+  
+  .health-score-card,
+  .distribution-item,
+  .risk-item,
+  .recommendation-item {
+    break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #ccc;
+  }
+}

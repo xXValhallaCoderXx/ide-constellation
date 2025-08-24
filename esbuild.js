@@ -96,6 +96,27 @@ async function main() {
 			],
 		});
 		contexts.push(sidebarCtx);
+
+		// Health dashboard build configuration
+		const healthDashboardCtx = await esbuild.context({
+			entryPoints: [
+				'src/webview/panels/health/index.tsx'
+			],
+			bundle: true,
+			format: 'iife',
+			minify: production,
+			sourcemap: !production,
+			sourcesContent: false,
+			platform: 'browser',
+			outfile: 'dist/health-webview.js',
+			jsx: 'automatic',
+			jsxImportSource: 'preact',
+			logLevel: 'silent',
+			plugins: [
+				esbuildProblemMatcherPlugin,
+			],
+		});
+		contexts.push(healthDashboardCtx);
 	}
 
 	// MCP Server build configuration

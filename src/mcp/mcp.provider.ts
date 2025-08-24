@@ -24,6 +24,10 @@ export class KiroConstellationMCPProvider {
         this.outputChannel = outputChannel;
         // Create a server instance for direct method calls with extension context
         this.serverInstance = new MCPStdioServer(context);
+        // Set this provider instance for visual instruction routing
+        if (this.serverInstance) {
+            this.serverInstance.setProviderInstance(this);
+        }
     }
 
     /**

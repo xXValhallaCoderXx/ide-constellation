@@ -1,16 +1,36 @@
 import * as vscode from 'vscode';
 // Removed MCPServer dependency; webview status is synthesized
-import { WebviewToExtensionMessage, ExtensionToWebviewMessage, GraphResponseMessage, GraphErrorMessage, EditorOpenMessage } from '../types/messages.types';
+import { WebviewToExtensionMessage, ExtensionToWebviewMessage, GraphResponseMessage, GraphErrorMessage, EditorOpenMessage, HealthRequestMessage, HealthResponseMessage, HealthErrorMessage, HealthLoadingMessage, HealthShowHeatmapMessage, HealthFocusNodeMessage, HealthRefreshMessage } from '../types/messages.types';
 import { GraphService } from '../services/graph.service';
+import { HealthAnalyzer } from '../services/health-analyzer.service';
+import { HealthDashboardProvider } from './providers/health-dashboard.provider';
 import { resolveWorkspacePath } from 'src/utils/path.utils';
 
 export class WebviewManager {
   private currentPanel: vscode.WebviewPanel | undefined = undefined;
+  private healthDashboardProvider: HealthDashboardProvider | undefined = undefined;
   private output?: vscode.OutputChannel;
-  private statusBarItem: vscode.StatusBarItem | null = null; // for future FR7 usage
+  private context: vscode.ExtensionContext | undefined = undefined;
+  private visualInstructionDebounceTimer: NodeJS.Timeout | null = null;
+  private pendingVisualInstruction: any | null = null;
+  private static readonly VISUAL_INSTRUCTION_SIZE_LIMIT = 1_048_576; // 1MB
+  private static readonly VISUAL_INSTRUCTION_DEBOUNCE_MS = 100; // 100ms debounce
 
   constructor(_mcpServer: unknown | null, output?: vscode.OutputChannel) {
     this.output = output;
+  }
+
+  /**
+   * Initialize the WebviewManager with extension context
+   */
+  public initialize(context: vscode.ExtensionContext): void {
+    this.context = context;
+    this.healthDashboardProvider = new HealthDashboardProvider(context, this.output);
+    
+    // Set webview manager reference for cross-panel communication
+    if (this.healthDashboardProvider && typeof this.healthDashboardProvider.setWebviewManager === 'function') {
+      this.healthDashboardProvider.setWebviewManager(this);
+    }
   }
 
   createOrShowPanel(context: vscode.ExtensionContext): void {
@@ -75,6 +95,21 @@ export class WebviewManager {
         break;
       case 'editor:open':
         await this.handleEditorOpen(message as EditorOpenMessage);
+        break;
+      case 'health:request':
+        await this.handleHealthRequest(message as HealthRequestMessage);
+        break;
+      case 'health:showHeatmap':
+        await this.handleHealthShowHeatmap(message as HealthShowHeatmapMessage);
+        break;
+      case 'health:focusNode':
+        await this.handleHealthFocusNode(message as HealthFocusNodeMessage);
+        break;
+      case 'health:refresh':
+        await this.handleHealthRefresh(message as HealthRefreshMessage);
+        break;
+      case 'visualInstruction':
+        await this.handleVisualInstruction(message as any);
         break;
       default:
         console.warn('Unknown webview message command:', (message as any).command);
@@ -281,11 +316,534 @@ export class WebviewManager {
 </html>`;
   }
 
-  dispose(): void {
+  /**
+   * Handle health analysis request
+   */
+  private async handleHealthRequest(message: HealthRequestMessage): Promise<void> {
+    const timestamp = new Date().toISOString();
+    this.output?.appendLine(`[${timestamp}] Health analysis request received`);
+
+    // Send loading message
+    const loadingMessage: HealthLoadingMessage = {
+      command: 'health:loading'
+    };
     if (this.currentPanel) {
-      this.currentPanel.dispose();
-      this.currentPanel = undefined;
+      this.currentPanel.webview.postMessage(loadingMessage);
     }
+
+    try {
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!workspaceRoot) {
+        throw new Error('No workspace folder found');
+      }
+
+      // Get or load graph data
+      const graphService = GraphService.getInstance();
+      let graph = graphService.getGraph();
+      
+      if (!graph || message.data?.forceRefresh) {
+        this.output?.appendLine(`[${timestamp}] Loading fresh graph data for health analysis`);
+        graph = await graphService.loadGraph(workspaceRoot, '.');
+      }
+
+      // Perform health analysis
+      const healthAnalyzer = HealthAnalyzer.getInstance(workspaceRoot);
+      const analysis = await healthAnalyzer.analyzeCodebase(graph);
+
+      const response: HealthResponseMessage = {
+        command: 'health:response',
+        data: {
+          analysis,
+          timestamp
+        }
+      };
+
+      if (this.currentPanel) {
+        this.currentPanel.webview.postMessage(response);
+      }
+      this.output?.appendLine(`[${timestamp}] Health analysis completed: ${analysis.totalFiles} files, score ${analysis.healthScore}`);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.output?.appendLine(`[${timestamp}] Health analysis error: ${errorMessage}`);
+
+      const errorResponse: HealthErrorMessage = {
+        command: 'health:error',
+        data: {
+          error: errorMessage,
+          timestamp
+        }
+      };
+
+      if (this.currentPanel) {
+        this.currentPanel.webview.postMessage(errorResponse);
+      }
+    }
+  }
+
+  /**
+   * Handle show heatmap on graph request
+   */
+  private async handleHealthShowHeatmap(message: HealthShowHeatmapMessage): Promise<void> {
+    const timestamp = new Date().toISOString();
+    this.output?.appendLine(`[${timestamp}] Show heatmap request received`);
+
+    try {
+      // Transform health analysis to heatmap data
+      const { analysis, centerNode } = message.data;
+      
+      // Use the new cross-panel navigation method
+      await this.navigateFromDashboardToGraph(analysis.riskScores, centerNode);
+
+      this.output?.appendLine(`[${timestamp}] Heatmap navigation completed`);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.output?.appendLine(`[${timestamp}] Show heatmap error: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Handle focus node in graph request
+   */
+  private async handleHealthFocusNode(message: HealthFocusNodeMessage): Promise<void> {
+    const timestamp = new Date().toISOString();
+    const { nodeId } = message.data;
+    this.output?.appendLine(`[${timestamp}] Focus node request: ${nodeId}`);
+
+    try {
+      // Send highlight message to graph
+      const highlightMessage = {
+        command: 'graph:highlightNode',
+        data: {
+          fileId: nodeId
+        }
+      };
+
+      if (this.currentPanel) {
+        this.currentPanel.webview.postMessage(highlightMessage);
+      }
+
+      this.output?.appendLine(`[${timestamp}] Node focused: ${nodeId}`);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.output?.appendLine(`[${timestamp}] Focus node error: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Handle refresh health analysis request
+   */
+  private async handleHealthRefresh(message: HealthRefreshMessage): Promise<void> {
+    const timestamp = new Date().toISOString();
+    this.output?.appendLine(`[${timestamp}] Health refresh request received`);
+
+    // Treat as a force refresh health request
+    await this.handleHealthRequest({
+      command: 'health:request',
+      data: { forceRefresh: true }
+    });
+  }
+
+  /**
+   * Handle visual instruction from MCP provider with debouncing and size guards
+   */
+  private async handleVisualInstruction(message: any): Promise<void> {
+    const timestamp = new Date().toISOString();
+    const instruction = message.data;
+    
+    if (!instruction || !instruction.action) {
+      this.output?.appendLine(`[${timestamp}] Invalid visual instruction received: missing action`);
+      return;
+    }
+
+    // Size guard check
+    try {
+      const size = Buffer.byteLength(JSON.stringify(instruction), 'utf8');
+      if (size > WebviewManager.VISUAL_INSTRUCTION_SIZE_LIMIT) {
+        this.output?.appendLine(`[${timestamp}] Visual instruction too large (${size} bytes), skipping`);
+        return;
+      }
+    } catch (error) {
+      this.output?.appendLine(`[${timestamp}] Failed to measure instruction size, allowing processing`);
+    }
+
+    this.output?.appendLine(`[${timestamp}] Visual instruction received: ${instruction.action} (correlation: ${instruction.correlationId || 'none'})`);
+
+    // Debounced processing
+    this.pendingVisualInstruction = instruction;
+    
+    if (this.visualInstructionDebounceTimer) {
+      clearTimeout(this.visualInstructionDebounceTimer);
+    }
+    
+    this.visualInstructionDebounceTimer = setTimeout(async () => {
+      const toProcess = this.pendingVisualInstruction;
+      this.pendingVisualInstruction = null;
+      this.visualInstructionDebounceTimer = null;
+      
+      if (!toProcess) {
+        return;
+      }
+      
+      try {
+        await this.processVisualInstruction(toProcess);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        this.output?.appendLine(`[${new Date().toISOString()}] Visual instruction processing error: ${errorMessage}`);
+      }
+    }, WebviewManager.VISUAL_INSTRUCTION_DEBOUNCE_MS);
+  }
+
+  /**
+   * Process visual instruction after debouncing
+   */
+  private async processVisualInstruction(instruction: any): Promise<void> {
+    const timestamp = new Date().toISOString();
+    
+    try {
+      switch (instruction.action) {
+        case 'applyHealthAnalysis':
+          await this.handleApplyHealthAnalysis(instruction);
+          break;
+        default:
+          this.output?.appendLine(`[${timestamp}] Unknown visual instruction action: ${instruction.action}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.output?.appendLine(`[${timestamp}] Visual instruction processing error: ${errorMessage}`);
+      
+      // Implement fallback strategy
+      await this.handleVisualInstructionFallback(instruction, errorMessage);
+    }
+  }
+
+  /**
+   * Handle fallback strategies for visual instruction failures
+   */
+  private async handleVisualInstructionFallback(instruction: any, error: string): Promise<void> {
+    const timestamp = new Date().toISOString();
+    this.output?.appendLine(`[${timestamp}] Attempting visual instruction fallback for action: ${instruction.action}`);
+    
+    try {
+      switch (instruction.action) {
+        case 'applyHealthAnalysis':
+          // Fallback: show dashboard only
+          this.createOrShowHealthDashboard();
+          this.output?.appendLine(`[${timestamp}] Fallback successful: health dashboard shown`);
+          break;
+        default:
+          this.output?.appendLine(`[${timestamp}] No fallback available for action: ${instruction.action}`);
+      }
+    } catch (fallbackError) {
+      this.output?.appendLine(`[${timestamp}] Fallback failed: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+    }
+  }
+
+  /**
+   * Handle applyHealthAnalysis visual instruction
+   */
+  private async handleApplyHealthAnalysis(instruction: any): Promise<void> {
+    const timestamp = new Date().toISOString();
+    const { payload } = instruction;
+    
+    this.output?.appendLine(`[${timestamp}] Applying health analysis visual instruction`);
+
+    try {
+      // Handle dual-view payload structure from health report tool
+      if (payload.type === 'dual-view') {
+        const { dashboard, graph } = payload;
+        
+        // Show dashboard if requested
+        if (dashboard?.show && dashboard?.data) {
+          this.output?.appendLine(`[${timestamp}] Showing health dashboard`);
+          this.createOrShowHealthDashboard();
+          await this.displayHealthAnalysis(dashboard.data);
+          
+          // Focus on specific file if provided
+          if (dashboard.focusFile && this.healthDashboardProvider) {
+            const panel = this.healthDashboardProvider.getPanel();
+            if (panel) {
+              panel.webview.postMessage({
+                command: 'dashboard:highlightRisk',
+                data: { nodeId: dashboard.focusFile }
+              });
+            }
+          }
+        }
+        
+        // Show graph with heatmap if requested
+        if (graph?.show && graph?.heatmapData) {
+          this.output?.appendLine(`[${timestamp}] Applying heatmap to graph`);
+          
+          try {
+            if (this.context) {
+              this.createOrShowPanel(this.context);
+            }
+            
+            // Apply heatmap with animation config
+            if (this.currentPanel) {
+              const heatmapMessage = {
+                command: 'graph:applyHeatmap',
+                data: {
+                  heatmapData: graph.heatmapData,
+                  centerNode: graph.centerNode,
+                  animationConfig: graph.animationConfig || { duration: 300, easing: 'ease-out' },
+                  distribution: dashboard?.data?.distribution,
+                  totalFiles: dashboard?.data?.totalFiles
+                }
+              };
+              
+              this.currentPanel.webview.postMessage(heatmapMessage);
+              
+              // Focus on center node if provided
+              if (graph.centerNode) {
+                this.currentPanel.webview.postMessage({
+                  command: 'graph:highlightNode',
+                  data: { fileId: graph.centerNode }
+                });
+              }
+            } else {
+              throw new Error('Graph panel not available');
+            }
+          } catch (graphError) {
+            this.output?.appendLine(`[${timestamp}] Graph rendering failed, falling back to dashboard-only mode: ${graphError instanceof Error ? graphError.message : String(graphError)}`);
+            
+            // Fallback: ensure dashboard is shown even if graph fails
+            if (dashboard?.show && dashboard?.data) {
+              this.createOrShowHealthDashboard();
+              await this.displayHealthAnalysis(dashboard.data);
+              
+              // Send error notification to dashboard
+              if (this.healthDashboardProvider) {
+                const panel = this.healthDashboardProvider.getPanel();
+                if (panel) {
+                  panel.webview.postMessage({
+                    command: 'dashboard:notification',
+                    data: {
+                      type: 'warning',
+                      message: 'Graph visualization failed. Showing dashboard-only view.'
+                    }
+                  });
+                }
+              }
+            }
+          }
+        }
+        
+        this.output?.appendLine(`[${timestamp}] Dual-view health analysis applied successfully`);
+        
+      } else {
+        // Fallback for legacy payload structure
+        const { analysis, displayMode } = payload;
+        
+        if (!analysis) {
+          this.output?.appendLine(`[${timestamp}] No analysis data in visual instruction payload`);
+          return;
+        }
+
+        const mode = displayMode || 'dashboard';
+        
+        switch (mode) {
+          case 'dashboard':
+            this.createOrShowHealthDashboard();
+            await this.displayHealthAnalysis(analysis);
+            break;
+            
+          case 'graph':
+            if (this.context) {
+              this.createOrShowPanel(this.context);
+            }
+            await this.navigateFromDashboardToGraph(analysis.riskScores);
+            break;
+            
+          case 'both':
+            this.createOrShowHealthDashboard();
+            await this.displayHealthAnalysis(analysis);
+            
+            if (this.context) {
+              this.createOrShowPanel(this.context);
+            }
+            await this.navigateFromDashboardToGraph(analysis.riskScores);
+            break;
+            
+          default:
+            this.output?.appendLine(`[${timestamp}] Unknown display mode: ${mode}, defaulting to dashboard`);
+            this.createOrShowHealthDashboard();
+            await this.displayHealthAnalysis(analysis);
+        }
+        
+        this.output?.appendLine(`[${timestamp}] Health analysis visual instruction applied successfully (mode: ${mode})`);
+      }
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.output?.appendLine(`[${timestamp}] Failed to apply health analysis: ${errorMessage}`);
+      
+      // Fallback: try to show dashboard only
+      try {
+        this.createOrShowHealthDashboard();
+        this.output?.appendLine(`[${timestamp}] Fallback to dashboard-only mode successful`);
+      } catch (fallbackError) {
+        this.output?.appendLine(`[${timestamp}] Fallback failed: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+      }
+    }
+  }
+
+  /**
+   * Create or show the health dashboard panel
+   */
+  public createOrShowHealthDashboard(): void {
+    if (!this.healthDashboardProvider) {
+      this.output?.appendLine(`[${new Date().toISOString()}] Health dashboard provider not initialized`);
+      return;
+    }
+    this.healthDashboardProvider.createOrShowPanel();
+  }
+
+  /**
+   * Display health analysis in the dashboard
+   */
+  public async displayHealthAnalysis(analysis: any): Promise<void> {
+    if (!this.healthDashboardProvider) {
+      this.output?.appendLine(`[${new Date().toISOString()}] Health dashboard provider not initialized`);
+      return;
+    }
+    await this.healthDashboardProvider.displayAnalysis(analysis);
+  }
+
+  /**
+   * Get the health dashboard provider
+   */
+  public getHealthDashboardProvider(): HealthDashboardProvider | undefined {
+    return this.healthDashboardProvider;
+  }
+
+  /**
+   * Handle cross-panel navigation from health dashboard to graph
+   */
+  public async navigateFromDashboardToGraph(riskScores: any[], focusNodeId?: string): Promise<void> {
+    const timestamp = new Date().toISOString();
+    this.output?.appendLine(`[${timestamp}] Navigating from dashboard to graph with ${riskScores.length} risk scores`);
+
+    try {
+      // Ensure main graph panel is open
+      if (!this.currentPanel && this.context) {
+        this.createOrShowPanel(this.context);
+      }
+
+      // Transform risk scores to heatmap data
+      const heatmapData = riskScores.map(risk => ({
+        nodeId: risk.nodeId,
+        score: risk.score,
+        color: risk.color,
+        metrics: {
+          complexity: risk.metrics.complexity.cyclomaticComplexity || 0,
+          churn: risk.metrics.churn.commitCount,
+          dependencies: risk.metrics.dependencies,
+          category: risk.category
+        }
+      }));
+
+      // Send heatmap data to graph
+      if (this.currentPanel) {
+        this.currentPanel.webview.postMessage({
+          command: 'graph:applyHeatmap',
+          data: {
+            heatmapData,
+            centerNode: focusNodeId,
+            distribution: {
+              low: riskScores.filter(r => r.category === 'low').length,
+              medium: riskScores.filter(r => r.category === 'medium').length,
+              high: riskScores.filter(r => r.category === 'high').length,
+              critical: riskScores.filter(r => r.category === 'critical').length
+            },
+            totalFiles: riskScores.length
+          }
+        });
+
+        // Focus on specific node if provided
+        if (focusNodeId) {
+          this.currentPanel.webview.postMessage({
+            command: 'graph:highlightNode',
+            data: { fileId: focusNodeId }
+          });
+        }
+      }
+
+      this.output?.appendLine(`[${timestamp}] Heatmap applied to graph with ${heatmapData.length} nodes`);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.output?.appendLine(`[${timestamp}] Navigation from dashboard to graph failed: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * Handle cross-panel navigation from graph to dashboard
+   */
+  public async navigateFromGraphToDashboard(nodeId: string): Promise<void> {
+    const timestamp = new Date().toISOString();
+    this.output?.appendLine(`[${timestamp}] Navigating from graph to dashboard for node: ${nodeId}`);
+
+    try {
+      // Ensure health dashboard is open
+      this.createOrShowHealthDashboard();
+
+      // Send highlight message to dashboard
+      if (this.healthDashboardProvider) {
+        const panel = this.healthDashboardProvider.getPanel();
+        if (panel) {
+          panel.webview.postMessage({
+            command: 'dashboard:highlightRisk',
+            data: { nodeId }
+          });
+        }
+      }
+
+      this.output?.appendLine(`[${timestamp}] Dashboard highlight sent for node: ${nodeId}`);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.output?.appendLine(`[${timestamp}] Navigation from graph to dashboard failed: ${errorMessage}`);
+    }
+  }
+
+  dispose(): void {
+    try {
+      // Clean up main panel
+      if (this.currentPanel) {
+        this.currentPanel.dispose();
+        this.currentPanel = undefined;
+      }
+    } catch (error) {
+      this.output?.appendLine(`[${new Date().toISOString()}] Error disposing main panel: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    try {
+      // Clean up health dashboard provider
+      if (this.healthDashboardProvider) {
+        this.healthDashboardProvider.dispose();
+        this.healthDashboardProvider = undefined;
+      }
+    } catch (error) {
+      this.output?.appendLine(`[${new Date().toISOString()}] Error disposing health dashboard provider: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    try {
+      // Clean up timers and pending operations
+      if (this.visualInstructionDebounceTimer) {
+        clearTimeout(this.visualInstructionDebounceTimer);
+        this.visualInstructionDebounceTimer = null;
+      }
+      this.pendingVisualInstruction = null;
+    } catch (error) {
+      this.output?.appendLine(`[${new Date().toISOString()}] Error cleaning up timers: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    // Clear context reference
+    this.context = undefined;
   }
 
   updateMCPServer(_mcpServer: unknown | null): void {

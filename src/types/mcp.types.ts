@@ -73,3 +73,25 @@ export const CONSTELLATION_GET_GRAPH_SUMMARY_TOOL: ToolDefinition = {
         required: []
     }
 };
+
+// Health report tool for dual-view health analysis
+export const CONSTELLATION_HEALTH_REPORT_TOOL: ToolDefinition = {
+    name: 'constellation_health_report',
+    description: 'Generate comprehensive codebase health report with dual-view dashboard and heatmap visualization. Analyzes code complexity, git churn, and dependencies to identify risk areas. Trigger terms: health, report, risk, analysis, dashboard, heatmap.',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            forceRefresh: {
+                type: 'boolean',
+                description: 'Force a fresh analysis instead of using cached data',
+                default: false
+            },
+            workspaceRoot: {
+                type: 'string',
+                description: 'Path to the workspace root directory to analyze (defaults to current working directory)',
+                default: ''
+            }
+        },
+        required: []
+    }
+};

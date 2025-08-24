@@ -1,7 +1,9 @@
-import { useState } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import { IConstellationGraph } from '../../../../types/graph.types';
-import { GraphCanvas } from './GraphCanvas';
+import { GraphCanvas, HeatmapNode } from './GraphCanvas';
 import { SearchBox } from './SearchBox';
+import { HeatmapLegend } from './HeatmapLegend';
+import '../../../../types/vscode-api.types';
 
 interface ActiveHighlightState { fileId: string | null; reason?: string }
 
@@ -12,12 +14,32 @@ interface InteractiveGraphCanvasProps {
   activeHighlight?: ActiveHighlightState; // FR6/FR11 placeholder
 }
 
+interface HeatmapState {
+  isVisible: boolean;
+  isActive: boolean;
+  data: HeatmapNode[];
+  distribution?: {
+    low: number;
+    medium: number;
+    high: number;
+    critical: number;
+  };
+  totalFiles?: number;
+}
+
 type OpenModeSetting = 'modifier' | 'default' | 'split';
 
 export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHighlight }: InteractiveGraphCanvasProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResultCount, setSearchResultCount] = useState(0);
   const [openModeSetting, setOpenModeSetting] = useState<OpenModeSetting>('modifier');
+  const [heatmapState, setHeatmapState] = useState<HeatmapState>({
+    isVisible: false,
+    isActive: false,
+    data: [],
+    distribution: undefined,
+    totalFiles: 0
+  });
 
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
@@ -33,6 +55,63 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
     if (openModeSetting === 'default') finalMode = 'default';
     else if (openModeSetting === 'split') finalMode = 'split';
     onNodeClick?.(nodeId, finalMode);
+  };
+
+  // Listen for heatmap messages from extension
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const message = event.data;
+      
+      switch (message.command) {
+        case 'graph:applyHeatmap':
+          const { heatmapData, distribution, totalFiles } = message.data;
+          setHeatmapState(prev => ({
+            ...prev,
+            isVisible: true,
+            isActive: true,
+            data: heatmapData,
+            distribution,
+            totalFiles
+          }));
+          break;
+        case 'graph:clearHeatmap':
+          setHeatmapState(prev => ({
+            ...prev,
+            isActive: false,
+            data: []
+          }));
+          break;
+        default:
+          // Ignore unknown messages
+          break;
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const handleToggleHeatmap = () => {
+    setHeatmapState(prev => ({
+      ...prev,
+      isActive: !prev.isActive
+    }));
+  };
+
+  const handleCloseLegend = () => {
+    setHeatmapState(prev => ({
+      ...prev,
+      isVisible: false,
+      isActive: false,
+      data: []
+    }));
+  };
+
+  const handleHeatmapStateChange = (isActive: boolean) => {
+    setHeatmapState(prev => ({
+      ...prev,
+      isActive
+    }));
   };
 
   return (
@@ -93,6 +172,19 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
         onError={onError}
         onSearchResultsChange={handleSearchResultsChange}
         activeHighlight={activeHighlight}
+        heatmapData={heatmapState.data}
+        heatmapEnabled={heatmapState.isActive}
+        onHeatmapStateChange={handleHeatmapStateChange}
+      />
+
+      {/* Heatmap Legend */}
+      <HeatmapLegend
+        isVisible={heatmapState.isVisible}
+        isHeatmapActive={heatmapState.isActive}
+        distribution={heatmapState.distribution}
+        totalFiles={heatmapState.totalFiles}
+        onToggleHeatmap={handleToggleHeatmap}
+        onClose={handleCloseLegend}
       />
     </div>
   );
