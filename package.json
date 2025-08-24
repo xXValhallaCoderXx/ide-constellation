@@ -49,6 +49,10 @@
       {
         "command": "constellation.scanProject",
         "title": "Constellation: Scan Project"
+      },
+      {
+        "command": "constellation.analyzeHealth",
+        "title": "Constellation: Analyze Codebase Health"
       }
     ],
     "mcpServerDefinitionProviders": [

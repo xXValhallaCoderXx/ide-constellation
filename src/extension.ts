@@ -95,6 +95,76 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// Register the Analyze Health command
+	const analyzeHealthDisposable = vscode.commands.registerCommand('constellation.analyzeHealth', async () => {
+		log('Analyze Health command executed');
+		
+		// Show progress indicator
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: 'Analyzing codebase health...',
+			cancellable: false
+		}, async (progress) => {
+			try {
+				const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+				if (!workspaceRoot) {
+					throw new Error('No workspace folder found. Please open a workspace first.');
+				}
+
+				// Import services dynamically to avoid circular dependencies
+				const { HealthAnalyzer } = await import('./services/health-analyzer.service');
+				const { HealthDisplayService } = await import('./services/health-display.service');
+				
+				progress.report({ increment: 20, message: 'Initializing health analyzer...' });
+				
+				// Get or create HealthAnalyzer instance
+				const healthAnalyzer = HealthAnalyzer.getInstance(workspaceRoot);
+				
+				progress.report({ increment: 30, message: 'Checking graph data...' });
+				
+				// Ensure we have graph data
+				const graphService = GraphService.getInstance();
+				let graph = graphService.getGraph();
+				
+				if (!graph) {
+					progress.report({ increment: 0, message: 'No graph data found. Scanning project first...' });
+					
+					// Trigger a scan first
+					if (mcpProvider) {
+						await mcpProvider.scanProject();
+						graph = graphService.getGraph();
+					}
+					
+					if (!graph) {
+						throw new Error('Unable to load graph data. Please run "Constellation: Scan Project" first.');
+					}
+				}
+				
+				progress.report({ increment: 20, message: 'Analyzing file complexity and churn...' });
+				
+				// Perform health analysis
+				const analysis = await healthAnalyzer.analyzeCodebase(graph);
+				
+				progress.report({ increment: 30, message: 'Generating recommendations...' });
+				
+				// Display results using the dedicated service
+				HealthDisplayService.displayInWebview(analysis, context);
+				
+				// Log detailed results to output channel
+				HealthDisplayService.logAnalysisResults(analysis, output);
+				
+				// Show success message
+				const summaryMessage = HealthDisplayService.createSummaryMessage(analysis);
+				vscode.window.showInformationMessage(summaryMessage);
+				
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				log(`[ERROR] Health analysis failed: ${errorMessage}`);
+				vscode.window.showErrorMessage(`Health analysis failed: ${errorMessage}`);
+			}
+		});
+	});
+
 	// Register a debug command to manually launch the MCP stdio server
 	const debugLaunchDisposable = vscode.commands.registerCommand('kiro-constellation.debugLaunchMcp', async () => {
 		if (!IS_DEV) {
@@ -138,7 +208,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(sidebarDisposable, showGraphDisposable, scanProjectDisposable, debugLaunchDisposable);
+	context.subscriptions.push(sidebarDisposable, showGraphDisposable, scanProjectDisposable, analyzeHealthDisposable, debugLaunchDisposable);
 
 	// (FR4/FR5/FR6) Active editor tracking -> highlight graph node (debounced per FR5)
 	let statusTimer: NodeJS.Timeout | null = null;
@@ -198,6 +268,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		(global as any).__constellationUnhandledRejectionHookInstalled = true;
 	}
 }
+
 
 export async function deactivate() {
 	// No output channel at this point; keep a console log for host logs
