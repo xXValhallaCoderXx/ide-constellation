@@ -37,6 +37,7 @@ interface HeatmapState {
   nodes: HeatmapNode[];
   originalStyles: Map<string, any>;
   lastAppliedTimestamp?: number;
+  averageScore?: number;
   cacheSize?: number;
   visibleNodesCount?: number;
   processor?: OptimizedHeatmapProcessor;
@@ -429,6 +430,7 @@ export function GraphCanvas({
         const meta = !!orig.metaKey;
         const ctrl = !!orig.ctrlKey;
         const openMode: 'default' | 'split' = (meta || ctrl) ? 'split' : 'default';
+  console.info('[GraphCanvas] NodeClick', { nodeId, openMode });
         onNodeClick?.(nodeId, openMode);
       });
 
@@ -503,24 +505,35 @@ export function GraphCanvas({
 
   /**
    * Apply active highlight & auto-pan logic.
-   * FR9: Highlight precedence - we only manipulate the 'active-node' class, preserving '.highlighted'.
-   * FR8: Auto-pan when target node is outside an inset visibility threshold (AUTO_PAN_VISIBILITY_THRESHOLD).
+   * Enhancement (Tasks 6.3 / 6.4): Re-run when Cytoscape instance becomes available to avoid
+   * losing an early highlight message that arrived before initialization.
+   * FR9: Highlight precedence - only manipulates 'active-node' class.
+   * FR8: Auto-pan when target node is outside visibility threshold.
    */
   useEffect(() => {
-    if (!cyRef.current) return;
+    if (!activeHighlight) return;
     const cy = cyRef.current;
-    const fileId = activeHighlight?.fileId ?? null;
-    // Remove previous active highlight (FR9 precedence: keep .highlighted search class)
+    if (!cy) {
+      // Will re-run once cytoscapeInstance is set (dependency includes state.cytoscapeInstance)
+      return;
+    }
+    const fileId = activeHighlight.fileId ?? null;
+    // Clear previous active highlight
     cy.nodes('.active-node').removeClass('active-node');
-    if (!fileId) return; // clear only
+    if (!fileId) return; // nothing to highlight
     const node = cy.getElementById(fileId);
-    if (!node || node.empty()) return;
+    if (!node || node.empty()) {
+      if (activeHighlight.reason === 'notInGraph') {
+        showInfo('File Not In Graph', 'The active editor file is not part of the current dependency graph.');
+      }
+      return;
+    }
     node.addClass('active-node');
     try {
       const extent = cy.extent();
       const vpW = extent.x2 - extent.x1;
       const vpH = extent.y2 - extent.y1;
-      const inset = AUTO_PAN_VISIBILITY_THRESHOLD; // e.g. 0.25 => 25% margin
+      const inset = AUTO_PAN_VISIBILITY_THRESHOLD;
       const thresholdX1 = extent.x1 + vpW * inset;
       const thresholdX2 = extent.x2 - vpW * inset;
       const thresholdY1 = extent.y1 + vpH * inset;
@@ -528,7 +541,6 @@ export function GraphCanvas({
       const pos = node.position();
       const outOfView = pos.x < thresholdX1 || pos.x > thresholdX2 || pos.y < thresholdY1 || pos.y > thresholdY2;
       if (outOfView) {
-        // Cancel in-flight animations to prevent queue build-up (FR8)
         cy.stop(true);
         const nodeCount = cy.nodes().length;
         const heuristicZoom = computeTargetZoom(nodeCount);
@@ -544,7 +556,7 @@ export function GraphCanvas({
     } catch (e) {
       console.warn('Auto-pan failed', e);
     }
-  }, [activeHighlight]);
+  }, [activeHighlight, state.cytoscapeInstance]);
 
   // Task 10.3: Warn if highlight messages arrive before Cytoscape initialized
   useEffect(() => {
@@ -616,6 +628,7 @@ export function GraphCanvas({
 
       // Process heatmap data with optimizations
       const result = await heatmapProcessor.current.processHeatmapData(heatmapNodes);
+  const averageScore = heatmapNodes.reduce((sum, n) => sum + (n.score || 0), 0) / heatmapNodes.length;
       
       // Update final state
       debouncedSetState(prev => ({
@@ -626,6 +639,7 @@ export function GraphCanvas({
           nodes: heatmapNodes,
           originalStyles,
           lastAppliedTimestamp: Date.now(),
+          averageScore,
           cacheSize: result.processedNodes.length,
           visibleNodesCount: result.visibleCount,
           isProcessing: false,
@@ -642,6 +656,10 @@ export function GraphCanvas({
       
       const totalTime = performanceMonitor.current.endRender(startTime);
       trackRenderPerformance(totalTime, 'heatmap-overlay');
+      try {
+        console.timeEnd?.('GraphPanel:heatmapMessageToRender');
+        console.info('[PerfMetric] GraphPanel:heatmapApplied', { totalTime, count: heatmapNodes.length, averageScore });
+      } catch {/* ignore */}
       
       // Show success notification
       showSuccess(
@@ -848,6 +866,17 @@ export function GraphCanvas({
       const riskData = node.data('riskData') as HeatmapNode | undefined;
       const label = node.data('label') || 'Unknown';
       const path = node.data('path') || '';
+      // Compute percentile rank if heatmap active
+      let percentile: number | undefined;
+      if (riskData && state.heatmapState.nodes.length > 0) {
+        try {
+          const scores = state.heatmapState.nodes.map(n => n.score).sort((a,b) => a - b);
+            // position of current score among sorted scores
+          const index = scores.findIndex(s => s >= riskData.score);
+          const rank = index === -1 ? scores.length : index + 1;
+          percentile = (rank / scores.length) * 100;
+        } catch {/* swallow percentile errors */}
+      }
 
       // Create rich tooltip data
       const tooltipData: TooltipData = {
@@ -859,7 +888,8 @@ export function GraphCanvas({
           complexity: riskData.metrics.complexity,
           churn: riskData.metrics.churn,
           dependencies: riskData.metrics.dependencies,
-          recommendation: getRecommendationForRisk(riskData)
+          recommendation: getRecommendationForRisk(riskData),
+          percentile
         } : undefined,
         basicInfo: !riskData ? {
           type: getFileType(path),

@@ -2,7 +2,7 @@
   "name": "kiro-constellation",
   "publisher": "xXValhallaCoderXx",
   "displayName": "kiro-constellation",
-  "description": "",
+  "description": "Visual codebase map & health dashboard.",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.70.0"
@@ -14,8 +14,10 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished",
-    "*"
+    "onCommand:constellation.showGraph",
+    "onCommand:constellation.healthDashboard",
+    "onCommand:constellation.scanProject",
+    "onCommand:kiro-constellation.debugLaunchMcp"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -24,7 +26,7 @@
         {
           "id": "kiro-constellation",
           "title": "Kiro Constellation",
-          "icon": "$(graph)"
+          "icon": "media/constellation-icon.png"
         }
       ]
     },
@@ -33,38 +35,28 @@
         {
           "id": "kiro-constellation.sidebar",
           "name": "Constellation",
-          "type": "webview"
+          "type": "webview",
+          "icon": "media/constellation-icon.png"
         }
       ]
     },
     "commands": [
       {
-        "command": "kiro-constellation.showGraph",
+        "command": "constellation.showGraph",
         "title": "Constellation: Show Codebase Map"
       },
       {
-        "command": "kiro-constellation.debugLaunchMcp",
-        "title": "Kiro Constellation: Debug Launch MCP (stdio)"
+        "command": "constellation.healthDashboard",
+        "title": "Constellation: Open Health Dashboard"
       },
       {
         "command": "constellation.scanProject",
         "title": "Constellation: Scan Project"
       },
       {
-        "command": "constellation.analyzeHealth",
-        "title": "Constellation: Analyze Codebase Health"
-      },
-      {
-        "command": "constellation.healthReport",
-        "title": "Constellation: Health Report Dashboard"
-      },
-      {
-        "command": "constellation.healthReportGraph",
-        "title": "Constellation: Health Report with Heatmap"
-      },
-      {
-        "command": "constellation.clearHeatmap",
-        "title": "Constellation: Clear Health Heatmap"
+        "command": "kiro-constellation.debugLaunchMcp",
+        "title": "Constellation: Debug Launch MCP (stdio)",
+        "category": "Constellation (Debug)"
       }
     ],
     "mcpServerDefinitionProviders": [
@@ -87,9 +79,10 @@
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
-    "check-types": "tsc --noEmit",
-    "lint": "eslint src",
-    "test": "vscode-test"
+  "check-types": "tsc --noEmit",
+  "lint": "eslint src",
+  "test": "vscode-test",
+  "health:analyze": "ts-node --compiler-options '{\"module\":\"commonjs\"}' scripts/run-health-analysis.ts"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -99,8 +92,9 @@
     "@typescript-eslint/parser": "^8.31.1",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
-    "esbuild": "^0.25.3",
-    "eslint": "^9.25.1",
+  "esbuild": "^0.25.3",
+  "eslint": "^9.25.1",
+  "ts-node": "^10.9.2",
     "npm-run-all": "^4.1.5",
     "typescript": "^5.8.3"
   },

@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 
 interface SidebarToExtensionMessage {
-  command: 'showGraph';
+  command: 'showGraph' | 'openHealth' | 'scanProject';
+  data?: any;
 }
 
 interface ExtensionToSidebarMessage {
@@ -37,17 +38,23 @@ export class ConstellationSidebarProvider implements vscode.WebviewViewProvider 
   }
 
   private async handleMessage(message: SidebarToExtensionMessage): Promise<void> {
-    switch (message.command) {
-      case 'showGraph':
-        try {
-          await vscode.commands.executeCommand('kiro-constellation.showGraph');
-        } catch (error) {
-          console.error('Failed to execute showGraph command:', error);
-          vscode.window.showErrorMessage('Failed to open Codebase Map');
-        }
-        break;
-      default:
-        console.warn('Unknown sidebar message command:', message.command);
+    try {
+      switch (message.command) {
+        case 'showGraph':
+          await vscode.commands.executeCommand('constellation.showGraph');
+          break;
+        case 'openHealth':
+          await vscode.commands.executeCommand('constellation.healthDashboard');
+          break;
+        case 'scanProject':
+          await vscode.commands.executeCommand('constellation.scanProject');
+          break;
+        default:
+          console.warn('Unknown sidebar message command:', message.command);
+      }
+    } catch (error) {
+      console.error('Sidebar command execution failed:', error);
+      vscode.window.showErrorMessage(`Constellation action failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

@@ -29,9 +29,9 @@ Kiro Constellation is a VS Code extension that provides constellation-based func
 ## Quick Start
 1. Install the Kiro Constellation extension
 2. Open a workspace with code files
-3. Run `Constellation: Scan Project` to generate dependency graph
-4. Run `Constellation: Analyze Codebase Health` for health assessment
-5. Use `Constellation: Show Codebase Map` for interactive visualization
+3. Run `Constellation: Scan Project` to generate the dependency graph
+4. Run `Constellation: Open Health Dashboard` for health assessment & recommendations
+5. Use `Constellation: Show Codebase Map` for interactive visualization (with optional heatmap)
 
 ## Architecture
 - **Extension Entry Point**: `src/extension.ts`

@@ -64,7 +64,12 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
       
       switch (message.command) {
         case 'graph:applyHeatmap':
-          const { heatmapData, distribution, totalFiles } = message.data;
+          const { heatmapData, distribution, totalFiles } = message.data || {};
+          if (!heatmapData || heatmapData.length === 0) {
+            console.warn('[InteractiveGraphCanvas] Received graph:applyHeatmap with empty heatmapData');
+            return; // safeguard (Task 5.4)
+          }
+          console.time?.('GraphPanel:heatmapMessageToRender'); // timing start (Task 6.5)
           setHeatmapState(prev => ({
             ...prev,
             isVisible: true,

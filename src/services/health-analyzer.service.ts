@@ -318,6 +318,7 @@ export class HealthAnalyzer {
    * @returns Risk category
    */
   private getCategory(percentile: number): 'low' | 'medium' | 'high' | 'critical' {
+  // Threshold mapping (low<60, 60-79 medium, 80-94 high, >=95 critical) comes from RISK_THRESHOLDS
     if (percentile >= RISK_THRESHOLDS.high) {
       return 'critical';
     }
@@ -336,6 +337,7 @@ export class HealthAnalyzer {
    * @returns Hex color code
    */
   private scoreToColor(percentile: number): string {
+  // Mirrors getCategory thresholds; keep logic synchronized if thresholds change
     if (percentile >= RISK_THRESHOLDS.high) {
       return RISK_COLORS.critical;
     }

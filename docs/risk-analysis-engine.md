@@ -13,13 +13,13 @@ The Risk Analysis Engine provides comprehensive codebase health assessment by an
 ## Usage
 
 ### Basic Health Analysis
-1. Run `Constellation: Scan Project` to generate the dependency graph
-2. Run `Constellation: Analyze Codebase Health` to perform health analysis
-3. View results in the interactive webview panel
+1. Run `Constellation: Scan Project` to generate / refresh the dependency graph
+2. Run `Constellation: Open Health Dashboard` to perform and view health analysis
+3. (Optional) From the dashboard use "View Heatmap" to jump to the graph with overlay
 
 ### Command Integration
-The engine integrates with VS Code through the command palette:
-- `Constellation: Analyze Codebase Health` - Performs complete codebase analysis
+The engine integrates with VS Code through the unified command palette:
+- `Constellation: Open Health Dashboard` - Performs or retrieves cached analysis and displays results
 
 ## Architecture
 
@@ -29,7 +29,7 @@ The engine integrates with VS Code through the command palette:
 - **GitAnalyzer**: Git history and churn analysis with fallback support
 - **MetricsCache**: High-performance caching with TTL support
 - **RecommendationsEngine**: Actionable insights and hotspot detection
-- **HealthDisplayService**: Rich HTML webview and console output formatting
+- (Deprecated) Former standalone HTML display logic has been replaced by the unified Preact Health Dashboard panel.
 
 ### Performance Features
 - **Batch Processing**: Processes files in configurable batches (default: 50 files)
@@ -43,11 +43,13 @@ Risk scores are calculated using percentile-based normalization:
 - **Churn Weight**: 40% (commit frequency, author diversity)
 - **Dependencies Weight**: 20% (incoming + outgoing dependencies)
 
-Files are categorized as:
-- **Low Risk**: 0-25th percentile (green)
-- **Medium Risk**: 25-50th percentile (yellow)
-- **High Risk**: 50-75th percentile (orange)
-- **Critical Risk**: 75-100th percentile (red)
+Files are categorized (demo-optimized thresholds) as:
+- **Low Risk**: < 60th percentile (green)
+- **Medium Risk**: 60th–79th percentile (yellow)
+- **High Risk**: 80th–94th percentile (orange)
+- **Critical Risk**: ≥ 95th percentile (red)
+
+These widened bands surface a smaller, high-signal set of hotspots for typical mid-sized repositories. Adjust `RISK_THRESHOLDS` in `src/types/health-analysis.types.ts` to revert to conventional quartiles if needed.
 
 ## Integration
 

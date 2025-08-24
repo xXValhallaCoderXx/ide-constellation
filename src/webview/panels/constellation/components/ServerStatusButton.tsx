@@ -1,16 +1,3 @@
-interface ServerStatusButtonProps {
-  onClick: () => void;
-  disabled?: boolean;
-}
-
-export function ServerStatusButton({ onClick, disabled = false }: ServerStatusButtonProps) {
-  return (
-    <button 
-      className="check-button"
-      onClick={onClick}
-      disabled={disabled}
-    >
-      {disabled ? 'Checking...' : 'Check Server Status'}
-    </button>
-  );
-}
+// (Removed) ServerStatusButton was part of legacy server status UI.
+// Keeping empty module placeholder to avoid import resolution errors during transitional cleanup.
+export {}; 

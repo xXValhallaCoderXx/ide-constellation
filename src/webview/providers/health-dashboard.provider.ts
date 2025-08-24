@@ -218,8 +218,10 @@ export class HealthDashboardProvider {
         data.centerNode
       );
     } else {
-      // Fallback to command execution
-      vscode.commands.executeCommand('constellation.healthReportGraph');
+  // Legacy fallback removed: unified command set no longer exposes a direct
+  // "healthReportGraph" command. If navigation manager is unavailable we
+  // surface an informational message to avoid invoking a removed command.
+  vscode.window.showInformationMessage('Constellation: Unable to navigate to graph (webview manager not ready). Open the graph via "Constellation: Show Codebase Map" then retry.');
     }
   }
 

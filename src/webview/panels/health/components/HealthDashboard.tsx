@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { JSX } from 'preact';
 import { HealthAnalysis, RiskScore } from '../../../../types/health-analysis.types';
 import { ToastContainer, useToasts } from '../../constellation/components/ToastNotification';
@@ -33,6 +33,40 @@ export function HealthDashboard({
     error: null,
     selectedRisk: null
   });
+
+  // Performance instrumentation refs (ensures we only end timers once)
+  const mountTimerEndedRef = useRef(false);
+  const heatmapTimerActiveRef = useRef(false);
+
+  // Start mount timing immediately (warm load target <1500ms)
+  useEffect(() => {
+    try {
+      if (typeof console !== 'undefined' && (console as any).time) {
+        console.time('HealthDashboard:mount');
+      }
+    } catch {/* no-op */}
+  }, []);
+
+  // End mount timing when analysis first becomes available (or loading completes without analysis)
+  useEffect(() => {
+    if (mountTimerEndedRef.current) return;
+    if (!state.isLoading) {
+      try {
+        if (typeof console !== 'undefined' && (console as any).timeEnd) {
+          console.timeEnd('HealthDashboard:mount');
+          mountTimerEndedRef.current = true;
+        }
+        // Log a structured metric for potential harvesting
+        const duration = (performance?.now && performance.now()) || 0;
+        // Using a console.info tag so it can be easily grepped
+        console.info('[PerfMetric] HealthDashboard:mountComplete', {
+          hasAnalysis: !!state.analysis,
+          timestamp: Date.now(),
+          approximateNow: duration
+        });
+      } catch {/* no-op */}
+    }
+  }, [state.isLoading, state.analysis]);
 
   // Toast notifications
   const {
@@ -113,7 +147,21 @@ export function HealthDashboard({
     return () => window.removeEventListener('message', handleMessage);
   }, [initialAnalysis]);
 
+  // Simple debounce to prevent rapid multi-trigger of expensive heatmap navigation
+  let lastHeatmapTrigger = 0;
   const handleViewHeatmap = () => {
+    const now = Date.now();
+    if (now - lastHeatmapTrigger < 150) {
+      return; // ignore rapid double click
+    }
+    lastHeatmapTrigger = now;
+    // Begin heatmap navigation timing
+    try {
+      if (!heatmapTimerActiveRef.current && typeof console !== 'undefined' && (console as any).time) {
+        (console as any).time('HealthDashboard:viewHeatmap');
+        heatmapTimerActiveRef.current = true;
+      }
+    } catch {/* no-op */}
     try {
       // Check if we have analysis data
       if (!state.analysis) {
@@ -144,6 +192,17 @@ export function HealthDashboard({
         showError('Navigation Error', 'Unable to open heatmap view. Please try refreshing the page.');
         console.warn('No navigation method available for heatmap');
       }
+      // End heatmap navigation timing (we measure dispatch latency; graph side will measure apply)
+      try {
+        if (heatmapTimerActiveRef.current && typeof console !== 'undefined' && (console as any).timeEnd) {
+          (console as any).timeEnd('HealthDashboard:viewHeatmap');
+          heatmapTimerActiveRef.current = false;
+        }
+        console.info('[PerfMetric] HealthDashboard:viewHeatmapDispatched', {
+          timestamp: Date.now(),
+          selectedNode: state.selectedRisk?.nodeId || null
+        });
+      } catch {/* no-op */}
     } catch (error) {
       console.error('Error handling heatmap view:', error);
       showError('Heatmap Error', 'Failed to show heatmap. Please try refreshing the analysis.');
@@ -151,6 +210,12 @@ export function HealthDashboard({
         ...prev, 
         error: 'Failed to show heatmap. Please try refreshing the analysis.' 
       }));
+      try {
+        if (heatmapTimerActiveRef.current && typeof console !== 'undefined' && (console as any).timeEnd) {
+          (console as any).timeEnd('HealthDashboard:viewHeatmap');
+          heatmapTimerActiveRef.current = false;
+        }
+      } catch {/* no-op */}
     }
   };
 
@@ -546,6 +611,7 @@ export function HealthDashboard({
                   handleNavigateToGraph(risk.nodeId);
                 }}
                 title="Focus this file in the dependency graph"
+                aria-label={`Focus ${risk.metrics.path} in graph`}
               >
                 <span className="button-icon">🎯</span>
               </button>

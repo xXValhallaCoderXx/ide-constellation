@@ -73,8 +73,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		sidebarProvider
 	);
 
-	// Register the Show Graph command
-	const showGraphDisposable = vscode.commands.registerCommand('kiro-constellation.showGraph', () => {
+	// Register the Show Graph command (new consolidated command name)
+	const showGraphDisposable = vscode.commands.registerCommand('constellation.showGraph', () => {
 		log('Show Graph command executed');
 		webviewManager?.createOrShowPanel(context);
 	});
@@ -85,7 +85,24 @@ export async function activate(context: vscode.ExtensionContext) {
 		try {
 			if (mcpProvider) {
 				await mcpProvider.scanProject();
-				vscode.window.showInformationMessage('Project scan completed. Check the output channel for results.');
+				vscode.window.showInformationMessage('Constellation: Project scan complete.'); // FR7 7.1 simplified single notification
+				// FR7 7.2 Large dataset one-time warning (threshold: >5000 nodes)
+				try {
+					const graph = GraphService.getInstance().getGraph();
+					const LARGE_THRESHOLD = 5000;
+					if (graph && graph.nodes.length > LARGE_THRESHOLD) {
+						const warnedKey = 'constellation.largeDatasetWarned';
+						const alreadyWarned = context.globalState.get<boolean>(warnedKey);
+						if (!alreadyWarned) {
+							vscode.window.showWarningMessage(
+								`Constellation: Large dataset detected (${graph.nodes.length.toLocaleString()} files). Some visual operations may be slower; heatmap rendering uses batching & culling. This warning will not repeat.`
+							);
+							await context.globalState.update(warnedKey, true);
+						}
+					}
+				} catch (warnError) {
+					log(`[WARN] Large dataset warning check failed: ${warnError instanceof Error ? warnError.message : String(warnError)}`);
+				}
 			} else {
 				log('[ERROR] MCP Provider not available for scanning');
 				vscode.window.showErrorMessage('MCP Provider not available. Cannot perform scan.');
@@ -97,234 +114,19 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	// Register the Health Report command (new dual-view dashboard)
-	const healthReportDisposable = vscode.commands.registerCommand('constellation.healthReport', async () => {
-		log('Health Report command executed');
-		
-		// Show progress indicator
-		await vscode.window.withProgress({
-			location: vscode.ProgressLocation.Notification,
-			title: 'Generating health report...',
-			cancellable: false
-		}, async (progress) => {
-			try {
-				const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-				if (!workspaceRoot) {
-					throw new Error('No workspace folder found. Please open a workspace first.');
-				}
-
-				progress.report({ increment: 20, message: 'Initializing health analyzer...' });
-				
-				// Import services dynamically to avoid circular dependencies
-				const { HealthAnalyzer } = await import('./services/health-analyzer.service');
-				
-				// Get or create HealthAnalyzer instance
-				const healthAnalyzer = HealthAnalyzer.getInstance(workspaceRoot);
-				
-				progress.report({ increment: 30, message: 'Checking graph data...' });
-				
-				// Ensure we have graph data
-				const graphService = GraphService.getInstance();
-				let graph = graphService.getGraph();
-				
-				if (!graph) {
-					progress.report({ increment: 0, message: 'No graph data found. Scanning project first...' });
-					
-					// Trigger a scan first
-					if (mcpProvider) {
-						await mcpProvider.scanProject();
-						graph = graphService.getGraph();
-					}
-					
-					if (!graph) {
-						throw new Error('Unable to load graph data. Please run "Constellation: Scan Project" first.');
-					}
-				}
-				
-				progress.report({ increment: 20, message: 'Analyzing file complexity and churn...' });
-				
-				// Perform health analysis
-				const analysis = await healthAnalyzer.analyzeCodebase(graph);
-				
-				progress.report({ increment: 30, message: 'Opening health dashboard...' });
-				
-				// Display health analysis in dashboard
-				if (webviewManager) {
-					webviewManager.createOrShowHealthDashboard();
-					await webviewManager.displayHealthAnalysis(analysis);
-				}
-				
-				// Show success message
-				const summaryMessage = `Health Report: ${analysis.healthScore}/100 score, ${analysis.distribution.critical} critical files`;
-				vscode.window.showInformationMessage(summaryMessage);
-				
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : String(error);
-				log(`[ERROR] Health report failed: ${errorMessage}`);
-				vscode.window.showErrorMessage(`Health report failed: ${errorMessage}`);
-			}
-		});
-	});
-
-	// Register the Health Report with Graph command (direct graph access)
-	const healthReportGraphDisposable = vscode.commands.registerCommand('constellation.healthReportGraph', async () => {
-		log('Health Report Graph command executed');
-		
-		// Show progress indicator
-		await vscode.window.withProgress({
-			location: vscode.ProgressLocation.Notification,
-			title: 'Generating health report with heatmap...',
-			cancellable: false
-		}, async (progress) => {
-			try {
-				const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-				if (!workspaceRoot) {
-					throw new Error('No workspace folder found. Please open a workspace first.');
-				}
-
-				progress.report({ increment: 20, message: 'Initializing health analyzer...' });
-				
-				// Import services dynamically to avoid circular dependencies
-				const { HealthAnalyzer } = await import('./services/health-analyzer.service');
-				
-				// Get or create HealthAnalyzer instance
-				const healthAnalyzer = HealthAnalyzer.getInstance(workspaceRoot);
-				
-				progress.report({ increment: 30, message: 'Checking graph data...' });
-				
-				// Ensure we have graph data
-				const graphService = GraphService.getInstance();
-				let graph = graphService.getGraph();
-				
-				if (!graph) {
-					progress.report({ increment: 0, message: 'No graph data found. Scanning project first...' });
-					
-					// Trigger a scan first
-					if (mcpProvider) {
-						await mcpProvider.scanProject();
-						graph = graphService.getGraph();
-					}
-					
-					if (!graph) {
-						throw new Error('Unable to load graph data. Please run "Constellation: Scan Project" first.');
-					}
-				}
-				
-				progress.report({ increment: 20, message: 'Analyzing file complexity and churn...' });
-				
-				// Perform health analysis
-				const analysis = await healthAnalyzer.analyzeCodebase(graph);
-				
-				progress.report({ increment: 30, message: 'Applying heatmap to graph...' });
-				
-				// Apply heatmap directly to graph
-				if (webviewManager) {
-					await webviewManager.navigateFromDashboardToGraph(analysis.riskScores);
-				}
-				
-				// Show success message
-				const summaryMessage = `Health Heatmap Applied: ${analysis.healthScore}/100 score, ${analysis.distribution.critical} critical files highlighted`;
-				vscode.window.showInformationMessage(summaryMessage);
-				
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : String(error);
-				log(`[ERROR] Health report graph failed: ${errorMessage}`);
-				vscode.window.showErrorMessage(`Health report graph failed: ${errorMessage}`);
-			}
-		});
-	});
-
-	// Register the Clear Heatmap command
-	const clearHeatmapDisposable = vscode.commands.registerCommand('constellation.clearHeatmap', () => {
-		log('Clear Heatmap command executed');
-		
+	// Register Health Dashboard command (replacement for legacy health commands)
+	const healthDashboardDisposable = vscode.commands.registerCommand('constellation.healthDashboard', async () => {
+		log('Health Dashboard command executed');
 		try {
 			if (webviewManager) {
-				const panel = (webviewManager as any).currentPanel as vscode.WebviewPanel | undefined;
-				if (panel) {
-					panel.webview.postMessage({
-						command: 'graph:clearHeatmap'
-					});
-					vscode.window.showInformationMessage('Health heatmap cleared from graph');
-				} else {
-					vscode.window.showWarningMessage('No graph panel is currently open');
-				}
+				webviewManager.createOrShowHealthDashboard();
 			}
+			// Optionally trigger lazy load of last analysis (no heavy recompute here)
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
-			log(`[ERROR] Clear heatmap failed: ${errorMessage}`);
-			vscode.window.showErrorMessage(`Clear heatmap failed: ${errorMessage}`);
+			log(`[ERROR] Opening health dashboard failed: ${errorMessage}`);
+			vscode.window.showErrorMessage(`Open health dashboard failed: ${errorMessage}`);
 		}
-	});
-
-	// Register the legacy Analyze Health command (for backward compatibility)
-	const analyzeHealthDisposable = vscode.commands.registerCommand('constellation.analyzeHealth', async () => {
-		log('Analyze Health command executed (legacy)');
-		
-		// Show progress indicator
-		await vscode.window.withProgress({
-			location: vscode.ProgressLocation.Notification,
-			title: 'Analyzing codebase health...',
-			cancellable: false
-		}, async (progress) => {
-			try {
-				const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-				if (!workspaceRoot) {
-					throw new Error('No workspace folder found. Please open a workspace first.');
-				}
-
-				// Import services dynamically to avoid circular dependencies
-				const { HealthAnalyzer } = await import('./services/health-analyzer.service');
-				const { HealthDisplayService } = await import('./services/health-display.service');
-				
-				progress.report({ increment: 20, message: 'Initializing health analyzer...' });
-				
-				// Get or create HealthAnalyzer instance
-				const healthAnalyzer = HealthAnalyzer.getInstance(workspaceRoot);
-				
-				progress.report({ increment: 30, message: 'Checking graph data...' });
-				
-				// Ensure we have graph data
-				const graphService = GraphService.getInstance();
-				let graph = graphService.getGraph();
-				
-				if (!graph) {
-					progress.report({ increment: 0, message: 'No graph data found. Scanning project first...' });
-					
-					// Trigger a scan first
-					if (mcpProvider) {
-						await mcpProvider.scanProject();
-						graph = graphService.getGraph();
-					}
-					
-					if (!graph) {
-						throw new Error('Unable to load graph data. Please run "Constellation: Scan Project" first.');
-					}
-				}
-				
-				progress.report({ increment: 20, message: 'Analyzing file complexity and churn...' });
-				
-				// Perform health analysis
-				const analysis = await healthAnalyzer.analyzeCodebase(graph);
-				
-				progress.report({ increment: 30, message: 'Generating recommendations...' });
-				
-				// Display results using the dedicated service
-				HealthDisplayService.displayInWebview(analysis, context);
-				
-				// Log detailed results to output channel
-				HealthDisplayService.logAnalysisResults(analysis, output);
-				
-				// Show success message
-				const summaryMessage = HealthDisplayService.createSummaryMessage(analysis);
-				vscode.window.showInformationMessage(summaryMessage);
-				
-			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : String(error);
-				log(`[ERROR] Health analysis failed: ${errorMessage}`);
-				vscode.window.showErrorMessage(`Health analysis failed: ${errorMessage}`);
-			}
-		});
 	});
 
 	// Register a debug command to manually launch the MCP stdio server
@@ -371,13 +173,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(
-		sidebarDisposable, 
-		showGraphDisposable, 
-		scanProjectDisposable, 
-		healthReportDisposable,
-		healthReportGraphDisposable,
-		clearHeatmapDisposable,
-		analyzeHealthDisposable, 
+		sidebarDisposable,
+		showGraphDisposable,
+		scanProjectDisposable,
+		healthDashboardDisposable,
 		debugLaunchDisposable
 	);
 

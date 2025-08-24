@@ -4,6 +4,8 @@
 
 import { BatchProcessor, LRUCache, PerformanceMonitor, partitionNodesByViewport, ViewportBounds } from './performance.utils';
 import { HeatmapNode } from '../webview/panels/constellation/components/GraphCanvas';
+// Ensure cytoscape types are available when this utility is type-checked (build fix)
+import type cytoscape from 'cytoscape';
 
 export interface HeatmapProcessingOptions {
   batchSize?: number;

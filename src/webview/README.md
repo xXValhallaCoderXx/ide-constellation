@@ -18,9 +18,7 @@ src/webview/
 ├── panels/             # Full-screen webview panels
 │   └── constellation/  # Main constellation panel
 │       ├── components/
-│       │   ├── ConstellationPanel.tsx
-│       │   ├── StatusIndicator.tsx
-│       │   └── ServerStatusButton.tsx
+│       │   └── ConstellationPanel.tsx
 │       └── index.tsx
 └── README.md
 ```

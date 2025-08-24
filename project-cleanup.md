@@ -79,12 +79,12 @@ The project currently has multiple overlapping components and confusing UX flows
 ```
 
 **Actions:**
-- [ ] Remove: `constellation.analyzeHealth` (legacy)
-- [ ] Remove: `constellation.healthReport` (confusing)
-- [ ] Remove: `constellation.healthReportGraph` (redundant)
-- [ ] Remove: `constellation.clearHeatmap` (should be integrated)
-- [ ] Rename: `kiro-constellation.showGraph` → `constellation.showGraph`
-- [ ] Add: `constellation.healthDashboard` (unified command)
+- [x] Remove: `constellation.analyzeHealth` (legacy)
+- [x] Remove: `constellation.healthReport` (confusing)
+- [x] Remove: `constellation.healthReportGraph` (redundant)
+- [x] Remove: `constellation.clearHeatmap` (integrated into graph UI)
+- [x] Rename: `kiro-constellation.showGraph` → `constellation.showGraph`
+- [x] Add: `constellation.healthDashboard` (unified command)
 
 ### 2.2 Command Logic Simplification
 **Goal:** Each command has a clear, single purpose
@@ -122,7 +122,6 @@ The project currently has multiple overlapping components and confusing UX flows
 ### 4.1 Remove Redundant Files
 **Files to Remove:**
 ```
-src/webview/panels/constellation/components/FeatureDemo.tsx (demo only)
 src/webview/panels/constellation/components/ConstellationPanel.tsx (if redundant)
 [Any legacy health analysis components]
 [Duplicate graph implementations]
@@ -147,9 +146,9 @@ src/webview/panels/constellation/components/ConstellationPanel.tsx (if redundant
 ## Phase 5: Implementation Priority
 
 ### 5.1 High Priority (Immediate)
-1. **Command Cleanup** - Remove confusing commands
-2. **Single Health Dashboard** - Consolidate all health features
-3. **Graph Enhancement** - Ensure tooltips and heatmap work properly
+1. **Command Cleanup** - Remove confusing commands (Completed)
+2. **Single Health Dashboard** - Consolidate all health features (In Progress)
+3. **Graph Enhancement** - Ensure tooltips and heatmap work properly (In Progress)
 
 ### 5.2 Medium Priority
 1. **UX Flow Integration** - Connect dashboard and graph seamlessly
@@ -166,7 +165,7 @@ src/webview/panels/constellation/components/ConstellationPanel.tsx (if redundant
 ### 6.1 User Experience Validation
 - [ ] User can easily understand what each command does
 - [ ] Clear path from health analysis to graph visualization
-- [ ] No duplicate or confusing functionality
+- [x] No duplicate or confusing functionality (legacy commands removed)
 - [ ] Consistent styling and interactions
 
 ### 6.2 Technical Validation

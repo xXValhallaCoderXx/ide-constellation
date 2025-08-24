@@ -133,14 +133,23 @@ export const RISK_WEIGHTS = {
  * Risk category thresholds based on percentile scores
  */
 export const RISK_THRESHOLDS = {
-  /** Files below 25th percentile are low risk */
-  low: 25,
-  /** Files between 25th-50th percentile are medium risk */
-  medium: 50,
-  /** Files between 50th-75th percentile are high risk */
-  high: 75
-  /** Files above 75th percentile are critical risk */
-} as const;
+  /** Files below 60th percentile are low risk (intentionally widened) */
+  low: 60,
+  /** Files between 60th-80th percentile are medium risk */
+  medium: 80,
+  /** Files between 80th-95th percentile are high risk */
+  high: 95
+  /** Files above 95th percentile are critical risk */
+} as const; // Harmonized thresholds (demo-focused) per PRD v1.1
+
+/**
+ * Threshold Rationale:
+ * These widened bands (60/80/95) intentionally compress the "high" and "critical" segments
+ * so a typical mid-sized repo surfaces only a small, high-signal set of hot files in demos.
+ * Reverting to more conventional quartiles:
+ *   low:25, medium:50, high:75 (critical >=75) simply requires changing the constants above.
+ * Both getCategory() and scoreToColor() rely exclusively on RISK_THRESHOLDS, so adjustment is isolated.
+ */
 
 /**
  * Color mapping for risk visualization

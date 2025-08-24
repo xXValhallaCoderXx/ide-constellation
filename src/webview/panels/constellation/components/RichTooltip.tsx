@@ -11,6 +11,7 @@ export interface TooltipData {
     churn: number;
     dependencies: number;
     recommendation?: string;
+  percentile?: number;
   };
   basicInfo?: {
     type: string;
@@ -142,6 +143,12 @@ export function RichTooltip({ data, position, visible, theme = 'auto' }: RichToo
             </div>
             
             <div className="risk-metrics">
+              {typeof data.riskData.percentile === 'number' && (
+                <div className="metric-row">
+                  <span className="metric-label">Percentile:</span>
+                  <span className="metric-value">{data.riskData.percentile.toFixed(1)}%</span>
+                </div>
+              )}
               <div className="metric-row">
                 <span className="metric-label">Complexity:</span>
                 <span className="metric-value">

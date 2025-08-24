@@ -412,19 +412,24 @@ export class WebviewManager {
     this.output?.appendLine(`[${timestamp}] Focus node request: ${nodeId}`);
 
     try {
-      // Send highlight message to graph
-      const highlightMessage = {
-        command: 'graph:highlightNode',
-        data: {
-          fileId: nodeId
-        }
-      };
-
-      if (this.currentPanel) {
-        this.currentPanel.webview.postMessage(highlightMessage);
+      // Ensure graph panel is open so highlight is visible
+      if (!this.currentPanel && this.context) {
+        this.createOrShowPanel(this.context);
       }
 
-      this.output?.appendLine(`[${timestamp}] Node focused: ${nodeId}`);
+      // Post highlight message (will auto-pan in GraphCanvas effect)
+      if (this.currentPanel) {
+        this.currentPanel.webview.postMessage({
+          command: 'graph:highlightNode',
+          data: { fileId: nodeId }
+        });
+        this.output?.appendLine(`[${timestamp}] Node highlight dispatched: ${nodeId}`);
+      } else {
+        this.output?.appendLine(`[${timestamp}] Focus node aborted - panel not available`);
+      }
+
+      // Optional enhancement: if no heatmap currently applied, we could choose to re-send last known risk data.
+      // Skipped for now to avoid redundant overlay operations without explicit user action.
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -726,14 +731,20 @@ export class WebviewManager {
   public async navigateFromDashboardToGraph(riskScores: any[], focusNodeId?: string): Promise<void> {
     const timestamp = new Date().toISOString();
     this.output?.appendLine(`[${timestamp}] Navigating from dashboard to graph with ${riskScores.length} risk scores`);
-
-    try {
+    // Debounce guard: prevent multiple rapid invocations (Task 6.2)
+    if ((this as any).__navInFlight) {
+      this.output?.appendLine(`[${timestamp}] Navigation request ignored (in-flight)`);
+      return;
+    }
+    (this as any).__navInFlight = true;
+    const navStart = Date.now();
+  try {
       // Ensure main graph panel is open
       if (!this.currentPanel && this.context) {
         this.createOrShowPanel(this.context);
       }
 
-      // Transform risk scores to heatmap data
+  // Transform risk scores to heatmap data
       const heatmapData = riskScores.map(risk => ({
         nodeId: risk.nodeId,
         score: risk.score,
@@ -748,6 +759,7 @@ export class WebviewManager {
 
       // Send heatmap data to graph
       if (this.currentPanel) {
+        console.time?.('CrossPanel:navigateDashboardToGraph');
         this.currentPanel.webview.postMessage({
           command: 'graph:applyHeatmap',
           data: {
@@ -762,6 +774,7 @@ export class WebviewManager {
             totalFiles: riskScores.length
           }
         });
+        this.output?.appendLine(`[${timestamp}] Posted graph:applyHeatmap (${heatmapData.length} nodes)`);
 
         // Focus on specific node if provided
         if (focusNodeId) {
@@ -772,11 +785,17 @@ export class WebviewManager {
         }
       }
 
-      this.output?.appendLine(`[${timestamp}] Heatmap applied to graph with ${heatmapData.length} nodes`);
+      const navEnd = Date.now();
+      const duration = navEnd - navStart;
+      this.output?.appendLine(`[${timestamp}] Heatmap navigation dispatched in ${duration}ms`);
+      console.timeEnd?.('CrossPanel:navigateDashboardToGraph');
+      console.info('[PerfMetric] CrossPanel:navigateDashboardToGraph', { duration, nodeCount: riskScores.length, focusNode: focusNodeId || null });
 
-    } catch (error) {
+  } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       this.output?.appendLine(`[${timestamp}] Navigation from dashboard to graph failed: ${errorMessage}`);
+  } finally {
+      (this as any).__navInFlight = false;
     }
   }
 
