@@ -10,6 +10,7 @@ import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_
 import { GraphService } from '../services/graph.service';
 import { GraphCache } from '../services/graph-cache.service';
 import { SummaryGenerator } from '../services/summary-generator.service';
+import { DualToolResponse } from '../types/visual-instruction.types';
 import * as path from 'path';
 
 // Conditional vscode import - only available in extension context
@@ -364,10 +365,20 @@ export class MCPStdioServer {
             console.error(`[SUMMARY COMPLETE] Summary length: ${summary.summary.length} chars`);
             console.error(`[SUMMARY COMPLETE] Insights: ${summary.insights.topHubs.length} hubs, ${summary.insights.circularDependencies.length} cycles, ${summary.insights.orphanFiles.length} orphans`);
 
+            // Dual payload response (FR2/FR3) with placeholder visualInstruction
+            const dualPayload: DualToolResponse<typeof summary> = {
+                dataForAI: summary,
+                visualInstruction: {
+                    action: 'placeholderOverlay',
+                    payload: { note: 'placeholder', summarySize: summary.summary.length },
+                    ts: Date.now()
+                }
+            };
+
             return {
                 content: [{
                     type: 'text' as const,
-                    text: JSON.stringify(summary, null, 2)
+                    text: JSON.stringify(dualPayload)
                 }]
             };
 
