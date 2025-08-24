@@ -14,6 +14,12 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 	- Secure path resolution & workspace containment guard
 	- Debounced editor change handling to reduce chatter
 	- Resilience improvements (guarded messaging, unhandled rejection logging)
+- visualInstruction Pattern (Task 4): dual payload tool response contract with optional UI routing
+	- Dual interfaces (VisualInstruction, DualToolResponse, ParsedToolEnvelope)
+	- Summary tool refactored to emit dual payload + placeholder action
+	- Provider-level parsing, debounce (50ms), size guard (1MB), truncation (5000 chars)
+	- Panel auto-creation & reveal for visual instructions
+	- Resilient logging & non-blocking error handling
 
 ### Initial
 - Initial release

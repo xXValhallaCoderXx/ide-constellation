@@ -51,10 +51,17 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		// Initialize Webview Manager (always available)
 		webviewManager = new WebviewManager(null, output);
+		// Inject into provider for visualInstruction routing
+		if (mcpProvider && typeof (mcpProvider as any).setWebviewManager === 'function') {
+			(mcpProvider as any).setWebviewManager(webviewManager);
+		}
 	} else {
 		// Legacy HTTP server path removed; MCP provider is the default
 		log('[PRODUCTION] MCP provider path active');
 		webviewManager = new WebviewManager(null, output);
+		if (mcpProvider && typeof (mcpProvider as any).setWebviewManager === 'function') {
+			(mcpProvider as any).setWebviewManager(webviewManager);
+		}
 	}
 
 	// Register the sidebar provider

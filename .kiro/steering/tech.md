@@ -6,9 +6,12 @@ inclusion: always
 
 ## Core Technologies
 - **TypeScript** - Primary language (ES2022 target, Node16 modules, strict mode enabled)
-- **VS Code Extension API** - Core platform integration (minimum v1.103.0)
+- **VS Code Extension API** - Core platform integration (minimum v1.70.0, types v1.103.0)
 - **Node.js** - Runtime environment (v20.x types)
 - **Preact** - UI framework for webview components
+- **Cytoscape.js** - Graph visualization library
+- **MCP SDK** - Model Context Protocol integration (@modelcontextprotocol/sdk)
+- **dependency-cruiser** - Dependency analysis for graph generation
 
 ## Build System & Tooling
 - **esbuild** - Fast bundling and compilation (single bundle output)
@@ -21,17 +24,21 @@ When working with this codebase, use these npm scripts:
 
 ```bash
 # Development workflow
-npm run compile          # Full build: type check, lint, and bundle
-npm run watch           # Development mode with file watching
-npm run check-types     # TypeScript validation only
-npm run lint            # Code quality analysis
+npm run compile              # Full build: type check, lint, and bundle
+npm run compile:extension    # Build extension only
+npm run compile:webview      # Build webview only  
+npm run compile:mcp          # Build MCP server only
+npm run watch               # Development mode with file watching
+npm run check-types         # TypeScript validation only
+npm run lint                # Code quality analysis
 
 # Testing
-npm run test            # Execute all test suites
-npm run pretest         # Complete pre-test pipeline (compile + lint)
+npm run test                # Execute all test suites
+npm run pretest             # Complete pre-test pipeline (compile + lint)
 
 # Production
-npm run package         # Production-ready build
+npm run package             # Production-ready build
+npm run vscode:prepublish   # Pre-publish build hook
 ```
 
 ## Code Quality Requirements
@@ -52,8 +59,11 @@ All code must adhere to these standards:
 
 ## File Organization Rules
 - TypeScript files use `.ts` extension
-- React components use `.tsx` extension
+- Preact components use `.tsx` extension
 - Test files use `.test.ts` suffix
 - Worker files use `.worker.ts` suffix
 - Service files use `.service.ts` suffix
+- Provider files use `.provider.ts` suffix
+- Utility files use `.utils.ts` suffix
+- Constants files use `.constants.ts` suffix
 - All imports must be explicit (no implicit any)

@@ -180,6 +180,10 @@ This POC establishes the foundation for:
 - Enhanced UI components and interactions
 - Production deployment strategies
 
+## Documentation
+
+- visualInstruction Pattern: see `docs/visual-instruction-pattern.md` for the dual payload response contract and routing architecture.
+
 ## License
 
 This is a proof of concept for internal development and testing purposes.
