@@ -3,7 +3,7 @@
  */
 
 import { BatchProcessor, LRUCache, PerformanceMonitor, partitionNodesByViewport, ViewportBounds } from './performance.utils';
-import { HeatmapNode } from '../webview/ui/constellation/components/GraphCanvas';
+import { HeatmapNode } from '../webview/ui/graph-constellation/components/GraphCanvas';
 
 export interface HeatmapProcessingOptions {
   batchSize?: number;
