@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'preact/hooks';
 import { JSX } from 'preact';
-import { HealthAnalysis, RiskScore } from '../../../../types/health-analysis.types';
-import { ToastContainer, useToasts } from '../../graph-constellation/components/ToastNotification';
-import { AnalysisLoadingIndicator } from '../../graph-constellation/components/LoadingIndicator';
-import { DashboardHelp } from '../../graph-constellation/components/ContextualHelp';
-import '../../../../types/vscode-api.types';
-import '../../graph-constellation/styles/toast-notification.css';
-import '../../graph-constellation/styles/loading-indicator.css';
-import '../../graph-constellation/styles/contextual-help.css';
+import { HealthAnalysis, RiskScore } from '@/types/health-analysis.types';
+import { ToastContainer, useToasts } from '@webview/ui/graph-constellation/components/ToastNotification';
+import { AnalysisLoadingIndicator } from '@webview/ui/graph-constellation/components/LoadingIndicator';
+import { DashboardHelp } from '@webview/ui/graph-constellation/components/ContextualHelp';
+import '@/types/vscode-api.types';
+import '@webview/ui/graph-constellation/styles/toast-notification.css';
+import '@webview/ui/graph-constellation/styles/loading-indicator.css';
+import '@webview/ui/graph-constellation/styles/contextual-help.css';
 
 interface HealthDashboardProps {
   analysis?: HealthAnalysis;
