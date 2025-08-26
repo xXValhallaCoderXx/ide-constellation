@@ -236,15 +236,6 @@ export function HealthDashboard({
     }
   };
 
-  const getRiskCategoryColor = (category: string): string => {
-    switch (category) {
-      case 'critical': return '#ef4444';
-      case 'high': return '#f97316';
-      case 'medium': return '#eab308';
-      case 'low': return '#22c55e';
-      default: return 'var(--vscode-foreground)';
-    }
-  };
 
   const getRiskCategoryIcon = (category: string): string => {
     switch (category) {
