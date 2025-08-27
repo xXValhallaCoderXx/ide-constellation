@@ -58,7 +58,7 @@ async function main() {
 		// Main constellation panel build
 		const webviewCtx = await esbuild.context({
 			entryPoints: [
-				'src/webview/ui/constellation/index.tsx'
+				'src/webview/ui/graph-constellation/index.tsx'
 			],
 			bundle: true,
 			format: 'iife',
@@ -79,7 +79,7 @@ async function main() {
 		// Sidebar build configuration
 		const sidebarCtx = await esbuild.context({
 			entryPoints: [
-				'src/webview/ui/sidebar/index.tsx'
+				'src/webview/ui/extension-sidebar/index.tsx'
 			],
 			bundle: true,
 			format: 'iife',
@@ -100,7 +100,7 @@ async function main() {
 		// Health dashboard build configuration
 		const healthDashboardCtx = await esbuild.context({
 			entryPoints: [
-				'src/webview/ui/health/index.tsx'
+				'src/webview/ui/dashboard-health/index.tsx'
 			],
 			bundle: true,
 			format: 'iife',

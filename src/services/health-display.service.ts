@@ -373,7 +373,7 @@ export class HealthDisplayService {
 </head>
 <body>
     <div class="header">
-        <h1>Codebase Health Analysis</h1>
+        <h1>Codebase Health Analysis - OG OG OG</h1>
         <div class="health-score">${healthScore}/100</div>
         <div class="health-status">${healthStatus}</div>
         <div>Analyzed ${totalFiles} files</div>

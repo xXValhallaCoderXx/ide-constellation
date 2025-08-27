@@ -1,11 +1,10 @@
-import { JSX } from 'preact';
-import { ShowMapButton } from './ShowMapButton';
-import '../../../../types/vscode-api.types';
+import { JSX } from "preact";
+import "@/types/vscode-api.types";
 
 export function SidebarPanel(): JSX.Element {
   const handleShowMap = () => {
     if (window.vscode) {
-      window.vscode.postMessage({ command: 'showGraph' });
+      window.vscode.postMessage({ command: "showGraph" });
     }
   };
 
@@ -13,7 +12,13 @@ export function SidebarPanel(): JSX.Element {
     <div className="sidebar-container">
       <h2 className="sidebar-header">Kiro Constellation</h2>
       <div className="sidebar-actions">
-        <ShowMapButton onClick={handleShowMap} />
+        <button
+          className="show-map-button"
+          onClick={handleShowMap}
+          type="button"
+        >
+          Show Codebase Map
+        </button>
       </div>
     </div>
   );
