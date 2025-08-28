@@ -6,10 +6,12 @@ import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types';
-import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL } from '../types/mcp.types';
+import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL } from '../types/mcp.types';
 import { GraphService } from '../services/graph.service';
 import { GraphCache } from '../services/graph-cache.service';
 import { SummaryGenerator } from '../services/summary-generator.service';
+import { DualToolResponse } from '../types/visual-instruction.types';
+import { executeHealthReport, generateHealthSummary } from './tools/health-report.tool';
 import * as path from 'path';
 
 // Conditional vscode import - only available in extension context
@@ -33,6 +35,7 @@ export class MCPStdioServer {
     private server: Server;
     private isRunning = false;
     private extensionContext: any = null;
+    private providerInstance: any = null;
 
     constructor(extensionContext?: any) {
         // Store extension context if provided (when running in extension mode)
@@ -51,7 +54,8 @@ export class MCPStdioServer {
                     '- constellation_ping: returns "pong" for connectivity checks.',
                     '- constellation_example_tool: echoes an optional "message" string.',
                     '- constellation_get_graph_summary: provides intelligent codebase analysis with architectural insights.',
-                    'Prefer using tools when asked to validate MCP connectivity, echo a message, or analyze the codebase.'
+                    '- constellation_health_report: generates comprehensive health analysis with dual-view dashboard and heatmap visualization.',
+                    'Prefer using tools when asked to validate MCP connectivity, echo a message, analyze the codebase, or generate health reports.'
                 ].join('\n')
             }
         );
@@ -68,7 +72,7 @@ export class MCPStdioServer {
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
             console.error('[MCP DEBUG] Received tools/list request');
             return {
-                tools: [CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL],
+                tools: [CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL],
             };
         });
 
@@ -119,6 +123,41 @@ export class MCPStdioServer {
                 
                 // Use stored extension context from constructor (may be null for standalone mode)
                 return await this.executeGetGraphSummary(workspaceRoot, forceRefresh, this.extensionContext);
+            }
+
+            if (name === CONSTELLATION_HEALTH_REPORT_TOOL.name) {
+                console.error('[MCP DEBUG] HEALTH REPORT tool executed');
+                const forceRefresh = (args?.forceRefresh as boolean) || false;
+                const providedWorkspaceRoot = (args?.workspaceRoot as string) || '';
+                
+                // Determine the workspace root to analyze
+                let workspaceRoot: string;
+                
+                if (providedWorkspaceRoot && providedWorkspaceRoot.trim()) {
+                    // Use provided workspace root (most reliable when called from external tools like Kiro)
+                    workspaceRoot = path.resolve(providedWorkspaceRoot.trim());
+                    console.error(`[HEALTH_REPORT] Using provided workspace root: ${workspaceRoot}`);
+                } else if (vscode && vscode.workspace && vscode.workspace.workspaceFolders) {
+                    // Extension mode - use VS Code workspace API
+                    workspaceRoot = vscode.workspace.workspaceFolders[0]?.uri.fsPath;
+                    if (!workspaceRoot) {
+                        throw new Error('No workspace folder open - cannot generate health report');
+                    }
+                    console.error(`[HEALTH_REPORT] Using VS Code workspace root: ${workspaceRoot}`);
+                } else {
+                    // Standalone mode fallback - use current working directory as workspace root
+                    workspaceRoot = process.cwd();
+                    console.error(`[HEALTH_REPORT] Using current working directory as workspace root: ${workspaceRoot}`);
+                }
+                
+                // Validate workspace root exists
+                const fs = require('fs');
+                if (!fs.existsSync(workspaceRoot)) {
+                    throw new Error(`Workspace root does not exist: ${workspaceRoot}`);
+                }
+                
+                // Execute health report with dual-view response
+                return await this.executeHealthReport(workspaceRoot, forceRefresh, this.extensionContext);
             }
 
             if (name !== CONSTELLATION_EXAMPLE_TOOL.name) {
@@ -364,10 +403,20 @@ export class MCPStdioServer {
             console.error(`[SUMMARY COMPLETE] Summary length: ${summary.summary.length} chars`);
             console.error(`[SUMMARY COMPLETE] Insights: ${summary.insights.topHubs.length} hubs, ${summary.insights.circularDependencies.length} cycles, ${summary.insights.orphanFiles.length} orphans`);
 
+            // Dual payload response (FR2/FR3) with placeholder visualInstruction
+            const dualPayload: DualToolResponse<typeof summary> = {
+                dataForAI: summary,
+                visualInstruction: {
+                    action: 'placeholderOverlay',
+                    payload: { note: 'placeholder', summarySize: summary.summary.length },
+                    ts: Date.now()
+                }
+            };
+
             return {
                 content: [{
                     type: 'text' as const,
-                    text: JSON.stringify(summary, null, 2)
+                    text: JSON.stringify(dualPayload)
                 }]
             };
 
@@ -420,6 +469,96 @@ export class MCPStdioServer {
             // Re-throw with more context
             throw new Error(`Failed to perform fresh dependency scan: ${errorMessage}`);
         }
+    }
+
+    /**
+     * Execute health report with dual-view response structure
+     * Works in both extension and standalone modes
+     */
+    private async executeHealthReport(
+        workspaceRoot: string,
+        forceRefresh: boolean,
+        extensionContext: any
+    ): Promise<any> {
+        try {
+            console.error(`[HEALTH_REPORT] Starting health report analysis`);
+            console.error(`[HEALTH_REPORT] Workspace: ${workspaceRoot}`);
+            console.error(`[HEALTH_REPORT] Force refresh: ${forceRefresh}`);
+
+            // Execute health report using the tool function
+            const healthReportResponse = await executeHealthReport(workspaceRoot, forceRefresh, extensionContext);
+            
+            // Generate summary text for AI consumption
+            const summaryText = generateHealthSummary(healthReportResponse.dataForAI);
+            
+            console.error(`[HEALTH_REPORT] Generated health report with ${healthReportResponse.dataForAI.totalFiles} files analyzed`);
+            console.error(`[HEALTH_REPORT] Health score: ${healthReportResponse.dataForAI.healthScore}/100`);
+            console.error(`[HEALTH_REPORT] Visual instruction generated for dual-view rendering`);
+
+            // Create the response structure
+            const responseData = {
+                // Summary for AI reasoning
+                summary: summaryText,
+                // Dashboard data for dashboard view
+                dashboardData: {
+                    healthScore: healthReportResponse.dataForAI.healthScore,
+                    distribution: healthReportResponse.dataForAI.distribution,
+                    topRisks: healthReportResponse.dataForAI.topRisks,
+                    recommendations: healthReportResponse.dataForAI.recommendations,
+                    totalFiles: healthReportResponse.dataForAI.totalFiles
+                },
+                // Visual instruction for webview routing
+                visualInstruction: healthReportResponse.visualInstruction
+            };
+
+            const responseText = JSON.stringify(responseData);
+
+            // Route visual instruction if we have a provider instance
+            if (this.providerInstance && healthReportResponse.visualInstruction) {
+                console.error(`[HEALTH_REPORT] Routing visual instruction: ${healthReportResponse.visualInstruction.action}`);
+                try {
+                    // Create a dual response structure for routing
+                    const dualResponse = JSON.stringify({
+                        dataForAI: healthReportResponse.dataForAI,
+                        visualInstruction: healthReportResponse.visualInstruction
+                    });
+                    this.providerInstance.handleToolResult(dualResponse);
+                } catch (routingError) {
+                    console.error(`[HEALTH_REPORT] Visual instruction routing failed: ${routingError instanceof Error ? routingError.message : String(routingError)}`);
+                }
+            }
+
+            // Return dual payload response structure
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: responseText
+                }]
+            };
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error('[HEALTH_REPORT ERROR]', errorMessage);
+            
+            // Provide user-friendly error messages
+            let userFriendlyMessage = errorMessage;
+            if (errorMessage.includes('No workspace folder open')) {
+                userFriendlyMessage = 'Please open a workspace folder in VS Code to generate a health report.';
+            } else if (errorMessage.includes('Failed to load graph data')) {
+                userFriendlyMessage = 'Unable to analyze project structure. Please scan the project first using the "Scan Project" command.';
+            } else if (errorMessage.includes('Permission denied') || errorMessage.includes('EACCES')) {
+                userFriendlyMessage = 'Permission denied accessing project files. Please check file permissions.';
+            }
+
+            throw new Error(`Health report failed: ${userFriendlyMessage}`);
+        }
+    }
+
+    /**
+     * Set the provider instance for visual instruction routing
+     */
+    setProviderInstance(provider: any): void {
+        this.providerInstance = provider;
     }
 
     /**

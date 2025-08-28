@@ -8,6 +8,7 @@ import { SYNC_DEBOUNCE_MS } from './constants/sync.constants';
 import { GraphService } from './services/graph.service';
 import { STATUS_BAR_TIMEOUT_MS } from './constants/sync.constants';
 import { debounce } from './utils/debounce';
+import { PanelRegistry } from './services/panel-registry.service';
 
 // POC Configuration Flag
 // Set to true to use the VS Code Standard MCP Provider POC
@@ -51,10 +52,25 @@ export async function activate(context: vscode.ExtensionContext) {
 
 		// Initialize Webview Manager (always available)
 		webviewManager = new WebviewManager(null, output);
+		webviewManager.initialize(context);
+		// Initialize Panel Registry and inject into manager
+		const panelRegistry = new PanelRegistry(webviewManager, output);
+		webviewManager.setPanelRegistry(panelRegistry);
+		// Inject into provider for visualInstruction routing
+		if (mcpProvider && typeof (mcpProvider as any).setWebviewManager === 'function') {
+			(mcpProvider as any).setWebviewManager(webviewManager);
+		}
 	} else {
 		// Legacy HTTP server path removed; MCP provider is the default
 		log('[PRODUCTION] MCP provider path active');
 		webviewManager = new WebviewManager(null, output);
+		webviewManager.initialize(context);
+		// Initialize Panel Registry and inject into manager
+		const panelRegistry = new PanelRegistry(webviewManager, output);
+		webviewManager.setPanelRegistry(panelRegistry);
+		if (mcpProvider && typeof (mcpProvider as any).setWebviewManager === 'function') {
+			(mcpProvider as any).setWebviewManager(webviewManager);
+		}
 	}
 
 	// Register the sidebar provider
@@ -64,10 +80,14 @@ export async function activate(context: vscode.ExtensionContext) {
 		sidebarProvider
 	);
 
-	// Register the Show Graph command
-	const showGraphDisposable = vscode.commands.registerCommand('kiro-constellation.showGraph', () => {
+	// Register the Show Graph command (renamed to constellation.showGraph for consistency)
+	const showGraphDisposable = vscode.commands.registerCommand('constellation.showGraph', () => {
 		log('Show Graph command executed');
-		webviewManager?.createOrShowPanel(context);
+		if (webviewManager) {
+			const registry = new PanelRegistry(webviewManager, output);
+			webviewManager.setPanelRegistry(registry);
+			registry.open('dependencyGraph', 'command:showGraph');
+		}
 	});
 
 	// Register the Scan Project command
@@ -88,50 +108,24 @@ export async function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	// Register a debug command to manually launch the MCP stdio server
-	const debugLaunchDisposable = vscode.commands.registerCommand('kiro-constellation.debugLaunchMcp', async () => {
-		if (!IS_DEV) {
-			log('[DEBUG] Debug launch is disabled in production builds');
-			return;
-		}
-		try {
-			const serverScriptPath = path.join(context.extensionPath, 'out', 'mcp-server.js');
-			log(`[DEBUG] Spawning MCP server with: ${process.execPath} ${serverScriptPath}`);
-			const child = spawn(process.execPath, [serverScriptPath], {
-				cwd: context.extensionPath,
-				env: process.env,
-			});
-
-			child.stdout.on('data', (data) => {
-				output.appendLine(`[MCP STDOUT] ${data.toString().trim()}`);
-			});
-			child.stderr.on('data', (data) => {
-				output.appendLine(`[MCP STDERR] ${data.toString().trim()}`);
-			});
-			child.on('exit', (code, signal) => {
-				output.appendLine(`[MCP EXIT] code=${code} signal=${signal ?? ''}`);
-			});
-
-			// Send a quick initialize + tools/list over stdio to validate roundtrip
-			const init = {
-				jsonrpc: '2.0',
-				id: 1,
-				method: 'initialize',
-				params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'kiro-constellation', version: 'dev' } }
-			};
-			const list = { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} };
-			const call = { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'constellation_example_tool', arguments: { message: 'Hello from debug command' } } };
-			const ping = { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'constellation_ping', arguments: {} } };
-			child.stdin.write(`${JSON.stringify(init)}\n`);
-			child.stdin.write(`${JSON.stringify(list)}\n`);
-			child.stdin.write(`${JSON.stringify(call)}\n`);
-			child.stdin.write(`${JSON.stringify(ping)}\n`);
-		} catch (err) {
-			log(`[DEBUG] Failed to launch MCP server: ${err instanceof Error ? err.message : String(err)}`);
+	// Register the Health Dashboard command (simple open)
+	const healthDashboardDisposable = vscode.commands.registerCommand('constellation.healthDashboard', () => {
+		log('Health Dashboard command executed');
+		if (webviewManager) {
+			const registry = new PanelRegistry(webviewManager, output);
+			webviewManager.setPanelRegistry(registry);
+			registry.open('healthDashboard', 'command:healthDashboard');
 		}
 	});
 
-	context.subscriptions.push(sidebarDisposable, showGraphDisposable, scanProjectDisposable, debugLaunchDisposable);
+	// Removed deprecated/legacy commands: healthReport, healthReportGraph, clearHeatmap, analyzeHealth, debugLaunchMcp
+
+	context.subscriptions.push(
+		sidebarDisposable,
+		showGraphDisposable,
+		scanProjectDisposable,
+		healthDashboardDisposable
+	);
 
 	// (FR4/FR5/FR6) Active editor tracking -> highlight graph node (debounced per FR5)
 	let statusTimer: NodeJS.Timeout | null = null;
@@ -192,10 +186,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	}
 }
 
+
 export async function deactivate() {
 	// No output channel at this point; keep a console log for host logs
 	console.log('Kiro Constellation extension is deactivating...');
-	
+
 	// Clean up GraphService singleton
 	try {
 		const { GraphService } = await import('./services/graph.service');
@@ -205,7 +200,7 @@ export async function deactivate() {
 	} catch (error) {
 		console.warn('Failed to clear GraphService singleton:', error);
 	}
-	
+
 	// Clean up webview manager
 	if (webviewManager) {
 		webviewManager.dispose();
@@ -218,5 +213,3 @@ export async function deactivate() {
 		mcpProvider = null;
 	}
 }
-
-

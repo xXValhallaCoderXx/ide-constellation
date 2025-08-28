@@ -39,16 +39,16 @@
     },
     "commands": [
       {
-        "command": "kiro-constellation.showGraph",
+        "command": "constellation.showGraph",
         "title": "Constellation: Show Codebase Map"
-      },
-      {
-        "command": "kiro-constellation.debugLaunchMcp",
-        "title": "Kiro Constellation: Debug Launch MCP (stdio)"
       },
       {
         "command": "constellation.scanProject",
         "title": "Constellation: Scan Project"
+      },
+      {
+        "command": "constellation.healthDashboard",
+        "title": "Constellation: Open Health Dashboard"
       }
     ],
     "mcpServerDefinitionProviders": [

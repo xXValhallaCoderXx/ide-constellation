@@ -1,6 +1,28 @@
 
+---
+inclusion: always
+---
+
 # Core Override Directive
 Instructions noted in this file are to be followed strictly.
+
+## Space Naming
+- Increment the spec folder name and increment by 1 based on previous one
+
+## Documentation
+Once you have completed a spec This is all the tasks or once the user says this task is complete - you must do the following 2 phases:
+
+### Phase 1 (Write Documentation for new feature)
+- Documentation resides in the root `docs` folder
+- Documentation must be in markdown 
+- Create a new file or use a file that is appropriately named.
+- Based on the recent changes you have made for this spec, update project documentation.
+### Phase 2 (Clean up)
+- Analyze the root `docs` folder
+- If there are overlapping information across files, delete duplicate information.
+- Cosolidate files into new ones if domain scope is spread across files.
+- Ensure documentation is short, concise, to the point and minimal code examples
+
 
 
 ## Task Execution

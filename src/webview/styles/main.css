@@ -110,3 +110,9 @@ h1 {
   flex: 1 1 240px;
   min-width: 160px;
 }
+
+/* Import health dashboard styles */
+@import '../panels/health/styles/health-dashboard.css';
+
+/* Import heatmap legend styles */
+@import '../panels/constellation/styles/heatmap-legend.css';

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { InteractiveGraphCanvas } from './InteractiveGraphCanvas';
 import { IConstellationGraph } from '../../../../types/graph.types';
-import '../../../../types/vscode-api.types';
+import "../../../../types/vscode-api.types"
 
 
 interface GraphState {
@@ -83,7 +83,7 @@ export function ConstellationPanel() {
   return (
     <div className="constellation-panel" style={{ paddingTop: '10px' }}>
       <div className="container" style={{ maxWidth: '1100px' }}>
-        <h2 style={{ marginTop: 0 }}>Codebase Dependency Graph</h2>
+        <h2 style={{ marginTop: 0 }}>Codebase Dependency Grapsssh</h2>
           
           {graphState.isLoading && (
             <div style={{ 

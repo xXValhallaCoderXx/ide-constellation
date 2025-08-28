@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { MCPStdioServer } from './mcp-stdio.server';
+import { ParsedToolEnvelope, DualToolResponse } from '../types/visual-instruction.types';
 
 /**
  * VS Code MCP Provider for registering the Kiro Constellation MCP Server
@@ -11,12 +12,22 @@ export class KiroConstellationMCPProvider {
     private extensionContext: vscode.ExtensionContext;
     private outputChannel: vscode.OutputChannel;
     private serverInstance: MCPStdioServer | null = null;
+    // Future: routing related helpers will be added in subsequent tasks
+    private static readonly MAX_LOG_DATAFORAI_CHARS = 5000; // truncation limit
+    private static readonly VISUAL_INSTRUCTION_SIZE_LIMIT = 1_048_576; // 1MB
+    private webviewManager: any | null = null; // lazily set by extension
+    private viDebounceTimer: NodeJS.Timeout | null = null;
+    private pendingInstruction: import('../types/visual-instruction.types').VisualInstruction | null = null;
 
     constructor(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel) {
         this.extensionContext = context;
         this.outputChannel = outputChannel;
         // Create a server instance for direct method calls with extension context
         this.serverInstance = new MCPStdioServer(context);
+        // Set this provider instance for visual instruction routing
+        if (this.serverInstance) {
+            this.serverInstance.setProviderInstance(this);
+        }
     }
 
     /**
@@ -229,6 +240,27 @@ export class KiroConstellationMCPProvider {
     }
 
     /**
+     * [VI] logging helper for visualInstruction pattern tasks.
+     * level: INFO | WARN | DEBUG
+     */
+    private logVI(level: 'INFO'|'WARN'|'DEBUG', msg: string, meta?: any) {
+        const base = `[VI][${level}] ${msg}`;
+        if (meta) {
+            try {
+                let metaString = JSON.stringify(meta);
+                if (metaString.length > 2000) { // safeguard for meta verbosity
+                    metaString = metaString.slice(0, 2000) + '...<truncated-meta>';
+                }
+                this.outputChannel.appendLine(base + ' meta=' + metaString);
+            } catch {
+                this.outputChannel.appendLine(base + ' meta=[unserializable]');
+            }
+        } else {
+            this.outputChannel.appendLine(base);
+        }
+    }
+
+    /**
      * Test method to validate the provider can be called
      */
     public async testProvider(): Promise<void> {
@@ -263,6 +295,131 @@ export class KiroConstellationMCPProvider {
         } catch (error) {
             this.log(`[SCAN] Project scan failed: ${error instanceof Error ? error.message : String(error)}`);
             throw error;
+        }
+    }
+
+    // --- visualInstruction pattern: parsing utility (Tasks 2.1 - 2.4) ---
+    /**
+     * Parse a potential dual payload tool response.
+     * Never throws. Falls back to plain classification on any issue.
+     */
+    public parseDualResponse(text: string): ParsedToolEnvelope<any> { // public for reuse in later routing tasks
+        const rawText = text ?? '';
+        // Guard: empty / whitespace only -> plain
+        if (!rawText || !rawText.trim()) {
+            this.logVI('WARN', 'Parse fallback (plain) reason=empty');
+            return { kind: 'plain', rawText };
+        }
+        try {
+            const parsed = JSON.parse(rawText);
+            // Basic structural validation
+            if (parsed && Object.prototype.hasOwnProperty.call(parsed, 'dataForAI')) {
+                const dual: DualToolResponse<any> = parsed;
+                // Prepare truncated preview for dataForAI logging without leaking huge content
+                let preview: string | undefined;
+                try {
+                    const serialized = JSON.stringify(dual.dataForAI);
+                    if (serialized.length > KiroConstellationMCPProvider.MAX_LOG_DATAFORAI_CHARS) {
+                        preview = serialized.slice(0, KiroConstellationMCPProvider.MAX_LOG_DATAFORAI_CHARS) + '...<truncated>';
+                    } else {
+                        preview = serialized;
+                    }
+                } catch {
+                    preview = '[unserializable dataForAI]';
+                }
+                this.logVI('INFO', `Parse success (dual) hasVisualInstruction=${!!dual.visualInstruction}`, { dataForAIPreview: preview });
+                return { kind: 'dual', rawText, dual };
+            }
+            this.logVI('WARN', 'Parse fallback (plain) reason=missing dataForAI');
+            return { kind: 'plain', rawText };
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.logVI('WARN', 'Parse fallback (plain) reason=json-error', { error: msg });
+            return { kind: 'plain', rawText, parseError: msg };
+        }
+    }
+
+    // --- visualInstruction pattern: routing entrypoint (Tasks 5.x) ---
+    /**
+     * Handle raw tool result text (JSON or plain) and route visualInstruction if present.
+     * Future tasks will expand with debounce & size guards.
+     */
+    public handleToolResult(rawText: string) {
+        const envelope = this.parseDualResponse(rawText);
+        if (envelope.kind === 'dual' && envelope.dual?.visualInstruction) {
+            // Placeholder dispatch call; actual implementation (debounce, size guard, panel ensure) in later tasks 6-7
+            this.logVI('INFO', `Handle tool result detected visualInstruction action=${envelope.dual.visualInstruction.action}`);
+            this.dispatchVisualInstruction(envelope.dual.visualInstruction);
+        } else {
+            this.logVI('DEBUG', 'Handle tool result no visualInstruction present');
+        }
+    }
+
+    /** Inject webviewManager instance (called from extension activation) */
+    public setWebviewManager(manager: any) {
+        this.webviewManager = manager;
+    }
+
+    /** Size guard check */
+    private isInstructionTooLarge(instr: import('../types/visual-instruction.types').VisualInstruction): boolean {
+        try {
+            const size = Buffer.byteLength(JSON.stringify(instr), 'utf8');
+            if (size > KiroConstellationMCPProvider.VISUAL_INSTRUCTION_SIZE_LIMIT) {
+                this.logVI('WARN', 'Payload too large – skipped', { size });
+                return true;
+            }
+        } catch (e) {
+            this.logVI('WARN', 'Failed to measure instruction size, allowing dispatch', { error: String(e) });
+        }
+        return false;
+    }
+
+    /** Debounced dispatch implementing FR6/FR7/FR8/FR9/FR10/FR12/FR13 logic */
+    private dispatchVisualInstruction(instr: import('../types/visual-instruction.types').VisualInstruction) {
+        try {
+            if (!instr || !instr.action) {
+                this.logVI('WARN', 'Dispatch skipped invalid instruction (missing action)');
+                return;
+            }
+            if (this.isInstructionTooLarge(instr)) {
+                return; // size guard
+            }
+
+            // Replace pending and debounce
+            this.pendingInstruction = instr;
+            if (this.viDebounceTimer) {
+                clearTimeout(this.viDebounceTimer);
+            }
+            this.viDebounceTimer = setTimeout(() => {
+                const toSend = this.pendingInstruction;
+                this.pendingInstruction = null;
+                this.viDebounceTimer = null;
+                if (!toSend) { return; }
+                // Ensure webview panel
+                if (!this.webviewManager) {
+                    this.logVI('WARN', 'No webviewManager available; skipping dispatch');
+                    return;
+                }
+                try {
+                    // createOrShowPanel will reveal existing panel (fulfills focus requirement)
+                    if (this.extensionContext) {
+                        this.webviewManager.createOrShowPanel(this.extensionContext);
+                    }
+                    const panel = (this.webviewManager as any).currentPanel as vscode.WebviewPanel | undefined;
+                    if (!panel) {
+                        this.logVI('WARN', 'Panel not available after ensure; skipping dispatch');
+                        return;
+                    }
+                    const message = { command: 'visualInstruction', data: { ...toSend } };
+                    panel.webview.postMessage(message);
+                    const corr = toSend.correlationId ? `[${toSend.correlationId}] ` : '';
+                    this.logVI('INFO', `${corr}Routed action=${toSend.action}`, { ts: toSend.ts });
+                } catch (err) {
+                    this.logVI('WARN', 'Dispatch error during send', { error: err instanceof Error ? err.message : String(err) });
+                }
+            }, 50); // 50ms debounce
+        } catch (err) {
+            this.logVI('WARN', 'Dispatch error outer', { error: err instanceof Error ? err.message : String(err) });
         }
     }
 }
