@@ -179,6 +179,50 @@ export interface DashboardNotificationMessage extends WebviewMessage {
   };
 }
 
+// Augmented routing-related messages
+import type { PanelKey, SidebarRouteKey } from './routing.types';
+
+export interface PanelOpenMessage extends WebviewMessage {
+  command: 'panel:open';
+  data: {
+    panel: PanelKey;
+    origin?: string; // e.g., 'sidebar:Home'
+  };
+}
+
+export interface ProjectScanMessage extends WebviewMessage {
+  command: 'project:scan';
+  data?: {
+    origin?: string;
+  };
+}
+
+export interface RouteNavigateMessage extends WebviewMessage {
+  command: 'route:navigate';
+  data: {
+    route: SidebarRouteKey;
+  };
+}
+
+/** Health export request from webview */
+export interface HealthExportMessage extends WebviewMessage {
+  command: 'health:export';
+  data: {
+    format: 'json' | 'csv';
+  };
+}
+
+/** Health export result from extension to webview */
+export interface HealthExportResultMessage extends WebviewMessage {
+  command: 'health:export:result';
+  data: {
+    success: boolean;
+    format: 'json' | 'csv';
+    uri?: string;
+    error?: string;
+  };
+}
+
 // Type guards (optional safety - FR1.4)
 export function isEditorOpenMessage(msg: WebviewMessage): msg is EditorOpenMessage {
   return msg.command === 'editor:open' && !!msg.data && typeof msg.data.fileId === 'string';
@@ -188,5 +232,27 @@ export function isGraphHighlightNodeMessage(msg: WebviewMessage): msg is GraphHi
   return msg.command === 'graph:highlightNode';
 }
 
-export type WebviewToExtensionMessage = CheckStatusMessage | GraphRequestMessage | EditorOpenMessage | HealthRequestMessage | HealthShowHeatmapMessage | HealthFocusNodeMessage | HealthRefreshMessage | VisualInstructionMessage;
-export type ExtensionToWebviewMessage = StatusUpdateMessage | ServerInfoMessage | GraphResponseMessage | GraphErrorMessage | GraphHighlightNodeMessage | HealthResponseMessage | HealthErrorMessage | HealthLoadingMessage | DashboardHighlightRiskMessage | GraphApplyHeatmapMessage | GraphClearHeatmapMessage | DashboardNotificationMessage;
+// New guards
+export function isPanelOpenMessage(msg: WebviewMessage): msg is PanelOpenMessage {
+  return msg.command === 'panel:open' && !!(msg as any).data && typeof (msg as any).data.panel === 'string';
+}
+
+export function isProjectScanMessage(msg: WebviewMessage): msg is ProjectScanMessage {
+  return msg.command === 'project:scan';
+}
+
+export function isRouteNavigateMessage(msg: WebviewMessage): msg is RouteNavigateMessage {
+  return msg.command === 'route:navigate' && !!(msg as any).data && typeof (msg as any).data.route === 'string';
+}
+
+export function isHealthExportMessage(msg: WebviewMessage): msg is HealthExportMessage {
+  return msg.command === 'health:export' && !!(msg as any).data && (((msg as any).data.format === 'json') || ((msg as any).data.format === 'csv'));
+}
+
+export function isHealthExportResultMessage(msg: WebviewMessage): msg is HealthExportResultMessage {
+  return msg.command === 'health:export:result' && !!(msg as any).data && typeof (msg as any).data.success === 'boolean';
+}
+
+export type WebviewToExtensionMessage = CheckStatusMessage | GraphRequestMessage | EditorOpenMessage | HealthRequestMessage | HealthShowHeatmapMessage | HealthFocusNodeMessage | HealthRefreshMessage | VisualInstructionMessage | PanelOpenMessage | ProjectScanMessage | RouteNavigateMessage | HealthExportMessage;
+
+export type ExtensionToWebviewMessage = StatusUpdateMessage | ServerInfoMessage | GraphResponseMessage | GraphErrorMessage | GraphHighlightNodeMessage | HealthResponseMessage | HealthErrorMessage | HealthLoadingMessage | DashboardHighlightRiskMessage | GraphApplyHeatmapMessage | GraphClearHeatmapMessage | DashboardNotificationMessage | HealthExportResultMessage;

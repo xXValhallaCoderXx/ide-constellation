@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { HealthAnalysis } from '../../types/health-analysis.types';
 import { HealthAnalyzer } from '../../services/health-analyzer.service';
 import { GraphService } from '../../services/graph.service';
+import { exportToJSON, exportToCSV } from '../../services/health/health.services';
 
 /**
  * Health Dashboard Webview Provider
@@ -98,10 +99,10 @@ export class HealthDashboardProvider {
    */
   public async displayAnalysis(analysis: HealthAnalysis): Promise<void> {
     this.currentAnalysis = analysis;
-    
+
     // Ensure panel is open
     this.createOrShowPanel();
-    
+
     // Send analysis data to panel
     this.sendAnalysisToPanel(analysis);
   }
@@ -139,6 +140,9 @@ export class HealthDashboardProvider {
       case 'health:refresh':
         await this.handleHealthRequest(true);
         break;
+      case 'health:export':
+        await this.handleHealthExport(message.data?.format === 'csv' ? 'csv' : 'json');
+        break;
       case 'health:showHeatmap':
         await this.handleShowHeatmap(message.data);
         break;
@@ -150,6 +154,57 @@ export class HealthDashboardProvider {
         break;
       default:
         this.output?.appendLine(`[${timestamp}] Unknown health dashboard message: ${message.command}`);
+    }
+  }
+
+  /**
+   * Handle health export request: save currentAnalysis as JSON/CSV
+   */
+  private async handleHealthExport(format: 'json' | 'csv'): Promise<void> {
+    const timestamp = new Date().toISOString();
+    if (!this.currentAnalysis) {
+      this.output?.appendLine(`[${timestamp}] [WARN] Export requested with no analysis available`);
+      if (this.panel) {
+        this.panel.webview.postMessage({
+          command: 'health:export:result',
+          data: { success: false, format, error: 'No analysis available to export' }
+        });
+      }
+      return;
+    }
+    try {
+      const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+      const fileName = `health-analysis-${new Date().toISOString().replace(/[:.]/g, '-')}.${format}`;
+      const target = await vscode.window.showSaveDialog({
+        defaultUri: defaultUri ? vscode.Uri.joinPath(defaultUri, fileName) : undefined,
+        filters: { Data: [format] },
+        saveLabel: 'Save Health Analysis'
+      });
+      if (!target) {
+        // User cancelled
+        return;
+      }
+      const content = format === 'csv' ? exportToCSV(this.currentAnalysis) : exportToJSON(this.currentAnalysis);
+      const enc = new TextEncoder();
+      await vscode.workspace.fs.writeFile(target, enc.encode(content));
+      this.output?.appendLine(`[${timestamp}] Exported health analysis to ${target.toString()}`);
+      if (this.panel) {
+        this.panel.webview.postMessage({
+          command: 'health:export:result',
+          data: { success: true, format, uri: target.toString() }
+        });
+      }
+      vscode.window.showInformationMessage(`Health analysis exported: ${target.fsPath}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.output?.appendLine(`[${timestamp}] [ERROR] Export failed: ${msg}`);
+      if (this.panel) {
+        this.panel.webview.postMessage({
+          command: 'health:export:result',
+          data: { success: false, format, error: msg }
+        });
+      }
+      vscode.window.showErrorMessage(`Export failed: ${msg}`);
     }
   }
 
@@ -174,7 +229,7 @@ export class HealthDashboardProvider {
       // Get or load graph data
       const graphService = GraphService.getInstance();
       let graph = graphService.getGraph();
-      
+
       if (!graph || forceRefresh) {
         this.output?.appendLine(`[${timestamp}] Loading fresh graph data for health analysis`);
         graph = await graphService.loadGraph(workspaceRoot, '.');
@@ -214,7 +269,7 @@ export class HealthDashboardProvider {
     if (this.webviewManager && this.currentAnalysis) {
       // Use the webview manager's cross-panel navigation
       await this.webviewManager.navigateFromDashboardToGraph(
-        this.currentAnalysis.riskScores, 
+        this.currentAnalysis.riskScores,
         data.centerNode
       );
     } else {
@@ -234,7 +289,7 @@ export class HealthDashboardProvider {
     if (this.webviewManager && this.currentAnalysis) {
       // Use the webview manager's cross-panel navigation
       await this.webviewManager.navigateFromDashboardToGraph(
-        this.currentAnalysis.riskScores, 
+        this.currentAnalysis.riskScores,
         nodeId
       );
     } else {
@@ -268,7 +323,7 @@ export class HealthDashboardProvider {
 
       // Resolve file path
       const filePath = vscode.Uri.file(workspaceRoot + '/' + fileId);
-      
+
       // Security check - ensure file is within workspace
       if (!filePath.fsPath.startsWith(workspaceRoot)) {
         vscode.window.showErrorMessage(`Security: Cannot open file outside workspace: ${fileId}`);

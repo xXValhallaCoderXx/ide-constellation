@@ -1,16 +1,18 @@
 import * as vscode from 'vscode';
 // Removed MCPServer dependency; webview status is synthesized
-import { WebviewToExtensionMessage, ExtensionToWebviewMessage, GraphResponseMessage, GraphErrorMessage, EditorOpenMessage, HealthRequestMessage, HealthResponseMessage, HealthErrorMessage, HealthLoadingMessage, HealthShowHeatmapMessage, HealthFocusNodeMessage, HealthRefreshMessage } from '../types/messages.types';
+import { WebviewToExtensionMessage, ExtensionToWebviewMessage, GraphResponseMessage, GraphErrorMessage, EditorOpenMessage, HealthRequestMessage, HealthResponseMessage, HealthErrorMessage, HealthLoadingMessage, HealthShowHeatmapMessage, HealthFocusNodeMessage, HealthRefreshMessage, PanelOpenMessage, ProjectScanMessage } from '../types/messages.types';
 import { GraphService } from '../services/graph.service';
 import { HealthAnalyzer } from '../services/health-analyzer.service';
 import { HealthDashboardProvider } from './providers/health-dashboard.provider';
 import { resolveWorkspacePath } from 'src/utils/path.utils';
+import { PanelRegistry } from '../services/panel-registry.service';
 
 export class WebviewManager {
   private currentPanel: vscode.WebviewPanel | undefined = undefined;
   private healthDashboardProvider: HealthDashboardProvider | undefined = undefined;
   private output?: vscode.OutputChannel;
   private context: vscode.ExtensionContext | undefined = undefined;
+  private panelRegistry: PanelRegistry | undefined = undefined;
   private visualInstructionDebounceTimer: NodeJS.Timeout | null = null;
   private pendingVisualInstruction: any | null = null;
   private static readonly VISUAL_INSTRUCTION_SIZE_LIMIT = 1_048_576; // 1MB
@@ -26,14 +28,21 @@ export class WebviewManager {
   public initialize(context: vscode.ExtensionContext): void {
     this.context = context;
     this.healthDashboardProvider = new HealthDashboardProvider(context, this.output);
-    
+
     // Set webview manager reference for cross-panel communication
     if (this.healthDashboardProvider && typeof this.healthDashboardProvider.setWebviewManager === 'function') {
       this.healthDashboardProvider.setWebviewManager(this);
     }
   }
+  public setPanelRegistry(registry: PanelRegistry): void {
+    this.panelRegistry = registry;
+  }
 
-  createOrShowPanel(context: vscode.ExtensionContext): void {
+  createOrShowPanel(): void {
+    if (!this.context) {
+      this.output?.appendLine(`[${new Date().toISOString()}] [ERROR] WebviewManager not initialized with context`);
+      return;
+    }
     this.output?.appendLine(`[${new Date().toISOString()}] Creating or showing webview panel...`);
     const columnToShowIn = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
@@ -46,7 +55,7 @@ export class WebviewManager {
     }
 
     // Otherwise, create a new panel
-  this.currentPanel = vscode.window.createWebviewPanel(
+    this.currentPanel = vscode.window.createWebviewPanel(
       'kiroConstellation',
       'Kiro Constellation',
       columnToShowIn || vscode.ViewColumn.One,
@@ -54,34 +63,34 @@ export class WebviewManager {
         enableScripts: true,
         retainContextWhenHidden: true,
         localResourceRoots: [
-          vscode.Uri.joinPath(context.extensionUri, 'dist'),
-          vscode.Uri.joinPath(context.extensionUri, 'src', 'webview', 'styles')
+          vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
+          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'styles')
         ]
       }
     );
 
     // Set the webview's initial html content
-  this.currentPanel.webview.html = this.getWebviewContent(context);
-  this.output?.appendLine(`[${new Date().toISOString()}] Webview HTML set.`);
+    this.currentPanel.webview.html = this.getWebviewContent();
+    this.output?.appendLine(`[${new Date().toISOString()}] Webview HTML set.`);
 
     // Handle messages from the webview
     this.currentPanel.webview.onDidReceiveMessage(
       async (message) => {
-    this.output?.appendLine(`[${new Date().toISOString()}] Webview message received: ${JSON.stringify(message)}`);
+        this.output?.appendLine(`[${new Date().toISOString()}] Webview message received: ${JSON.stringify(message)}`);
         await this.handleWebviewMessage(message);
       },
       undefined,
-      context.subscriptions
+      this.context.subscriptions
     );
 
     // Reset when the current panel is closed
     this.currentPanel.onDidDispose(
       () => {
-  this.output?.appendLine(`[${new Date().toISOString()}] Webview panel disposed.`);
+        this.output?.appendLine(`[${new Date().toISOString()}] Webview panel disposed.`);
         this.currentPanel = undefined;
       },
       null,
-      context.subscriptions
+      this.context.subscriptions
     );
   }
 
@@ -108,6 +117,33 @@ export class WebviewManager {
       case 'health:refresh':
         await this.handleHealthRefresh(message as HealthRefreshMessage);
         break;
+      case 'panel:open': {
+        const m = message as PanelOpenMessage;
+        const origin = m.data?.origin || 'sidebar:unknown';
+        const key = m.data?.panel;
+        this.output?.appendLine(`[${new Date().toISOString()}] panel:open request key=${key} origin=${origin}`);
+        if (this.panelRegistry) {
+          this.panelRegistry.open(key, origin);
+        } else {
+          // Minimal fallback without registry
+          if (key === 'dependencyGraph') { this.createOrShowPanel(); }
+          else if (key === 'healthDashboard') { this.createOrShowHealthDashboard(); }
+          else { this.output?.appendLine(`[${new Date().toISOString()}] [WARN] Unknown panel key: ${key}`); }
+        }
+        break;
+      }
+      case 'project:scan': {
+        const m = message as ProjectScanMessage;
+        const origin = m.data?.origin || 'sidebar:unknown';
+        this.output?.appendLine(`[${new Date().toISOString()}] project:scan request origin=${origin}`);
+        try {
+          await vscode.commands.executeCommand('constellation.scanProject');
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.output?.appendLine(`[${new Date().toISOString()}] [ERROR] project:scan failed: ${msg}`);
+        }
+        break;
+      }
       case 'visualInstruction':
         await this.handleVisualInstruction(message as any);
         break;
@@ -194,10 +230,10 @@ export class WebviewManager {
 
   private async handleGraphRequest(): Promise<void> {
     this.output?.appendLine(`[${new Date().toISOString()}] Handling graph request...`);
-    
+
     try {
       const graphService = GraphService.getInstance();
-      
+
       // Get current workspace root
       const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (!workspaceRoot) {
@@ -242,16 +278,19 @@ export class WebviewManager {
     }
   }
 
-  private getWebviewContent(context: vscode.ExtensionContext): string {
+  private getWebviewContent(): string {
+    if (!this.context) {
+      return '<!DOCTYPE html><html><body><p>Context not initialized</p></body></html>';
+    }
     const webview = this.currentPanel?.webview!;
     const nonce = this.getNonce();
     const cspSource = webview.cspSource;
     const webviewUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview.js')
+      vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview.js')
     );
 
     const cssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(context.extensionUri, 'src', 'webview', 'styles', 'main.css')
+      vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'styles', 'main.css')
     );
 
     return `<!DOCTYPE html>
@@ -340,7 +379,7 @@ export class WebviewManager {
       // Get or load graph data
       const graphService = GraphService.getInstance();
       let graph = graphService.getGraph();
-      
+
       if (!graph || message.data?.forceRefresh) {
         this.output?.appendLine(`[${timestamp}] Loading fresh graph data for health analysis`);
         graph = await graphService.loadGraph(workspaceRoot, '.');
@@ -391,7 +430,7 @@ export class WebviewManager {
     try {
       // Transform health analysis to heatmap data
       const { analysis, centerNode } = message.data;
-      
+
       // Use the new cross-panel navigation method
       await this.navigateFromDashboardToGraph(analysis.riskScores, centerNode);
 
@@ -452,7 +491,7 @@ export class WebviewManager {
   private async handleVisualInstruction(message: any): Promise<void> {
     const timestamp = new Date().toISOString();
     const instruction = message.data;
-    
+
     if (!instruction || !instruction.action) {
       this.output?.appendLine(`[${timestamp}] Invalid visual instruction received: missing action`);
       return;
@@ -473,20 +512,20 @@ export class WebviewManager {
 
     // Debounced processing
     this.pendingVisualInstruction = instruction;
-    
+
     if (this.visualInstructionDebounceTimer) {
       clearTimeout(this.visualInstructionDebounceTimer);
     }
-    
+
     this.visualInstructionDebounceTimer = setTimeout(async () => {
       const toProcess = this.pendingVisualInstruction;
       this.pendingVisualInstruction = null;
       this.visualInstructionDebounceTimer = null;
-      
+
       if (!toProcess) {
         return;
       }
-      
+
       try {
         await this.processVisualInstruction(toProcess);
       } catch (error) {
@@ -501,7 +540,7 @@ export class WebviewManager {
    */
   private async processVisualInstruction(instruction: any): Promise<void> {
     const timestamp = new Date().toISOString();
-    
+
     try {
       switch (instruction.action) {
         case 'applyHealthAnalysis':
@@ -513,7 +552,7 @@ export class WebviewManager {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       this.output?.appendLine(`[${timestamp}] Visual instruction processing error: ${errorMessage}`);
-      
+
       // Implement fallback strategy
       await this.handleVisualInstructionFallback(instruction, errorMessage);
     }
@@ -525,7 +564,7 @@ export class WebviewManager {
   private async handleVisualInstructionFallback(instruction: any, error: string): Promise<void> {
     const timestamp = new Date().toISOString();
     this.output?.appendLine(`[${timestamp}] Attempting visual instruction fallback for action: ${instruction.action}`);
-    
+
     try {
       switch (instruction.action) {
         case 'applyHealthAnalysis':
@@ -547,20 +586,20 @@ export class WebviewManager {
   private async handleApplyHealthAnalysis(instruction: any): Promise<void> {
     const timestamp = new Date().toISOString();
     const { payload } = instruction;
-    
+
     this.output?.appendLine(`[${timestamp}] Applying health analysis visual instruction`);
 
     try {
       // Handle dual-view payload structure from health report tool
       if (payload.type === 'dual-view') {
         const { dashboard, graph } = payload;
-        
+
         // Show dashboard if requested
         if (dashboard?.show && dashboard?.data) {
           this.output?.appendLine(`[${timestamp}] Showing health dashboard`);
           this.createOrShowHealthDashboard();
           await this.displayHealthAnalysis(dashboard.data);
-          
+
           // Focus on specific file if provided
           if (dashboard.focusFile && this.healthDashboardProvider) {
             const panel = this.healthDashboardProvider.getPanel();
@@ -572,16 +611,16 @@ export class WebviewManager {
             }
           }
         }
-        
+
         // Show graph with heatmap if requested
         if (graph?.show && graph?.heatmapData) {
           this.output?.appendLine(`[${timestamp}] Applying heatmap to graph`);
-          
+
           try {
             if (this.context) {
-              this.createOrShowPanel(this.context);
+              this.createOrShowPanel();
             }
-            
+
             // Apply heatmap with animation config
             if (this.currentPanel) {
               const heatmapMessage = {
@@ -594,9 +633,9 @@ export class WebviewManager {
                   totalFiles: dashboard?.data?.totalFiles
                 }
               };
-              
+
               this.currentPanel.webview.postMessage(heatmapMessage);
-              
+
               // Focus on center node if provided
               if (graph.centerNode) {
                 this.currentPanel.webview.postMessage({
@@ -609,12 +648,12 @@ export class WebviewManager {
             }
           } catch (graphError) {
             this.output?.appendLine(`[${timestamp}] Graph rendering failed, falling back to dashboard-only mode: ${graphError instanceof Error ? graphError.message : String(graphError)}`);
-            
+
             // Fallback: ensure dashboard is shown even if graph fails
             if (dashboard?.show && dashboard?.data) {
               this.createOrShowHealthDashboard();
               await this.displayHealthAnalysis(dashboard.data);
-              
+
               // Send error notification to dashboard
               if (this.healthDashboardProvider) {
                 const panel = this.healthDashboardProvider.getPanel();
@@ -631,56 +670,56 @@ export class WebviewManager {
             }
           }
         }
-        
+
         this.output?.appendLine(`[${timestamp}] Dual-view health analysis applied successfully`);
-        
+
       } else {
         // Fallback for legacy payload structure
         const { analysis, displayMode } = payload;
-        
+
         if (!analysis) {
           this.output?.appendLine(`[${timestamp}] No analysis data in visual instruction payload`);
           return;
         }
 
         const mode = displayMode || 'dashboard';
-        
+
         switch (mode) {
           case 'dashboard':
             this.createOrShowHealthDashboard();
             await this.displayHealthAnalysis(analysis);
             break;
-            
+
           case 'graph':
             if (this.context) {
-              this.createOrShowPanel(this.context);
+              this.createOrShowPanel();
             }
             await this.navigateFromDashboardToGraph(analysis.riskScores);
             break;
-            
+
           case 'both':
             this.createOrShowHealthDashboard();
             await this.displayHealthAnalysis(analysis);
-            
+
             if (this.context) {
-              this.createOrShowPanel(this.context);
+              this.createOrShowPanel();
             }
             await this.navigateFromDashboardToGraph(analysis.riskScores);
             break;
-            
+
           default:
             this.output?.appendLine(`[${timestamp}] Unknown display mode: ${mode}, defaulting to dashboard`);
             this.createOrShowHealthDashboard();
             await this.displayHealthAnalysis(analysis);
         }
-        
+
         this.output?.appendLine(`[${timestamp}] Health analysis visual instruction applied successfully (mode: ${mode})`);
       }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       this.output?.appendLine(`[${timestamp}] Failed to apply health analysis: ${errorMessage}`);
-      
+
       // Fallback: try to show dashboard only
       try {
         this.createOrShowHealthDashboard();
@@ -730,7 +769,7 @@ export class WebviewManager {
     try {
       // Ensure main graph panel is open
       if (!this.currentPanel && this.context) {
-        this.createOrShowPanel(this.context);
+        this.createOrShowPanel();
       }
 
       // Transform risk scores to heatmap data

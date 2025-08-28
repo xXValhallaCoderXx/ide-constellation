@@ -51,6 +51,10 @@
         "title": "Constellation: Scan Project"
       },
       {
+        "command": "constellation.healthDashboard",
+        "title": "Constellation: Open Health Dashboard"
+      },
+      {
         "command": "constellation.analyzeHealth",
         "title": "Constellation: Analyze Codebase Health"
       },
