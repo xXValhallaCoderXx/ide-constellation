@@ -3,6 +3,7 @@ import { HealthAnalysis } from '../../types/health-analysis.types';
 import { HealthAnalyzer } from '../../services/health-analyzer.service';
 import { GraphService } from '../../services/graph.service';
 import { exportToJSON, exportToCSV } from '../../services/health/health.services';
+import { resolveWorkspacePath } from 'src/utils/path.utils';
 
 /**
  * Health Dashboard Webview Provider
@@ -57,7 +58,10 @@ export class HealthDashboardProvider {
         localResourceRoots: [
           vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
           vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'styles'),
-          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'panels', 'health', 'styles')
+          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'panels', 'health', 'styles'),
+          // Merge plan: allow health dashboard UI styles and shared graph styles
+          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'ui', 'dashboard-health', 'styles'),
+          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'ui', 'graph-constellation', 'styles')
         ]
       }
     );
@@ -297,11 +301,28 @@ export class HealthDashboardProvider {
       const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       if (workspaceRoot && nodeId) {
         try {
-          const filePath = vscode.Uri.file(workspaceRoot + '/' + nodeId);
-          const doc = await vscode.workspace.openTextDocument(filePath);
+          const { abs, within } = resolveWorkspacePath(workspaceRoot, nodeId);
+          const uri = vscode.Uri.file(abs);
+          if (!within) {
+            const msg = `Security: Cannot open outside workspace: ${nodeId}`;
+            this.output?.appendLine(`[${timestamp}] ${msg}`);
+            vscode.window.showWarningMessage(msg);
+            return;
+          }
+          try {
+            await vscode.workspace.fs.stat(uri);
+          } catch {
+            const friendly = `Cannot open "${nodeId}" — not found in workspace. It may be a module specifier or external dependency.`;
+            this.output?.appendLine(`[${timestamp}] Focus open failed (ENOENT): ${nodeId} -> ${abs}`);
+            vscode.window.showWarningMessage(friendly);
+            return;
+          }
+          const doc = await vscode.workspace.openTextDocument(uri);
           await vscode.window.showTextDocument(doc, { preview: true });
         } catch (error) {
-          this.output?.appendLine(`[${timestamp}] Failed to open file for focus: ${nodeId}`);
+          const emsg = error instanceof Error ? error.message : String(error);
+          this.output?.appendLine(`[${timestamp}] Failed to open file for focus: ${nodeId} (${emsg})`);
+          vscode.window.showErrorMessage(`Failed to open file: ${nodeId}`);
         }
       }
     }
@@ -321,17 +342,26 @@ export class HealthDashboardProvider {
         return;
       }
 
-      // Resolve file path
-      const filePath = vscode.Uri.file(workspaceRoot + '/' + fileId);
-
-      // Security check - ensure file is within workspace
-      if (!filePath.fsPath.startsWith(workspaceRoot)) {
+      // Resolve and validate file path (security + existence)
+      const { abs, within } = resolveWorkspacePath(workspaceRoot, fileId);
+      const fileUri = vscode.Uri.file(abs);
+      if (!within) {
         vscode.window.showErrorMessage(`Security: Cannot open file outside workspace: ${fileId}`);
+        this.output?.appendLine(`[${timestamp}] Security: rejected path outside workspace: ${fileId} -> ${abs}`);
+        return;
+      }
+      try {
+        await vscode.workspace.fs.stat(fileUri);
+      } catch {
+        // Provide helpful guidance for module-like identifiers (e.g., "react-dom/client")
+        const friendly = `File not found in workspace: ${fileId}. It may refer to a module specifier or a generated/ignored file.`;
+        vscode.window.showWarningMessage(friendly);
+        this.output?.appendLine(`[${timestamp}] editor:open ENOENT ${fileId} -> ${abs}`);
         return;
       }
 
       // Open the file
-      const doc = await vscode.workspace.openTextDocument(filePath);
+      const doc = await vscode.workspace.openTextDocument(fileUri);
       const viewColumn = openMode === 'split' ? vscode.ViewColumn.Beside : undefined;
       await vscode.window.showTextDocument(doc, { preview: true, viewColumn });
 
@@ -360,6 +390,20 @@ export class HealthDashboardProvider {
     const cssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'styles', 'main.css')
     );
+    // Merge plan: curated dashboard stylesheet
+    const dashboardCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'ui', 'dashboard-health', 'styles', 'health-dashboard.css')
+    );
+    // Merge plan: shared graph UI styles used by dashboard (toasts, loader, contextual help)
+    const toastCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'ui', 'graph-constellation', 'styles', 'toast-notification.css')
+    );
+    const loadingCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'ui', 'graph-constellation', 'styles', 'loading-indicator.css')
+    );
+    const helpCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'ui', 'graph-constellation', 'styles', 'contextual-help.css')
+    );
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -369,6 +413,10 @@ export class HealthDashboardProvider {
     <title>Health Dashboard</title>
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; script-src 'nonce-${nonce}' ${cspSource}; style-src ${cspSource} 'unsafe-inline'; font-src ${cspSource};" />
     <link href="${cssUri}" rel="stylesheet">
+    ${dashboardCssUri ? `<link href="${dashboardCssUri}" rel="stylesheet">` : ''}
+    ${toastCssUri ? `<link href="${toastCssUri}" rel="stylesheet">` : ''}
+    ${loadingCssUri ? `<link href="${loadingCssUri}" rel="stylesheet">` : ''}
+    ${helpCssUri ? `<link href="${helpCssUri}" rel="stylesheet">` : ''}
     <style>
         body { 
             font-family: var(--vscode-font-family); 

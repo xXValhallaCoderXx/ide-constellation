@@ -232,6 +232,165 @@ Step 10: Cleanup
 - With approval and after parity validation, delete:
   - [dashboard-health copy](src/webview/ui/dashboard-health copy)
 
+## Implementation readiness addendum
+
+This section turns the plan into concrete, code-ready tasks with contracts, acceptance criteria, and file scaffolding guidance.
+
+1. Provider HTML and resource roots
+
+- Inject stylesheet links in [health-dashboard.provider.ts](src/webview/providers/health-dashboard.provider.ts) head:
+  - Add link for [health-dashboard.css](src/webview/ui/dashboard-health/styles/health-dashboard.css)
+  - Reuse shared styles from graph UI:
+    - [toast-notification.css](src/webview/ui/graph-constellation/styles/toast-notification.css)
+    - [loading-indicator.css](src/webview/ui/graph-constellation/styles/loading-indicator.css)
+    - [contextual-help.css](src/webview/ui/graph-constellation/styles/contextual-help.css)
+- Ensure localResourceRoots includes:
+  - src/webview/ui/dashboard-health/styles
+  - src/webview/ui/graph-constellation/styles
+
+2. CSS curation map
+
+- Create [health-dashboard.css](src/webview/ui/dashboard-health/styles/health-dashboard.css) with only these classes (trimmed from the copy):
+  - Layout/container
+    - .health-dashboard
+    - .dashboard-header
+    - .section
+    - .actions
+  - Stats
+    - .stat-card
+    - .stats-grid
+  - Risks
+    - .risk-file
+    - .risk-file.selected
+    - .risk-badge
+    - .metrics-chip
+    - Focus outline utilities
+  - Inline banners (used by InfoBanner in UI)
+    - .info-banner
+    - .info-banner.warning|.error|.success
+  - Motion/accessibility (guarded)
+    - @media (prefers-reduced-motion: reduce) { minimal overrides }
+- Exclude heavy animations, ripples, and print rules initially; add only if required.
+
+3. Components extraction contracts (to keep files small)
+
+- Create these presentational components under [components/](src/webview/ui/dashboard-health/components):
+  - [ScoreHeader.tsx](src/webview/ui/dashboard-health/components/ScoreHeader.tsx)
+    - Props:
+      - score: number
+      - totalFiles: number
+      - statusLabel: string
+      - statusColor: string
+      - timestamp?: string
+      - children?: JSX.Element (for header actions e.g., help)
+  - [DistributionGrid.tsx](src/webview/ui/dashboard-health/components/DistributionGrid.tsx)
+    - Props:
+      - distribution: { low: number; medium: number; high: number; critical: number }
+      - totalFiles: number
+  - [RiskList.tsx](src/webview/ui/dashboard-health/components/RiskList.tsx)
+    - Props:
+      - risks: import alias of HealthAnalysis['topRisks']
+      - selectedId?: string
+      - onSelect: (id: string) => void
+      - onOpenFile: (id: string, mode: 'default' | 'split') => void
+      - onFocusGraph: (id: string) => void
+    - Behavior:
+      - Click selects and opens default
+      - Ctrl/Cmd+Click opens split
+      - Keyboard:
+        - Enter = open default
+        - Shift+Enter = open split
+        - Tab index set on each item
+  - [Recommendations.tsx](src/webview/ui/dashboard-health/components/Recommendations.tsx)
+    - Props:
+      - items: string[]
+  - [ActionsBar.tsx](src/webview/ui/dashboard-health/components/ActionsBar.tsx)
+    - Props:
+      - onRefresh: () => void
+      - onExportJson: () => void
+      - onExportCsv: () => void
+      - onShowHeatmap: () => void
+- [HealthDashboard.tsx](src/webview/ui/dashboard-health/HealthDashboard.tsx) becomes a thin composer.
+
+4. Hook enhancements in [useHealthAnalysis()](src/webview/ui/dashboard-health/hooks/useHealthAnalysis.ts:1)
+
+- Add selectedRisk: string | null
+- Add selectRisk: (id: string) => void
+- Update message handler to process [dashboard:highlightRisk](src/types/messages.types.ts:127)
+- Keep existing actions: refresh(), export(format), openFile(fileId, mode), showHeatmap(centerNode?), focusNode(nodeId)
+
+5. Message matrix (webview ⇄ extension)
+
+- From UI to extension:
+  - [health:request](src/types/messages.types.ts:73): optional { forceRefresh?: boolean }
+  - [health:refresh](src/types/messages.types.ts:121)
+  - [health:export](src/types/messages.types.ts:207): { format: 'json' | 'csv' }
+  - [editor:open](src/types/messages.types.ts:51): { fileId, openMode }
+  - [health:showHeatmap](src/types/messages.types.ts:104): { analysis, centerNode? }
+  - [health:focusNode](src/types/messages.types.ts:113): { nodeId }
+- From extension to UI:
+  - [health:loading](src/types/messages.types.ts:99)
+  - [health:response](src/types/messages.types.ts:81): { analysis, timestamp }
+  - [health:error](src/types/messages.types.ts:90): { error, timestamp }
+  - [health:export:result](src/types/messages.types.ts:215): { success, format, uri?, error? }
+  - [dashboard:highlightRisk](src/types/messages.types.ts:126): { nodeId }
+
+6. Notification plan
+
+- Mount [ToastContainer](src/webview/ui/graph-constellation/components/ToastNotification.tsx:1) at the root of [HealthDashboard.tsx](src/webview/ui/dashboard-health/HealthDashboard.tsx:1).
+- Emit toasts in these scenarios:
+  - Export success/failure (map of ExtensionToWebviewMessage 'health:export:result')
+  - Refresh started/finished (optional info toasts)
+  - Show Heatmap navigation initiated (info)
+  - File open action (optional info)
+- Keep InfoBanner (inline) for persistent messages: loading/info/warning/error lines.
+
+7. Explicit states in [HealthDashboard.tsx](src/webview/ui/dashboard-health/HealthDashboard.tsx:1)
+
+- Loading: show [AnalysisLoadingIndicator](src/webview/ui/graph-constellation/components/LoadingIndicator.tsx:1) and a text hint
+- Empty (no analysis): button to call ensureRequested(true)
+- Error: show error message and these buttons:
+  - Retry (refresh)
+  - View Graph Only (post [graph:request](src/types/messages.types.ts:31))
+  - Continue Dashboard Only (clear error)
+
+8. Accessibility and keyboard focus
+
+- Risk rows: add tabIndex=0, aria-label with filename and risk data
+- Visible focus outline using CSS class or default browser outline
+- Reduced motion support in [health-dashboard.css](src/webview/ui/dashboard-health/styles/health-dashboard.css:1)
+
+9. Acceptance criteria gates
+
+- Gate A: Messaging
+  - All message commands handled without console warnings
+  - 'dashboard:highlightRisk' selects and scrolls into view the corresponding risk row
+- Gate B: Interactions
+  - Ctrl/Cmd click opens split
+  - Enter opens default; Shift+Enter opens split
+  - Focus in graph button centers the node
+- Gate C: States
+  - Loading→Response, Error→Retry, Empty→Request flows validated
+- Gate D: Notifications
+  - Export toast shows URI on success and error text on failure
+- Gate E: Theme/accessibility
+  - Light/dark and prefers-reduced-motion render correctly
+- Gate F: Build hygiene
+  - tsc, eslint, esbuild and CSP run cleanly
+
+10. Task mapping to the todo list
+
+- Merge Step 1: Provider resource roots + style links
+- Merge Step 2: Curated CSS file
+- Merge Step 3: Component extraction and refactor composer
+- Merge Step 4: Hook enhancements for selection/highlight
+- Merge Step 5: RiskList interactions and keyboard support
+- Merge Step 6: Toasts integration
+- Merge Step 7: States panels wiring
+- Merge Step 8: E2E message verification
+- Merge Step 9: Manual QA gates A–F
+- Merge Step 10: Delete [dashboard-health copy](src/webview/ui/dashboard-health copy)
+
 Risks and mitigations
 
 - CSS scope and theming:
