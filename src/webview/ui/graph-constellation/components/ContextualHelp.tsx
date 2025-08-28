@@ -196,7 +196,7 @@ export function GraphHelp(): JSX.Element {
   return (
     <ContextualHelp
       content={GRAPH_HELP_CONTENT}
-      position="top-right"
+      position="top-left"
       trigger="hover"
       size="large"
     />
