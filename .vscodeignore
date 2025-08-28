@@ -1,14 +1,16 @@
-.vscode/**
-.vscode-test/**
-out/**
+# Existing broad ignores trimmed to allow packaging of compiled artifacts while excluding sources & secrets
 node_modules/**
 src/**
-.gitignore
-.yarnrc
-esbuild.js
-vsc-extension-quickstart.md
-**/tsconfig.json
-**/eslint.config.mjs
-**/*.map
 **/*.ts
+**/*.map
+.env
+.constellation-cache/**
+.kiro/**
+tmp/**
+scripts/**
+# Keep MCP server (out/mcp-server.js); exclude rest of out
+out/**
+!out/mcp-server.js
+!out/mcp-server.js.map
+vsc-extension-quickstart.md
 **/.vscode-test.*

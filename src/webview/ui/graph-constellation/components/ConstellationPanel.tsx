@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { InteractiveGraphCanvas } from './InteractiveGraphCanvas';
-import { IConstellationGraph } from '../../../../types/graph.types';
-import "../../../../types/vscode-api.types"
+import { IConstellationGraph } from "@/types/graph.types";
+import "@/types/vscode-api.types";
 
 
 interface GraphState {
