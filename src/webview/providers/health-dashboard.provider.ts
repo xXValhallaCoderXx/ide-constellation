@@ -49,20 +49,38 @@ export class HealthDashboardProvider {
 
     // Create a new panel
     this.panel = vscode.window.createWebviewPanel(
-      'healthDashboard',
-      'Health Dashboard',
+      "healthDashboard",
+      "Health Dashboard",
       columnToShowIn || vscode.ViewColumn.One,
       {
         enableScripts: true,
         retainContextWhenHidden: true,
         localResourceRoots: [
-          vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
-          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'styles'),
-          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'panels', 'health', 'styles'),
-          // Merge plan: allow health dashboard UI styles and shared graph styles
-          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'ui', 'dashboard-health', 'styles'),
-          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'ui', 'graph-constellation', 'styles')
-        ]
+          vscode.Uri.joinPath(this.context.extensionUri, "dist"),
+          vscode.Uri.joinPath(
+            this.context.extensionUri,
+            "src",
+            "webview",
+            "styles"
+          ),
+          // Unified app style directories (FR2/FR20)
+          vscode.Uri.joinPath(
+            this.context.extensionUri,
+            "src",
+            "webview",
+            "ui",
+            "dashboard-health",
+            "styles"
+          ),
+          vscode.Uri.joinPath(
+            this.context.extensionUri,
+            "src",
+            "webview",
+            "ui",
+            "graph-constellation",
+            "styles"
+          ),
+        ],
       }
     );
 

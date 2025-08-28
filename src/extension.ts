@@ -9,14 +9,12 @@ import { GraphService } from './services/graph.service';
 import { STATUS_BAR_TIMEOUT_MS } from './constants/sync.constants';
 import { debounce } from './utils/debounce';
 import { PanelRegistry } from './services/panel-registry.service';
-
-// POC Configuration Flag
-// Set to true to use the VS Code Standard MCP Provider POC
-const USE_STANDARD_PROVIDER_POC = true;
+import { CONFIG } from './config/extension.config';
 
 // Global instances
 let webviewManager: WebviewManager | null = null;
 let mcpProvider: KiroConstellationMCPProvider | null = null;
+let panelRegistry: PanelRegistry | null = null; // Single instance (FR1, FR15)
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -30,48 +28,60 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	log('Extension activating...');
 
-	if (USE_STANDARD_PROVIDER_POC) {
-		log('[POC] VS Code Standard MCP Provider POC mode enabled');
-		log('[POC] Starting VS Code Standard MCP Provider POC...');
+	if (CONFIG.USE_STANDARD_PROVIDER_POC) {
+    log("[POC] VS Code Standard MCP Provider POC mode enabled");
+    log("[POC] Starting VS Code Standard MCP Provider POC...");
 
-		// Initialize MCP Provider for POC
-		try {
-			mcpProvider = new KiroConstellationMCPProvider(context, output);
-			const success = await mcpProvider.registerProvider();
+    // Initialize MCP Provider for POC
+    try {
+      mcpProvider = new KiroConstellationMCPProvider(context, output);
+      const success = await mcpProvider.registerProvider();
 
-			if (success) {
-				log('[POC] MCP Provider registration completed successfully');
-				log('[POC] Testing provider functionality...');
-				await mcpProvider.testProvider();
-			} else {
-				log('[POC] MCP Provider registration failed - API may not be available');
-			}
-		} catch (error) {
-			log(`[POC] Error in MCP Provider setup: ${error instanceof Error ? error.message : String(error)}`);
-		}
+      if (success) {
+        log("[POC] MCP Provider registration completed successfully");
+        log("[POC] Testing provider functionality...");
+        await mcpProvider.testProvider();
+      } else {
+        log(
+          "[POC] MCP Provider registration failed - API may not be available"
+        );
+      }
+    } catch (error) {
+      log(
+        `[POC] Error in MCP Provider setup: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
 
-		// Initialize Webview Manager (always available)
-		webviewManager = new WebviewManager(null, output);
-		webviewManager.initialize(context);
-		// Initialize Panel Registry and inject into manager
-		const panelRegistry = new PanelRegistry(webviewManager, output);
-		webviewManager.setPanelRegistry(panelRegistry);
-		// Inject into provider for visualInstruction routing
-		if (mcpProvider && typeof (mcpProvider as any).setWebviewManager === 'function') {
-			(mcpProvider as any).setWebviewManager(webviewManager);
-		}
-	} else {
-		// Legacy HTTP server path removed; MCP provider is the default
-		log('[PRODUCTION] MCP provider path active');
-		webviewManager = new WebviewManager(null, output);
-		webviewManager.initialize(context);
-		// Initialize Panel Registry and inject into manager
-		const panelRegistry = new PanelRegistry(webviewManager, output);
-		webviewManager.setPanelRegistry(panelRegistry);
-		if (mcpProvider && typeof (mcpProvider as any).setWebviewManager === 'function') {
-			(mcpProvider as any).setWebviewManager(webviewManager);
-		}
-	}
+    // Initialize Webview Manager (always available)
+    webviewManager = new WebviewManager(null, output);
+    webviewManager.initialize(context);
+    // Initialize Panel Registry once
+    panelRegistry = new PanelRegistry(webviewManager, output);
+    webviewManager.setPanelRegistry(panelRegistry);
+    // Inject into provider for visualInstruction routing
+    if (
+      mcpProvider &&
+      typeof (mcpProvider as any).setWebviewManager === "function"
+    ) {
+      (mcpProvider as any).setWebviewManager(webviewManager);
+    }
+  } else {
+    // Legacy HTTP server path removed; MCP provider is the default
+    log("[PRODUCTION] MCP provider path active");
+    webviewManager = new WebviewManager(null, output);
+    webviewManager.initialize(context);
+    // Initialize Panel Registry once
+    panelRegistry = new PanelRegistry(webviewManager, output);
+    webviewManager.setPanelRegistry(panelRegistry);
+    if (
+      mcpProvider &&
+      typeof (mcpProvider as any).setWebviewManager === "function"
+    ) {
+      (mcpProvider as any).setWebviewManager(webviewManager);
+    }
+  }
 
 	// Register the sidebar provider
 	const sidebarProvider = new ConstellationSidebarProvider(context);
@@ -83,11 +93,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Register the Show Graph command (renamed to constellation.showGraph for consistency)
 	const showGraphDisposable = vscode.commands.registerCommand('constellation.showGraph', () => {
 		log('Show Graph command executed');
-		if (webviewManager) {
-			const registry = new PanelRegistry(webviewManager, output);
-			webviewManager.setPanelRegistry(registry);
-			registry.open('dependencyGraph', 'command:showGraph');
-		}
+		panelRegistry?.open("dependencyGraph", "command:showGraph");
 	});
 
 	// Register the Scan Project command
@@ -111,11 +117,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Register the Health Dashboard command (simple open)
 	const healthDashboardDisposable = vscode.commands.registerCommand('constellation.healthDashboard', () => {
 		log('Health Dashboard command executed');
-		if (webviewManager) {
-			const registry = new PanelRegistry(webviewManager, output);
-			webviewManager.setPanelRegistry(registry);
-			registry.open('healthDashboard', 'command:healthDashboard');
-		}
+		panelRegistry?.open("healthDashboard", "command:healthDashboard");
 	});
 
 	// Removed deprecated/legacy commands: healthReport, healthReportGraph, clearHeatmap, analyzeHealth, debugLaunchMcp
@@ -207,7 +209,7 @@ export async function deactivate() {
 		webviewManager = null;
 	}
 
-	if (USE_STANDARD_PROVIDER_POC) {
+	if (CONFIG.USE_STANDARD_PROVIDER_POC) {
 		console.log('[POC] Cleaning up MCP Provider POC...');
 		// MCP Provider cleanup is handled automatically by VS Code through disposables
 		mcpProvider = null;

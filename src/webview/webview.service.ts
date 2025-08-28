@@ -64,7 +64,10 @@ export class WebviewManager {
         retainContextWhenHidden: true,
         localResourceRoots: [
           vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
-          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'styles')
+          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'styles'),
+          // Include unified UI style directories so @import references resolve (FR20 / Section 15.1)
+          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'ui', 'dashboard-health', 'styles'),
+          vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'ui', 'graph-constellation', 'styles')
         ]
       }
     );
