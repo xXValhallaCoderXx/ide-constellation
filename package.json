@@ -49,6 +49,26 @@
       {
         "command": "constellation.scanProject",
         "title": "Constellation: Scan Project"
+      },
+      {
+        "command": "constellation.healthDashboard",
+        "title": "Constellation: Open Health Dashboard"
+      },
+      {
+        "command": "constellation.analyzeHealth",
+        "title": "Constellation: Analyze Codebase Health"
+      },
+      {
+        "command": "constellation.healthReport",
+        "title": "Constellation: Health Report Dashboard"
+      },
+      {
+        "command": "constellation.healthReportGraph",
+        "title": "Constellation: Health Report with Heatmap"
+      },
+      {
+        "command": "constellation.clearHeatmap",
+        "title": "Constellation: Clear Health Heatmap"
       }
     ],
     "mcpServerDefinitionProviders": [

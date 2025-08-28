@@ -1,0 +1,159 @@
+/* Health Dashboard curated stylesheet (minimal) */
+
+/* Container and header */
+.health-dashboard {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-editor-background);
+  padding: 16px;
+  min-height: 100vh;
+}
+
+.dashboard-header {
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dashboard-header h1 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--vscode-titleBar-activeForeground);
+}
+
+/* Generic sections and actions */
+.section {
+  margin: 16px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: var(--vscode-editor-inactiveSelectionBackground);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.actions .action-button {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.actions .action-button:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+/* Stats grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.stat-card {
+  padding: 16px;
+  border-radius: 8px;
+  background-color: var(--vscode-editor-inactiveSelectionBackground);
+  text-align: center;
+}
+
+.stat-card .stat-number {
+  font-size: 1.8em;
+  font-weight: 700;
+}
+
+.stat-card .stat-label {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+/* Top risk rows */
+.risk-file {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  margin: 6px 0;
+  border-radius: 4px;
+  background: var(--vscode-list-hoverBackground);
+  cursor: pointer;
+}
+
+.risk-file:hover {
+  background: var(--vscode-list-activeSelectionBackground);
+}
+
+.risk-file.selected {
+  background: var(--vscode-list-activeSelectionBackground);
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.risk-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Small metric chips */
+.metrics-chip {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  background-color: var(--vscode-badge-background);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* Inline banners */
+.info-banner {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 4px;
+  background: var(--vscode-list-hoverBackground);
+  border-left: 4px solid var(--vscode-textLink-foreground);
+}
+
+.info-banner.warning {
+  border-left-color: #f97316;
+}
+
+.info-banner.error {
+  border-left-color: #ef4444;
+}
+
+.info-banner.success {
+  border-left-color: #22c55e;
+}
+
+/* Focus and accessibility */
+.risk-file:focus,
+.action-button:focus {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* Reduced motion guard */
+@media (prefers-reduced-motion: reduce) {
+
+  .health-dashboard,
+  .stat-card,
+  .risk-file,
+  .actions .action-button {
+    transition: none !important;
+    animation: none !important;
+  }
+}

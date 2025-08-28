@@ -1,0 +1,827 @@
+/* Enhanced Heatmap Legend Styles */
+
+.heatmap-legend {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 280px;
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 1000;
+  font-family: var(--vscode-font-family);
+  font-size: 12px;
+  color: var(--vscode-editorWidget-foreground);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  max-height: 80vh;
+  overflow-y: auto;
+  transform-origin: top right;
+}
+
+/* Enhanced glass morphism effect */
+.heatmap-legend::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, 
+    rgba(255, 255, 255, 0.1) 0%, 
+    rgba(255, 255, 255, 0.05) 100%);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.heatmap-legend.minimized {
+  width: auto;
+  min-width: 160px;
+}
+
+.heatmap-legend.minimized .legend-content {
+  display: none;
+}
+
+/* Header */
+.legend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border);
+  background: var(--vscode-editorWidget-background);
+  border-radius: 8px 8px 0 0;
+}
+
+.legend-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.legend-icon {
+  font-size: 16px;
+}
+
+.legend-text {
+  color: var(--vscode-editorWidget-foreground);
+}
+
+.legend-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.legend-control-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--vscode-icon-foreground);
+  font-size: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  position: relative;
+  overflow: hidden;
+}
+
+.legend-control-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.legend-control-button:active::before {
+  width: 40px;
+  height: 40px;
+}
+
+.legend-control-button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+  transform: scale(1.1);
+}
+
+.legend-control-button:focus {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.close-button:hover {
+  background: var(--vscode-errorForeground);
+  color: white;
+  transform: scale(1.1);
+}
+
+.close-button:active {
+  transform: scale(1.05);
+}
+
+/* Content */
+.legend-content {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Toggle Section */
+.legend-toggle-section {
+  display: flex;
+  justify-content: center;
+}
+
+.toggle-heatmap-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--vscode-font-family);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 140px;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.toggle-heatmap-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle-heatmap-button:active::before {
+  width: 200px;
+  height: 200px;
+}
+
+.toggle-heatmap-button.active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.toggle-heatmap-button.inactive {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 1px solid var(--vscode-button-border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.toggle-heatmap-button:hover.active {
+  background: var(--vscode-button-hoverBackground);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-heatmap-button:hover.inactive {
+  background: var(--vscode-button-secondaryHoverBackground);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.15);
+  border-color: var(--vscode-focusBorder);
+}
+
+.toggle-heatmap-button:focus {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.toggle-heatmap-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.toggle-icon {
+  font-size: 14px;
+}
+
+/* Section Titles */
+.section-title {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Risk Scale Section */
+.legend-scale-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.risk-gradient {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gradient-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--vscode-editorWidget-border);
+}
+
+.gradient-segment {
+  flex: 1;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.gradient-segment:hover {
+  opacity: 0.8;
+  transform: scaleY(1.2);
+  z-index: 1;
+}
+
+.gradient-segment::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: inherit;
+  opacity: 0;
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.gradient-segment:hover::after {
+  opacity: 1;
+}
+
+.gradient-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.gradient-label {
+  font-weight: 500;
+}
+
+/* Risk Distribution Section */
+.legend-distribution-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.risk-levels {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.risk-level-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.risk-level-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.risk-icon {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+}
+
+.risk-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.risk-count {
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.risk-level-bar {
+  height: 4px;
+  background: var(--vscode-editorWidget-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.risk-level-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.risk-level-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255, 255, 255, 0.4) 50%, 
+    transparent 100%);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* Instructions Section */
+.legend-instructions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.instructions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.instruction-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.instruction-icon {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+}
+
+.instruction-text {
+  flex: 1;
+  line-height: 1.3;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .heatmap-legend {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    max-width: none;
+  }
+  
+  .heatmap-legend.minimized {
+    left: auto;
+    width: auto;
+    min-width: 140px;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .heatmap-legend {
+    border-width: 2px;
+  }
+  
+  .legend-control-button,
+  .toggle-heatmap-button {
+    border-width: 2px;
+  }
+  
+  .gradient-bar {
+    border-width: 2px;
+  }
+}
+
+/* Enhanced accessibility and reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .heatmap-legend,
+  .legend-control-button,
+  .toggle-heatmap-button,
+  .gradient-segment,
+  .risk-level-fill {
+    transition: none !important;
+    animation: none !important;
+  }
+  
+  .legend-control-button:hover,
+  .toggle-heatmap-button:hover,
+  .gradient-segment:hover {
+    transform: none !important;
+  }
+  
+  .risk-level-fill::after {
+    display: none;
+  }
+}
+
+/* Enhanced focus management */
+.heatmap-legend:focus-within {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* Screen reader announcements */
+.legend-sr-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Enhanced keyboard navigation */
+.risk-level-item[tabindex="0"]:focus {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+  background: var(--vscode-list-focusBackground);
+  border-radius: 4px;
+}
+
+/* Improved contrast for accessibility */
+@media (prefers-contrast: high) {
+  .heatmap-legend {
+    border-width: 2px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  }
+  
+  .legend-control-button,
+  .toggle-heatmap-button {
+    border: 2px solid var(--vscode-contrastBorder);
+  }
+  
+  .gradient-bar {
+    border-width: 2px;
+  }
+  
+  .risk-level-bar {
+    border: 1px solid var(--vscode-contrastBorder);
+  }
+}
+
+/* Dark theme adjustments */
+@media (prefers-color-scheme: dark) {
+  .heatmap-legend {
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* Scrollbar styling for legend content */
+.heatmap-legend::-webkit-scrollbar {
+  width: 6px;
+}
+
+.heatmap-legend::-webkit-scrollbar-track {
+  background: var(--vscode-scrollbarSlider-background);
+  border-radius: 3px;
+}
+
+.heatmap-legend::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+  border-radius: 3px;
+}
+
+.heatmap-legend::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-activeBackground);
+}
+
+/* Animation for legend appearance */
+@keyframes legendSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.heatmap-legend {
+  animation: legendSlideIn 0.3s ease-out;
+}
+
+/* Focus management for accessibility */
+.heatmap-legend:focus-within {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* Ensure proper stacking context */
+.heatmap-legend * {
+  box-sizing: border-box;
+}
+
+/* Loading state for distribution data */
+.risk-levels.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.risk-levels.loading::after {
+  content: "Loading...";
+  display: block;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  margin-top: 8px;
+}/*
+ Additional Visual Polish and Micro-interactions */
+
+/* Enhanced entrance animation with spring effect */
+@keyframes legendSlideInSpring {
+  0% {
+    opacity: 0;
+    transform: translateX(100%) scale(0.8);
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(-5%) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.heatmap-legend {
+  animation: legendSlideInSpring 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Minimized state animation */
+.heatmap-legend.minimized {
+  animation: legendMinimize 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes legendMinimize {
+  from {
+    width: 280px;
+    opacity: 1;
+  }
+  to {
+    width: auto;
+    opacity: 0.9;
+  }
+}
+
+/* Enhanced gradient interaction */
+.gradient-bar:hover {
+  transform: scaleY(1.1);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Pulsing effect for active elements */
+.toggle-heatmap-button.active {
+  animation: subtlePulse 3s ease-in-out infinite;
+}
+
+@keyframes subtlePulse {
+  0%, 100% {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+  50% {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  }
+}
+
+/* Enhanced risk level interactions */
+.risk-level-item:hover {
+  background: var(--vscode-list-hoverBackground);
+  border-radius: 4px;
+  padding: 2px;
+  margin: -2px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.risk-level-item:hover .risk-icon {
+  transform: scale(1.2);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Floating effect enhancement */
+.heatmap-legend:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* Enhanced instruction interactions */
+.instruction-item:hover {
+  background: var(--vscode-list-hoverBackground);
+  border-radius: 4px;
+  padding: 4px;
+  margin: -4px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.instruction-item:hover .instruction-icon {
+  transform: scale(1.1);
+  color: var(--vscode-button-background);
+}
+
+/* Loading state for legend */
+.heatmap-legend.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.heatmap-legend.loading::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255, 255, 255, 0.1) 50%, 
+    transparent 100%);
+  animation: legendLoading 1.5s infinite;
+}
+
+@keyframes legendLoading {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Enhanced close button interaction */
+.close-button {
+  position: relative;
+}
+
+.close-button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: var(--vscode-errorForeground);
+  transform: translate(-50%, -50%);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.2;
+  z-index: -1;
+}
+
+.close-button:hover::after {
+  width: 32px;
+  height: 32px;
+}
+
+/* Improved section dividers */
+.legend-content > * + * {
+  position: relative;
+}
+
+.legend-content > * + *::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    var(--vscode-editorWidget-border) 20%, 
+    var(--vscode-editorWidget-border) 80%, 
+    transparent 100%);
+}
+
+/* Enhanced mobile responsiveness */
+@media (max-width: 480px) {
+  .heatmap-legend {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    max-width: none;
+    border-radius: 8px;
+  }
+  
+  .legend-content {
+    padding: 12px;
+  }
+  
+  .toggle-heatmap-button {
+    min-width: 120px;
+    padding: 10px 14px;
+  }
+}
+
+/* Disable complex animations for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .heatmap-legend {
+    animation: none !important;
+  }
+  
+  .toggle-heatmap-button.active {
+    animation: none !important;
+  }
+  
+  .heatmap-legend.loading::after,
+  .risk-level-fill::after {
+    display: none !important;
+  }
+  
+  .heatmap-legend:hover,
+  .risk-level-item:hover,
+  .instruction-item:hover {
+    transform: none !important;
+  }
+}
+
+/* Enhanced theme support */
+@media (prefers-color-scheme: light) {
+  .heatmap-legend {
+    backdrop-filter: blur(8px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .heatmap-legend {
+    backdrop-filter: blur(16px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  }
+  
+  .heatmap-legend::before {
+    background: linear-gradient(135deg, 
+      rgba(255, 255, 255, 0.05) 0%, 
+      rgba(255, 255, 255, 0.02) 100%);
+  }
+}
+
+/* Print styles for legend */
+@media print {
+  .heatmap-legend {
+    position: static;
+    width: 100%;
+    max-width: 400px;
+    margin: 20px 0;
+    box-shadow: none;
+    border: 2px solid #000;
+    backdrop-filter: none;
+    background: white;
+    color: black;
+  }
+  
+  .legend-control-button {
+    display: none;
+  }
+  
+  .toggle-heatmap-button {
+    display: none;
+  }
+}

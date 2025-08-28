@@ -4,6 +4,12 @@
 		"paths": {
 			"@modelcontextprotocol/sdk/*": [
 				"node_modules/@modelcontextprotocol/sdk/dist/esm/*"
+			],
+			"@/*": [
+				"src/*"
+			],
+			"@webview/*": [
+				"src/webview/*"
 			]
 		},
 		"module": "ESNext",

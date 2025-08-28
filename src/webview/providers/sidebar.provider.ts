@@ -1,21 +1,19 @@
 import * as vscode from 'vscode';
 
-interface SidebarToExtensionMessage {
-  command: 'showGraph';
-}
+// Replace narrow interface with a discriminated union for sidebar → extension messages
+type SidebarToExtensionMessage =
+  | { command: 'showGraph' }
+  | { command: 'panel:open'; data: { panel: 'dependencyGraph' | 'healthDashboard'; origin?: string } }
+  | { command: 'project:scan'; data?: { origin?: string } };
 
-interface ExtensionToSidebarMessage {
-  command: 'statusUpdate';
-  data?: any;
-}
+
 
 export class ConstellationSidebarProvider implements vscode.WebviewViewProvider {
-  constructor(private context: vscode.ExtensionContext) {}
+  constructor(private context: vscode.ExtensionContext) { }
 
   resolveWebviewView(
     webviewView: vscode.WebviewView,
-    context: vscode.WebviewViewResolveContext,
-    token: vscode.CancellationToken
+
   ): void | Thenable<void> {
     webviewView.webview.options = {
       enableScripts: true,
@@ -46,8 +44,31 @@ export class ConstellationSidebarProvider implements vscode.WebviewViewProvider 
           vscode.window.showErrorMessage('Failed to open Codebase Map');
         }
         break;
+      case 'panel:open': {
+        const key = message.data?.panel;
+        try {
+          if (key === 'dependencyGraph') {
+            await vscode.commands.executeCommand('kiro-constellation.showGraph');
+          } else if (key === 'healthDashboard') {
+            await vscode.commands.executeCommand('constellation.healthDashboard');
+          } else {
+            console.warn('Unknown panel key from sidebar:', key);
+          }
+        } catch (err) {
+          console.error('Failed to open panel:', err);
+        }
+        break;
+      }
+      case 'project:scan':
+        try {
+          await vscode.commands.executeCommand('constellation.scanProject');
+        } catch (error) {
+          console.error('Failed to scan project:', error);
+          vscode.window.showErrorMessage('Scan Project failed');
+        }
+        break;
       default:
-        console.warn('Unknown sidebar message command:', message.command);
+        console.warn('Unknown sidebar message received from webview');
     }
   }
 
