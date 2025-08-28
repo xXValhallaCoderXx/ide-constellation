@@ -8,6 +8,7 @@ import {
   AUTO_PAN_MIN_ZOOM,
   computeTargetZoom,
   TOOLTIP_HOVER_DELAY_MS,
+  LAYOUT_ANIMATION_MS,
 } from "@/constants/sync.constants";
 import {
   transformGraphToCytoscape,
@@ -22,6 +23,8 @@ import {
   OptimizedHeatmapProcessor,
   createOptimizedHeatmapProcessor,
 } from "@/utils/heatmap-processor.utils";
+import { getFileExtensionInfo } from "@/utils/path.utils";
+import { getLayoutConfig, getCytoscapeLayoutName } from "@/utils/layout.utils";
 import { RichTooltip, TooltipData } from './RichTooltip';
 import { ToastContainer, useToasts } from './ToastNotification';
 import { LoadingIndicator, HeatmapLoadingIndicator } from './LoadingIndicator';
@@ -108,58 +111,6 @@ function sampleLargeGraph(graph: IConstellationGraph, maxNodes: number): IConste
 /**
  * Get optimal layout configuration based on graph size
  */
-function getOptimalLayout(nodeCount: number) {
-  // For very large graphs, use simpler layout for performance
-  if (nodeCount > 500) {
-    return {
-      name: 'grid',
-      animate: false,
-      fit: true,
-      padding: 30
-    };
-  }
-  
-  // For medium graphs, use faster cose settings
-  if (nodeCount > 100) {
-    return {
-      name: 'cose',
-      animate: true,
-      animationDuration: 500,
-      fit: true,
-      padding: 40,
-      nodeRepulsion: 200000,
-      nodeOverlap: 8,
-      idealEdgeLength: 80,
-      edgeElasticity: 80,
-      nestingFactor: 3,
-      gravity: 60,
-      numIter: 500,
-      initialTemp: 100,
-      coolingFactor: 0.95,
-      minTemp: 1.0
-    };
-  }
-  
-  // For smaller graphs, use full cose layout with animations
-  return {
-    name: 'cose',
-    animate: true,
-    animationDuration: 1000,
-    fit: true,
-    padding: 50,
-    nodeRepulsion: 400000,
-    nodeOverlap: 10,
-    idealEdgeLength: 100,
-    edgeElasticity: 100,
-    nestingFactor: 5,
-    gravity: 80,
-    numIter: 1000,
-    initialTemp: 200,
-    coolingFactor: 0.95,
-    minTemp: 1.0
-  };
-}
-
 interface GraphCanvasProps {
   graph: IConstellationGraph | null;
   searchQuery?: string;
@@ -175,6 +126,12 @@ interface GraphCanvasProps {
   heatmapEnabled?: boolean;
   /** Callback when heatmap state changes */
   onHeatmapStateChange?: (isActive: boolean) => void;
+  /** Current layout type for the graph */
+  currentLayout?: string;
+  /** Callback when layout change starts/ends */
+  onLayoutChange?: (isChanging: boolean) => void;
+  /** Disable user interactions during layout changes */
+  disabled?: boolean;
 }
 
 interface GraphCanvasState {
@@ -199,12 +156,16 @@ export function GraphCanvas({
   activeHighlight,
   heatmapData,
   heatmapEnabled = false,
-  onHeatmapStateChange
+  onHeatmapStateChange,
+  currentLayout = 'force-directed',
+  onLayoutChange,
+  disabled = false
 }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const performanceMonitor = useRef(new PerformanceMonitor());
   const heatmapProcessor = useRef<OptimizedHeatmapProcessor | null>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
+  const hasInitialLayoutRef = useRef(false);
   const [state, setState] = useState<GraphCanvasState>({
     isLoading: false,
     searchQuery: '',
@@ -299,6 +260,9 @@ export function GraphCanvas({
   useEffect(() => {
     if (!containerRef.current || !graph) return;
 
+    // Reset layout initialization flag for new graph
+    hasInitialLayoutRef.current = false;
+    
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
@@ -421,7 +385,7 @@ export function GraphCanvas({
             }
           }
         ],
-        layout: getOptimalLayout(cytoscapeElements.nodes.length),
+        layout: getLayoutConfig('cose', cytoscapeElements.nodes.length),
         wheelSensitivity: 0.2,
         minZoom: 0.1,
         maxZoom: 3.0,
@@ -463,6 +427,15 @@ export function GraphCanvas({
           }
         );
       }
+
+      // Apply file type colors to nodes (Task 2.3: Dynamic background colors)
+      cyRef.current.batch(() => {
+        cyRef.current!.nodes().forEach(node => {
+          const filePath = node.data('path') || node.data('label') || '';
+          const fileTypeColor = getFileTypeColor(filePath);
+          node.style('background-color', fileTypeColor);
+        });
+      });
 
       setState(prev => ({ 
         ...prev, 
@@ -523,12 +496,21 @@ export function GraphCanvas({
     if (!cyRef.current) return;
     const cy = cyRef.current;
     const fileId = activeHighlight?.fileId ?? null;
-    // Remove previous active highlight (FR9 precedence: keep .highlighted search class)
-    cy.nodes('.active-node').removeClass('active-node');
+    
+    // Apply class changes in batch to prevent layout recalculation
+    cy.batch(() => {
+      // Remove previous active highlight (FR9 precedence: keep .highlighted search class)
+      cy.nodes('.active-node').removeClass('active-node');
+      if (!fileId) return; // clear only
+      const node = cy.getElementById(fileId);
+      if (!node || node.empty()) return;
+      node.addClass('active-node');
+    });
+    
     if (!fileId) return; // clear only
     const node = cy.getElementById(fileId);
     if (!node || node.empty()) return;
-    node.addClass('active-node');
+    
     try {
       const extent = cy.extent();
       const vpW = extent.x2 - extent.x1;
@@ -992,16 +974,67 @@ export function GraphCanvas({
     }
   };
 
+  /**
+   * Get file type color based on extension using existing path utils
+   * Task 2.1: File type color mapping for visual differentiation
+   */
+  const getFileTypeColor = (filePath: string): string => {
+    const fileInfo = getFileExtensionInfo(filePath);
+    
+    // Check for test files first (higher priority)
+    if (filePath.includes('.test.') || filePath.includes('.spec.') || filePath.includes('/test/') || filePath.includes('__tests__')) {
+      return '#4caf50'; // Green for test files
+    }
+    
+    switch (fileInfo.type) {
+      case 'source':
+        switch (fileInfo.extension) {
+          case 'ts':
+          case 'tsx':
+            return '#3178c6'; // TypeScript blue
+          case 'js':
+          case 'jsx':
+            return '#f7df1e'; // JavaScript yellow
+          default:
+            return '#3178c6'; // Default to TypeScript blue for other source files
+        }
+      case 'config':
+        return '#6B46C1'; // Purple for config files
+      case 'asset':
+        switch (fileInfo.extension) {
+          case 'css':
+          case 'scss':
+          case 'sass':
+          case 'less':
+            return '#ff9800'; // Orange for CSS
+          case 'html':
+          case 'htm':
+            return '#e91e63'; // Pink for HTML
+          default:
+            return '#9e9e9e'; // Gray for other assets
+        }
+      case 'documentation':
+        return '#9e9e9e'; // Gray for documentation
+      default:
+        return '#9e9e9e'; // Gray for unknown files
+    }
+  };
+
   // Handle search highlighting when searchQuery prop changes
   useEffect(() => {
     if (!cyRef.current) return;
 
     const query = searchQuery?.trim() || '';
+    const previousQuery = state.searchQuery || '';
+    const isNewSearch = query !== previousQuery && query.length > 0;
+    
     setState(prev => ({ ...prev, searchQuery: query }));
 
     if (!query) {
-      // Clear highlighting when search is empty
-      cyRef.current.elements().removeClass('highlighted dimmed');
+      // Clear highlighting when search is empty using batch operation
+      cyRef.current.batch(() => {
+        cyRef.current!.elements().removeClass('highlighted dimmed');
+      });
       setState(prev => ({ ...prev, highlightedNodes: [] }));
       onSearchResultsChange?.(0);
       return;
@@ -1020,22 +1053,76 @@ export function GraphCanvas({
       }
     });
 
-    // Apply highlighting
-    cyRef.current.elements().removeClass('highlighted dimmed');
-    
-    if (matchingNodes.length > 0) {
-      // Highlight matching nodes
-      matchingNodes.forEach(nodeId => {
-        cyRef.current?.getElementById(nodeId).addClass('highlighted');
-      });
+    // Apply highlighting using batch operation for atomic updates
+    cyRef.current.batch(() => {
+      cyRef.current!.elements().removeClass('highlighted dimmed');
       
-      // Dim non-matching elements
-      cyRef.current.elements().not('.highlighted').addClass('dimmed');
+      if (matchingNodes.length > 0) {
+        // Highlight matching nodes
+        matchingNodes.forEach(nodeId => {
+          cyRef.current?.getElementById(nodeId).addClass('highlighted');
+        });
+        
+        // Dim non-matching elements
+        cyRef.current!.elements().not('.highlighted').addClass('dimmed');
+      }
+    });
+
+    // Only animate focus for new searches to preserve viewport stability
+    if (isNewSearch && matchingNodes.length > 0) {
+      const firstMatchNode = cyRef.current.getElementById(matchingNodes[0]);
+      if (!firstMatchNode.empty()) {
+        const currentZoom = cyRef.current.zoom();
+        cyRef.current.animate({
+          center: { eles: firstMatchNode },
+          zoom: currentZoom, // Maintain current zoom level
+          duration: LAYOUT_ANIMATION_MS
+        });
+      }
     }
 
     setState(prev => ({ ...prev, highlightedNodes: matchingNodes }));
     onSearchResultsChange?.(matchingNodes.length);
   }, [searchQuery, onSearchResultsChange]);
+
+  // Handle layout changes (Task 3.5: Layout change logic with animation)
+  useEffect(() => {
+    if (!cyRef.current || !graph || state.isLoading) return;
+
+    // Skip the initial layout setup - only handle user-initiated layout changes
+    if (!hasInitialLayoutRef.current) {
+      hasInitialLayoutRef.current = true;
+      return;
+    }
+
+    const cy = cyRef.current;
+    const cytoscapeLayoutName = getCytoscapeLayoutName(currentLayout);
+    const layoutConfig = getLayoutConfig(cytoscapeLayoutName, graph.nodes.length);
+
+    // Notify parent that layout change is starting
+    onLayoutChange?.(true);
+
+    // Apply the new layout
+    const layout = cy.layout(layoutConfig);
+    
+    const handleLayoutStop = () => {
+      // Notify parent that layout change is complete
+      onLayoutChange?.(false);
+    };
+
+    layout.on('layoutstop', handleLayoutStop);
+    layout.run();
+
+    // Cleanup function to remove event listeners
+    return () => {
+      try {
+        layout.off('layoutstop', handleLayoutStop);
+      } catch (e) {
+        // Layout might already be destroyed
+      }
+    };
+
+  }, [currentLayout, graph, onLayoutChange, state.isLoading]);
 
   if (!graph) {
     return (
@@ -1096,6 +1183,20 @@ export function GraphCanvas({
           />
         )}
 
+        {/* Layout Change Loading Indicator */}
+        {disabled && (
+          <LoadingIndicator
+            state={{
+              isLoading: true,
+              message: "Changing layout...",
+              type: "spinner",
+            }}
+            size="large"
+            overlay={true}
+            position="center"
+          />
+        )}
+
         {/* Heatmap Processing Indicator */}
         {state.heatmapState.isProcessing && (
           <HeatmapLoadingIndicator
@@ -1113,8 +1214,11 @@ export function GraphCanvas({
             border: "1px solid var(--vscode-panel-border)",
             borderRadius: "4px",
             outline: "none", // Remove focus outline since Cytoscape handles focus
+            pointerEvents: disabled ? "none" : "auto",
+            opacity: disabled ? 0.6 : 1,
+            transition: "opacity 0.3s ease"
           }}
-          tabIndex={0}
+          tabIndex={disabled ? -1 : 0}
           role="application"
           aria-label="Interactive dependency graph"
         />

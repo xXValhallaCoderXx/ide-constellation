@@ -1,0 +1,260 @@
+/* Layout Switcher Component Styles */
+/* Task 3.4: Professional styling with VS Code theme integration */
+
+.layout-switcher {
+  position: relative;
+  z-index: 100;
+}
+
+/* Warning for large graphs */
+.layout-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--vscode-editorWarning-background, #fdf6e3);
+  color: var(--vscode-editorWarning-foreground, #b58900);
+  border: 1px solid var(--vscode-editorWarning-border, #d4b32c);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  margin-bottom: 4px;
+  animation: fadeIn 0.3s ease-in;
+}
+
+.warning-icon {
+  font-size: 12px;
+}
+
+/* Dropdown Container */
+.dropdown-container {
+  position: relative;
+  display: inline-block;
+}
+
+/* Dropdown Button */
+.dropdown-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 160px;
+  text-align: left;
+  outline: none;
+}
+
+.dropdown-button:hover:not(.disabled) {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+  border-color: var(--vscode-focusBorder, #007acc);
+}
+
+.dropdown-button:focus:not(.disabled) {
+  border-color: var(--vscode-focusBorder, #007acc);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007acc);
+}
+
+.dropdown-button.disabled {
+  background: var(--vscode-button-secondaryBackground, #3c3c3c);
+  color: var(--vscode-disabledForeground, #cccccc);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.dropdown-label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.dropdown-value {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-arrow {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+  margin-left: auto;
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+/* Dropdown Menu */
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--vscode-dropdown-background, #3c3c3c);
+  border: 1px solid var(--vscode-dropdown-border, #464647);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  margin-top: 2px;
+  max-height: 300px;
+  overflow-y: auto;
+  animation: dropdownSlide 0.15s ease-out;
+}
+
+@keyframes dropdownSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dropdown Items */
+.dropdown-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  background: transparent;
+  color: var(--vscode-dropdown-foreground, #cccccc);
+  border: none;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  border-bottom: 1px solid var(--vscode-menu-separatorBackground, #454545);
+  transition: background-color 0.15s ease;
+  position: relative;
+}
+
+.dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.dropdown-item:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+.dropdown-item:focus {
+  background: var(--vscode-list-focusBackground, #094771);
+  outline: none;
+}
+
+.dropdown-item.selected {
+  background: var(--vscode-list-activeSelectionBackground, #094771);
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+}
+
+.option-name {
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.option-description {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #cccccc99);
+  line-height: 1.3;
+  margin-top: 1px;
+}
+
+.selected-indicator {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+  font-size: 11px;
+  font-weight: bold;
+}
+
+/* Dropdown Overlay */
+.dropdown-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 999;
+  background: transparent;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .dropdown-button {
+    min-width: 140px;
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+  
+  .dropdown-item {
+    padding: 8px 10px;
+  }
+  
+  .option-name {
+    font-size: 11px;
+  }
+  
+  .option-description {
+    font-size: 9px;
+  }
+}
+
+/* Accessibility Enhancements */
+@media (prefers-reduced-motion: reduce) {
+  .dropdown-arrow,
+  .dropdown-menu,
+  .layout-warning {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+  .dropdown-button {
+    border-width: 2px;
+  }
+  
+  .dropdown-menu {
+    border-width: 2px;
+  }
+  
+  .dropdown-item {
+    border-bottom-width: 2px;
+  }
+}
+
+/* Focus Visible for Keyboard Navigation */
+.dropdown-button:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder, #007acc);
+  outline-offset: 2px;
+}
+
+.dropdown-item:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder, #007acc);
+  outline-offset: -2px;
+}
+
+/* Animation for fade in effects */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

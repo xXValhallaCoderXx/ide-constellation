@@ -3,6 +3,7 @@ import { IConstellationGraph } from "@/types/graph.types";
 import { GraphCanvas, HeatmapNode } from './GraphCanvas';
 import { SearchBox } from './SearchBox';
 import { HeatmapLegend } from './HeatmapLegend';
+import { LayoutSwitcher } from './LayoutSwitcher';
 import "@/types/vscode-api.types";
 
 interface ActiveHighlightState { fileId: string | null; reason?: string }
@@ -33,6 +34,8 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResultCount, setSearchResultCount] = useState(0);
   const [openModeSetting, setOpenModeSetting] = useState<OpenModeSetting>('modifier');
+  const [currentLayout, setCurrentLayout] = useState('force-directed');
+  const [isLayoutChanging, setIsLayoutChanging] = useState(false);
   const [heatmapState, setHeatmapState] = useState<HeatmapState>({
     isVisible: false,
     isActive: false,
@@ -56,6 +59,36 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
     else if (openModeSetting === 'split') finalMode = 'split';
     onNodeClick?.(nodeId, finalMode);
   };
+
+  const handleLayoutChange = (layoutId: string) => {
+    setCurrentLayout(layoutId);
+    // Layout changing state will be managed by GraphCanvas via onLayoutChange callback
+    // No need to manually set isLayoutChanging here
+  };
+
+  // Ensure clean state on mount
+  useEffect(() => {
+    setIsLayoutChanging(false);
+  }, []);
+
+  // Safety timeout to prevent stuck layout changing state
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    
+    if (isLayoutChanging) {
+      // If layout change is taking too long, reset the state
+      timeoutId = setTimeout(() => {
+        console.warn('[InteractiveGraphCanvas] Layout change timeout, resetting state');
+        setIsLayoutChanging(false);
+      }, 5000); // 5 second timeout
+    }
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [isLayoutChanging]);
 
   // Listen for heatmap messages from extension
   useEffect(() => {
@@ -130,6 +163,16 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
           disabled={!graph}
           resultCount={searchQuery ? searchResultCount : undefined}
         />
+
+        {/* Layout Switcher */}
+        {graph && (
+          <LayoutSwitcher
+            currentLayout={currentLayout}
+            onLayoutChange={handleLayoutChange}
+            disabled={isLayoutChanging}
+            nodeCount={graph.nodes.length}
+          />
+        )}
         
         {graph && (
           <div style={{
@@ -175,6 +218,9 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
         heatmapData={heatmapState.data}
         heatmapEnabled={heatmapState.isActive}
         onHeatmapStateChange={handleHeatmapStateChange}
+        currentLayout={currentLayout}
+        onLayoutChange={setIsLayoutChanging}
+        disabled={isLayoutChanging}
       />
 
       {/* Heatmap Legend */}

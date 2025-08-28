@@ -113,3 +113,64 @@ h1 {
 
 /* Unified structure imports (FR2, FR20) */
 @import '../ui/dashboard-health/styles/health-dashboard.css';
+
+/* File Type Color Variables (Task 2.4: VS Code theme integration) */
+:root {
+  --file-type-typescript: #3178c6;
+  --file-type-javascript: #f7df1e;
+  --file-type-config: #6B46C1;
+  --file-type-css: #ff9800;
+  --file-type-html: #e91e63;
+  --file-type-test: #4caf50;
+  --file-type-documentation: #9e9e9e;
+  --file-type-default: var(--vscode-charts-blue);
+}
+
+/* File Type CSS Classes for Cytoscape Nodes */
+.file-type-typescript {
+  background-color: var(--file-type-typescript) !important;
+}
+
+.file-type-javascript {
+  background-color: var(--file-type-javascript) !important;
+  color: var(--vscode-editor-background) !important; /* Ensure text readability on yellow */
+}
+
+.file-type-config {
+  background-color: var(--file-type-config) !important;
+}
+
+.file-type-css {
+  background-color: var(--file-type-css) !important;
+}
+
+.file-type-html {
+  background-color: var(--file-type-html) !important;
+}
+
+.file-type-test {
+  background-color: var(--file-type-test) !important;
+}
+
+.file-type-documentation {
+  background-color: var(--file-type-documentation) !important;
+}
+
+.file-type-default {
+  background-color: var(--file-type-default) !important;
+}
+
+/* Theme-adaptive file type colors for dark/light mode compatibility */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --file-type-documentation: #b0b0b0;
+    --file-type-javascript: #e6c547; /* Slightly darker yellow for dark theme */
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --file-type-documentation: #757575;
+    --file-type-typescript: #2968a3; /* Slightly darker blue for light theme */
+  }
+}
