@@ -4,10 +4,18 @@
  * FR7: Status bar transient visibility timeout.
  * FR8: Auto-pan animation duration and visibility threshold.
  * FR19: Centralization of magic numbers related to sync feature.
+ * 
+ * Tooltip timing constants:
+ * - TOOLTIP_HOVER_DELAY_MS works in conjunction with SYNC_DEBOUNCE_MS
+ * - Tooltip delay (300ms) is longer than sync debounce (200ms) to ensure
+ *   editor highlighting completes before tooltips appear, providing smooth UX
  */
 
 /** Debounce interval (ms) for active editor change -> highlight dispatch (FR5) */
 export const SYNC_DEBOUNCE_MS = 200;
+
+/** Tooltip hover delay (ms) for graph node tooltips - prevents flicker during rapid mouse movements */
+export const TOOLTIP_HOVER_DELAY_MS = 300;
 
 /** Duration (ms) to show transient status bar messages (FR7) */
 export const STATUS_BAR_TIMEOUT_MS = 3000;

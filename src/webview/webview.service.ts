@@ -283,17 +283,84 @@ export class WebviewManager {
 
   private getWebviewContent(): string {
     if (!this.context) {
-      return '<!DOCTYPE html><html><body><p>Context not initialized</p></body></html>';
+      return "<!DOCTYPE html><html><body><p>Context not initialized</p></body></html>";
     }
     const webview = this.currentPanel?.webview!;
     const nonce = this.getNonce();
     const cspSource = webview.cspSource;
     const webviewUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview.js')
+      vscode.Uri.joinPath(this.context.extensionUri, "dist", "webview.js")
     );
 
     const cssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'styles', 'main.css')
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        "src",
+        "webview",
+        "styles",
+        "main.css"
+      )
+    );
+
+    // Add component-specific CSS files
+    const richTooltipCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        "src",
+        "webview",
+        "ui",
+        "graph-constellation",
+        "styles",
+        "rich-tooltip.css"
+      )
+    );
+
+    const toastNotificationCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        "src",
+        "webview",
+        "ui",
+        "graph-constellation",
+        "styles",
+        "toast-notification.css"
+      )
+    );
+
+    const loadingIndicatorCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        "src",
+        "webview",
+        "ui",
+        "graph-constellation",
+        "styles",
+        "loading-indicator.css"
+      )
+    );
+
+    const contextualHelpCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        "src",
+        "webview",
+        "ui",
+        "graph-constellation",
+        "styles",
+        "contextual-help.css"
+      )
+    );
+
+    const heatmapLegendCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        "src",
+        "webview",
+        "ui",
+        "graph-constellation",
+        "styles",
+        "heatmap-legend.css"
+      )
     );
 
     return `<!DOCTYPE html>
@@ -304,6 +371,11 @@ export class WebviewManager {
     <title>Kiro Constellation</title>
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; script-src 'nonce-${nonce}' ${cspSource}; style-src ${cspSource} 'unsafe-inline'; font-src ${cspSource};" />
     <link href="${cssUri}" rel="stylesheet">
+    <link href="${richTooltipCssUri}" rel="stylesheet">
+    <link href="${toastNotificationCssUri}" rel="stylesheet">
+    <link href="${loadingIndicatorCssUri}" rel="stylesheet">
+    <link href="${contextualHelpCssUri}" rel="stylesheet">
+    <link href="${heatmapLegendCssUri}" rel="stylesheet">
     <style>
         body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); background-color: var(--vscode-editor-background); margin: 0; padding: 0; }
         #root { min-height: 100vh; }
@@ -353,7 +425,9 @@ export class WebviewManager {
             }
         }, 2000);
     </script>
-    ${webviewUri ? `<script src="${webviewUri}" nonce="${nonce}"></script>` : ''}
+    ${
+      webviewUri ? `<script src="${webviewUri}" nonce="${nonce}"></script>` : ""
+    }
 </body>
 </html>`;
   }

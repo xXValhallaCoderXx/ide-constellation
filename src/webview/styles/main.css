@@ -113,4 +113,3 @@ h1 {
 
 /* Unified structure imports (FR2, FR20) */
 @import '../ui/dashboard-health/styles/health-dashboard.css';
-@import '../ui/graph-constellation/styles/heatmap-legend.css';

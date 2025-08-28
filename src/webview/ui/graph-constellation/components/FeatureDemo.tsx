@@ -31,6 +31,7 @@ export function FeatureDemo(): JSX.Element {
       complexity: 12,
       churn: 25,
       dependencies: 8,
+      dependents: 6,
       recommendation: 'Consider refactoring to reduce complexity and improve maintainability.'
     }
   };
