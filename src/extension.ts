@@ -9,10 +9,7 @@ import { GraphService } from './services/graph.service';
 import { STATUS_BAR_TIMEOUT_MS } from './constants/sync.constants';
 import { debounce } from './utils/debounce';
 import { PanelRegistry } from './services/panel-registry.service';
-
-// POC Configuration Flag
-// Set to true to use the VS Code Standard MCP Provider POC
-const USE_STANDARD_PROVIDER_POC = true;
+import { CONFIG } from './config/extension.config';
 
 // Global instances
 let webviewManager: WebviewManager | null = null;
@@ -30,7 +27,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	log('Extension activating...');
 
-	if (USE_STANDARD_PROVIDER_POC) {
+	if (CONFIG.USE_STANDARD_PROVIDER_POC) {
 		log('[POC] VS Code Standard MCP Provider POC mode enabled');
 		log('[POC] Starting VS Code Standard MCP Provider POC...');
 
@@ -207,7 +204,7 @@ export async function deactivate() {
 		webviewManager = null;
 	}
 
-	if (USE_STANDARD_PROVIDER_POC) {
+	if (CONFIG.USE_STANDARD_PROVIDER_POC) {
 		console.log('[POC] Cleaning up MCP Provider POC...');
 		// MCP Provider cleanup is handled automatically by VS Code through disposables
 		mcpProvider = null;
