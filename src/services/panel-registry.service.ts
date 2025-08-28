@@ -10,18 +10,19 @@ export class PanelRegistry {
 
     public open(panel: PanelKey, origin: string = 'unknown'): void {
         const ts = new Date().toISOString();
-        const info = `[INFO] panel:open key=${panel} origin=${origin}`;
-        this.output?.appendLine(`[${ts}] ${info}`);
+        this.output?.appendLine(
+          `[${ts}] [INFO] panel:open key=${panel} origin=${origin}`
+        );
         try {
             switch (panel) {
-                case 'dependencyGraph':
-                    this.webviewManager.createOrShowPanel();
-                    break;
-                case 'healthDashboard':
-                    this.webviewManager.createOrShowHealthDashboard();
-                    break;
-                default:
-                    this.warnUnknown(panel);
+              case "dependencyGraph":
+                this.webviewManager.createOrShowPanel();
+                break;
+              case "healthDashboard":
+                this.webviewManager.createOrShowHealthDashboard();
+                break;
+              default:
+                this.warnUnknown(panel);
             }
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);

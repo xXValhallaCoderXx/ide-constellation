@@ -1,10 +1,26 @@
 import { useEffect, useRef, useState, useCallback } from 'preact/hooks';
 import cytoscape from 'cytoscape';
-import { IConstellationGraph } from '../../../../types/graph.types';
-import { AUTO_PAN_ANIMATION_MS, AUTO_PAN_VISIBILITY_THRESHOLD, AUTO_PAN_MAX_ZOOM, AUTO_PAN_MIN_ZOOM, computeTargetZoom } from '../../../../constants/sync.constants';
-import { transformGraphToCytoscape, validateGraphData } from '../../../../utils/graph-transform.utils';
-import { enhancedDebounce, throttle, PerformanceMonitor } from '../../../../utils/performance.utils';
-import { OptimizedHeatmapProcessor, createOptimizedHeatmapProcessor } from '../../../../utils/heatmap-processor.utils';
+import { IConstellationGraph } from "@/types/graph.types";
+import {
+  AUTO_PAN_ANIMATION_MS,
+  AUTO_PAN_VISIBILITY_THRESHOLD,
+  AUTO_PAN_MAX_ZOOM,
+  AUTO_PAN_MIN_ZOOM,
+  computeTargetZoom,
+} from "@/constants/sync.constants";
+import {
+  transformGraphToCytoscape,
+  validateGraphData,
+} from "@/utils/graph-transform.utils";
+import {
+  enhancedDebounce,
+  throttle,
+  PerformanceMonitor,
+} from "@/utils/performance.utils";
+import {
+  OptimizedHeatmapProcessor,
+  createOptimizedHeatmapProcessor,
+} from "@/utils/heatmap-processor.utils";
 import { RichTooltip, TooltipData } from './RichTooltip';
 import { ToastContainer, useToasts } from './ToastNotification';
 import { LoadingIndicator, HeatmapLoadingIndicator } from './LoadingIndicator';

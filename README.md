@@ -1,21 +1,28 @@
-# Kiro Constellation POC
+# Kiro Constellation (Post-Cleanup Architecture)
 
-A proof of concept VS Code extension that demonstrates the integration between VS Code, a local MCP (Model Context Protocol) server, and Kiro agent communication.
+Refactored VS Code extension with unified webview architecture (graph constellation, health dashboard, sidebar), centralized panel registry, MCP stdio server, and worker-based dependency scanning. Evolved from the original POC into a cleaner, alias-driven structure.
 
 ## Overview
 
-This POC validates three critical architectural pillars:
-1. **VS Code Extension Integration** - Command palette integration and extension lifecycle
-2. **Webview Side Panel Interface** - Modern Preact-based UI within VS Code
-3. **MCP Provider** - VS Code Standard MCP provider returning a stdio server
+Current pillars:
+1. **Extension Core & Panel Registry** – Stable activation and centralized panel opens.
+2. **Unified Webview Layer** – Three Preact apps under `src/webview/ui/*` with shared messaging & styles.
+3. **MCP Provider & Server** – Standard MCP provider with bundled stdio server (`out/mcp-server.js`).
+4. **Worker-Based Graph Scan** – Worker thread computes dependency graph (`dist/workers/scanWorker.mjs`).
+5. **Health Analysis Dashboard** – Risk scoring & recommendations panel.
 
 ## Features
 
-- 🎯 VS Code command palette integration
-- 🖥️ Webview side panel with Preact UI
-- 🤖 MCP stdio server bundled and launched by VS Code
-- �️ Tools: `constellation_example_tool`, `constellation_ping`
-- 🧪 Kiro agent integration validation
+- 🎯 Commands: `constellation.showGraph`, `constellation.healthDashboard`, `constellation.scanProject`
+- 🧭 Panel Registry mediated lifecycle
+- �️ Dependency graph (Cytoscape) + heatmap overlay
+- 📊 Health dashboard metrics & recommendations
+- 🔄 Active editor → graph highlight sync (debounced)
+- 🤖 MCP stdio server + provider (dev-gated POC logs)
+- 🧵 Worker-powered scan + caching
+- 🧪 Visual instruction pattern scaffold (dual payload parsing + debounce)
+- 🛡️ Consistent CSP + workspace path guards
+- � Path aliases (`@/*`, `@webview/*`) replacing deep relative imports
 
 ## Installation & Development
 
@@ -42,93 +49,73 @@ This POC validates three critical architectural pillars:
    - Press `F5` to launch a new Extension Development Host window
    - The extension will activate, register the MCP provider, and expose tools
 
-### Available Commands
+### Available Scripts
 
-- **Build extension only:** `npm run compile:extension`
-- **Build webview only:** `npm run compile:webview`
-- **Watch mode:** `npm run watch`
-- **Type checking:** `npm run check-types`
-- **Linting:** `npm run lint`
-- **Full build:** `npm run compile`
+| Script | Purpose |
+|--------|---------|
+| `compile` | Type check, lint, build all bundles (extension, webviews, MCP, worker) |
+| `compile:extension` | Build extension host only |
+| `compile:webview` | Build all webview bundles |
+| `compile:mcp` | Build MCP stdio server bundle |
+| `watch` | Parallel type + esbuild watch |
+| `check-types` | TypeScript noEmit validation |
+| `lint` | ESLint over `src` |
 
 ## Usage
 
-### 1. Launch the Panel
+### 1. Open Panels
 
-1. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
-2. Type "Kiro Constellation: Show Panel"
-3. Select the command to open the side panel
+- Graph Panel: Command Palette → "Constellation: Show Codebase Map"
+- Health Dashboard: Command Palette → "Constellation: Open Health Dashboard"
+- Sidebar: Auto-registered activity bar view.
 
-### 2. Validate MCP Tools
+### 2. Run a Scan
 
-- Use the command: "Kiro Constellation: Debug Launch MCP (stdio)" to emit initialize/list/call over stdio
-- Verify logs in the "Kiro Constellation" output channel for tool results (e.g., "pong")
+Use "Constellation: Scan Project" to trigger worker-based analysis. Graph + health features consume emitted data.
 
-### 3. Validate Kiro Integration
+### 3. MCP Provider
 
-Kiro can discover the provider via the VS Code MCP API. No HTTP endpoints are required.
+In development (`NODE_ENV=development`), POC logs (`[POC]`) validate provider registration; production suppresses them.
 
 ## Architecture
 
-### Components
+### High-Level Layers
 
-1. **Extension Core** (`src/extension.ts`)
-   - Extension activation/deactivation
-   - Command registration
-   - MCP provider registration and debug helpers
+| Layer | Key Elements |
+|-------|--------------|
+| Extension Host | `extension.ts`, PanelRegistry, command wiring, MCP provider gating |
+| MCP | `mcp/` provider + `mcp-stdio.server.ts` bundle (stdio protocol) |
+| Worker | `workers/scan-project.worker.ts` → `dist/workers/scanWorker.mjs` |
+| Webviews | `webview/ui/*` apps + `webview.service.ts` orchestration |
+| Graph & Health Services | `services/graph.service.ts`, transformers, caches, analysis |
+| Utilities | path, performance, debounce, heatmap processor |
 
-2. **MCP stdio Server** (`src/mcp/mcpStdioServer.ts`)
-   - Implements `initialize`, `tools/list`, and `tools/call`
-   - Tools: `constellation_example_tool`, `constellation_ping`
+### Unified Webview Structure
+See `src/webview/README.md` for detailed layout and bundle mapping.
 
-3. **Webview Manager** (`src/webview/webviewManager.ts`)
-   - Webview panel creation and management
-   - Message passing between webview and extension
-   - Server status communication bridge
+### Build & Bundling
 
-4. **Preact UI** (`src/webview/components/`)
-   - Modern React-like components
-   - Real-time status updates
-   - VS Code theme integration
-
-### Build System
-
-- **esbuild** for fast compilation
-- **Dual build process** for extension and webview
-- **TypeScript** with JSX support for Preact
-- **ESLint** for code quality
+- esbuild multi-context builds (extension, 3 webviews, MCP server, worker)
+- TypeScript strict + Preact automatic JSX
+- Production (`--production`) enables minification
 
 ### API Endpoints
 
 No HTTP endpoints. Communication uses MCP over stdio.
 
-## Requirements Validation
+## Cleanup / Optimization Outcomes (FR Summary)
 
-This POC addresses all specified requirements:
-
-### ✅ Requirement 1: VS Code Extension Integration
-- Command palette integration
-- Automatic MCP server initialization
-- Proper extension lifecycle management
-
-### ✅ Requirement 2: Webview Side Panel Interface
-- Dedicated "Kiro Constellation" panel
-- Status indicator and check button
-- Real-time server communication
-
-### ✅ Requirement 3: MCP Provider
-- VS Code MCP provider returns a stdio server definition
-- Tools are discoverable and callable via MCP
-
-### ✅ Requirement 4: Build System and UI Framework
-- Preact framework for UI components
-- esbuild compilation pipeline
-- Single JavaScript bundle generation
-
-### ✅ Requirement 5: Kiro Agent Integration Validation
-- External agent communication testing
-- Validation script for integration testing
-- Diagnostic information for troubleshooting
+| Focus | Outcome |
+|-------|---------|
+| FR1 Panel Registry | Single instance; all opens centralized |
+| FR2 Structure | Unified `ui/*` apps; legacy folders removed |
+| FR4/FR19 Imports | Deep relative paths replaced with aliases |
+| FR5 Config | Minimal env-gated POC logging |
+| FR10 Performance | Baseline + post-change timing (see tasks file) |
+| FR11 Logging | ISO timestamps + level tags standardized |
+| FR13 Security | Path guards + CSP unchanged |
+| FR17 Worker | Worker bundle resilient path resolution |
+| FR20 CSS | Legacy imports removed; consolidated main.css |
 
 ## Troubleshooting
 
@@ -149,19 +136,29 @@ This POC addresses all specified requirements:
 
 ## Development Notes
 
-### File Structure
+### Key Paths (Post-Cleanup)
 ```
 src/
-├── extension.ts              # Main extension entry point
-├── mcp/
-│   └── mcpStdioServer.ts     # MCP stdio server
+├── extension.ts
+├── services/
+│   ├── panel-registry.service.ts
+│   ├── graph.service.ts
+│   └── ...
 ├── webview/
-│   ├── index.tsx            # Preact app entry point
-│   ├── webviewManager.ts    # VS Code webview management
-│   ├── components/          # Preact components
-│   └── styles/              # CSS styles
+│   ├── webview.service.ts
+│   ├── providers/
+│   └── ui/
+│       ├── graph-constellation/
+│       ├── dashboard-health/
+│       ├── extension-sidebar/
+│       └── shared/
+├── mcp/
+│   ├── mcp.provider.ts
+│   └── mcp-stdio.server.ts
+├── workers/
+│   └── scan-project.worker.ts
+├── utils/
 └── types/
-   └── messages.ts          # TypeScript interfaces
 ```
 
 ### Key Technologies
@@ -171,18 +168,17 @@ src/
 - **esbuild** - Fast bundling and compilation
 - **VS Code Extension API** - Platform integration
 
-## Future Enhancements
-
-This POC establishes the foundation for:
-- Advanced MCP protocol implementation
-- Multi-agent communication patterns
-- Context-aware feature development
-- Enhanced UI components and interactions
-- Production deployment strategies
+## Future Enhancements (Deferred / Optional)
+- Alias lint enforcement rule
+- PanelRegistry + worker path unit tests
+- Telemetry for panel usage
+- Component-level CSS modules migration
 
 ## Documentation
 
-- visualInstruction Pattern: see `docs/visual-instruction-pattern.md` for the dual payload response contract and routing architecture.
+- Webview structure: `src/webview/README.md`
+- Visual instruction pattern: `docs/visual-instruction-pattern.md`
+- Task execution log: `tasks/tasks-project-cleanup-structure-optimization.md`
 
 ## License
 

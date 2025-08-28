@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'preact/hooks';
-import { IConstellationGraph } from '../../../../types/graph.types';
+import { IConstellationGraph } from "@/types/graph.types";
 import { GraphCanvas, HeatmapNode } from './GraphCanvas';
 import { SearchBox } from './SearchBox';
 import { HeatmapLegend } from './HeatmapLegend';
-import '../../../../types/vscode-api.types';
+import "@/types/vscode-api.types";
 
 interface ActiveHighlightState { fileId: string | null; reason?: string }
 
