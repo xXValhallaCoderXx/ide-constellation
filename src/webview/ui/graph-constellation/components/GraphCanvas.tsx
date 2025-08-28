@@ -25,11 +25,7 @@ import {
 import { RichTooltip, TooltipData } from './RichTooltip';
 import { ToastContainer, useToasts } from './ToastNotification';
 import { LoadingIndicator, HeatmapLoadingIndicator } from './LoadingIndicator';
-import { GraphHelp } from './ContextualHelp';
-import '../styles/rich-tooltip.css';
-import '../styles/toast-notification.css';
-import '../styles/loading-indicator.css';
-import '../styles/contextual-help.css';
+import { GraphHelp } from "./ContextualHelp";
 
 /**
  * Heatmap node data for risk visualization
@@ -1065,20 +1061,24 @@ export function GraphCanvas({
           100% { transform: rotate(360deg); }
         }
       `}</style>
-      <div style={{ 
-        width: '100%', 
-        height: '400px', 
-        minHeight: '300px',
-        position: 'relative',
-        backgroundColor: 'var(--vscode-editor-background)'
-      }}>
+      <div
+        style={{
+          width: "100%",
+          height: "400px",
+          minHeight: "300px",
+          position: "relative",
+          backgroundColor: "var(--vscode-editor-background)",
+        }}
+      >
         {/* Contextual Help */}
-        <div style={{
-          position: 'absolute',
-          top: '12px',
-          right: '12px',
-          zIndex: 20
-        }}>
+        <div
+          style={{
+            position: "absolute",
+            top: "12px",
+            right: "12px",
+            zIndex: 20,
+          }}
+        >
           <GraphHelp />
         </div>
 
@@ -1087,15 +1087,15 @@ export function GraphCanvas({
           <LoadingIndicator
             state={{
               isLoading: true,
-              message: 'Loading graph...',
-              type: 'spinner'
+              message: "Loading graph...",
+              type: "spinner",
             }}
             size="large"
             overlay={true}
             position="center"
           />
         )}
-        
+
         {/* Heatmap Processing Indicator */}
         {state.heatmapState.isProcessing && (
           <HeatmapLoadingIndicator
@@ -1105,22 +1105,21 @@ export function GraphCanvas({
         )}
 
         {/* Graph Container */}
-        <div 
-          ref={containerRef} 
-          style={{ 
-            width: '100%', 
-            height: '100%',
-            border: '1px solid var(--vscode-panel-border)',
-            borderRadius: '4px',
-            outline: 'none' // Remove focus outline since Cytoscape handles focus
-          }} 
+        <div
+          ref={containerRef}
+          style={{
+            width: "100%",
+            height: "100%",
+            border: "1px solid var(--vscode-panel-border)",
+            borderRadius: "4px",
+            outline: "none", // Remove focus outline since Cytoscape handles focus
+          }}
           tabIndex={0}
           role="application"
           aria-label="Interactive dependency graph"
         />
 
         {/* Rich Tooltip */}
-        {console.log('[GraphCanvas] Rendering with tooltip state:', state.tooltip)}
         <RichTooltip
           data={state.tooltip.data}
           position={state.tooltip.position}
@@ -1129,10 +1128,7 @@ export function GraphCanvas({
         />
 
         {/* Toast Notifications */}
-        <ToastContainer
-          toasts={toasts}
-          onDismiss={dismissToast}
-        />
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </div>
     </>
   );

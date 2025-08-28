@@ -89,11 +89,8 @@ export function RichTooltip({ data, position, visible, theme = 'auto' }: RichToo
   }, [position, visible, data]);
 
   if (!visible || !data) {
-    console.log('[RichTooltip] Not rendering tooltip - visible:', visible, 'data:', !!data);
-    return <div style={{ display: 'none' }} />;
+    return <div style={{ display: "none" }} />;
   }
-
-  console.log('[RichTooltip] Rendering tooltip with data:', data, 'position:', position);
 
   const getRiskColor = (category: string): string => {
     switch (category) {
