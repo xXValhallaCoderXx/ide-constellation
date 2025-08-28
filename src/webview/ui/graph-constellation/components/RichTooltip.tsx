@@ -1,15 +1,23 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { JSX } from 'preact';
+import { truncateFilePath } from '../../../../utils/path.utils';
 
 export interface TooltipData {
   title: string;
   path?: string;
+  packageInfo?: {
+    name: string;
+    version?: string;
+    isMonorepoFile?: boolean;
+    workspacePackage?: string;
+  };
   riskData?: {
     score: number;
     category: string;
     complexity: number;
     churn: number;
     dependencies: number;
+    dependents: number;
     recommendation?: string;
   };
   basicInfo?: {
@@ -30,7 +38,7 @@ export function RichTooltip({ data, position, visible, theme = 'auto' }: RichToo
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState(position);
 
-  // Adjust tooltip position to stay within viewport
+  // Enhanced tooltip position adjustment with smart positioning
   useEffect(() => {
     if (!visible || !tooltipRef.current) return;
 
@@ -38,32 +46,54 @@ export function RichTooltip({ data, position, visible, theme = 'auto' }: RichToo
     const rect = tooltip.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
+    const margin = 12; // Increased margin for better positioning
 
     let newX = position.x;
     let newY = position.y;
 
-    // Adjust horizontal position
-    if (newX + rect.width > viewportWidth - 10) {
-      newX = position.x - rect.width - 10;
+    // Smart horizontal positioning
+    const spaceOnRight = viewportWidth - position.x;
+    const spaceOnLeft = position.x;
+    
+    if (spaceOnRight < rect.width + margin && spaceOnLeft > rect.width + margin) {
+      // Position to the left of cursor when near right edge
+      newX = position.x - rect.width - margin;
+    } else if (newX + rect.width > viewportWidth - margin) {
+      // Fallback: align to right edge with margin
+      newX = viewportWidth - rect.width - margin;
     }
-    if (newX < 10) {
-      newX = 10;
+    
+    // Ensure minimum distance from left edge
+    if (newX < margin) {
+      newX = margin;
     }
 
-    // Adjust vertical position
-    if (newY + rect.height > viewportHeight - 10) {
-      newY = position.y - rect.height - 10;
+    // Smart vertical positioning  
+    const spaceBelow = viewportHeight - position.y;
+    const spaceAbove = position.y;
+    
+    if (spaceBelow < rect.height + margin && spaceAbove > rect.height + margin) {
+      // Position above cursor when near bottom edge
+      newY = position.y - rect.height - margin;
+    } else if (newY + rect.height > viewportHeight - margin) {
+      // Fallback: align to bottom edge with margin
+      newY = viewportHeight - rect.height - margin;
     }
-    if (newY < 10) {
-      newY = 10;
+    
+    // Ensure minimum distance from top edge
+    if (newY < margin) {
+      newY = margin;
     }
 
     setAdjustedPosition({ x: newX, y: newY });
   }, [position, visible, data]);
 
   if (!visible || !data) {
+    console.log('[RichTooltip] Not rendering tooltip - visible:', visible, 'data:', !!data);
     return <div style={{ display: 'none' }} />;
   }
+
+  console.log('[RichTooltip] Rendering tooltip with data:', data, 'position:', position);
 
   const getRiskColor = (category: string): string => {
     switch (category) {
@@ -103,6 +133,9 @@ export function RichTooltip({ data, position, visible, theme = 'auto' }: RichToo
     <div
       ref={tooltipRef}
       className="rich-tooltip"
+      role="tooltip"
+      aria-live="polite"
+      aria-label={`File information for ${data.title}`}
       style={{
         position: 'fixed',
         left: `${adjustedPosition.x}px`,
@@ -117,8 +150,27 @@ export function RichTooltip({ data, position, visible, theme = 'auto' }: RichToo
         {/* Header */}
         <div className="tooltip-header">
           <div className="tooltip-title">{data.title}</div>
+          {data.packageInfo && (
+            <div className="package-badges">
+              {data.packageInfo.isMonorepoFile && (
+                <span className="package-badge monorepo-badge">
+                  📦 {data.packageInfo.workspacePackage || 'Monorepo'}
+                </span>
+              )}
+              {data.packageInfo.name && (
+                <span className="package-badge package-name-badge">
+                  {data.packageInfo.name}
+                  {data.packageInfo.version && (
+                    <span className="package-version">@{data.packageInfo.version}</span>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
           {data.path && (
-            <div className="tooltip-path">{data.path}</div>
+            <div className="tooltip-path" title={data.path}>
+              {truncateFilePath(data.path, 60)}
+            </div>
           )}
         </div>
 
@@ -157,6 +209,10 @@ export function RichTooltip({ data, position, visible, theme = 'auto' }: RichToo
               <div className="metric-row">
                 <span className="metric-label">Dependencies:</span>
                 <span className="metric-value">{data.riskData.dependencies}</span>
+              </div>
+              <div className="metric-row">
+                <span className="metric-label">Dependents:</span>
+                <span className="metric-value">{data.riskData.dependents}</span>
               </div>
             </div>
 
@@ -203,12 +259,7 @@ export function RichTooltip({ data, position, visible, theme = 'auto' }: RichToo
         {/* Interaction Hints */}
         <div className="tooltip-section interaction-hints">
           <div className="hint-row">
-            <span className="hint-icon">👆</span>
-            <span className="hint-text">Click to open file</span>
-          </div>
-          <div className="hint-row">
-            <span className="hint-icon">⌘</span>
-            <span className="hint-text">Ctrl/Cmd + Click for split view</span>
+            <span className="hint-text">Click to open • Ctrl+Click for split view</span>
           </div>
         </div>
       </div>

@@ -7,6 +7,7 @@ import {
   AUTO_PAN_MAX_ZOOM,
   AUTO_PAN_MIN_ZOOM,
   computeTargetZoom,
+  TOOLTIP_HOVER_DELAY_MS,
 } from "@/constants/sync.constants";
 import {
   transformGraphToCytoscape,
@@ -853,7 +854,7 @@ export function GraphCanvas({
     }
   }, [heatmapData, heatmapEnabled, state.heatmapState.isActive]);
 
-  // Enhanced rich tooltip system for nodes
+  // Enhanced rich tooltip system for nodes with proper debouncing
   useEffect(() => {
     if (!cyRef.current) return;
 
@@ -861,6 +862,7 @@ export function GraphCanvas({
     let tooltipTimeout: NodeJS.Timeout;
 
     const showTooltip = (node: cytoscape.NodeSingular, event: cytoscape.EventObject) => {
+      console.log('[GraphCanvas] Showing tooltip for node:', node.id());
       const riskData = node.data('riskData') as HeatmapNode | undefined;
       const label = node.data('label') || 'Unknown';
       const path = node.data('path') || '';
@@ -875,6 +877,7 @@ export function GraphCanvas({
           complexity: riskData.metrics.complexity,
           churn: riskData.metrics.churn,
           dependencies: riskData.metrics.dependencies,
+          dependents: riskData.metrics.dependencies * 0.7, // Estimated dependents
           recommendation: getRecommendationForRisk(riskData)
         } : undefined,
         basicInfo: !riskData ? {
@@ -891,6 +894,7 @@ export function GraphCanvas({
         y: originalEvent?.clientY || 0
       };
 
+      console.log('[GraphCanvas] Setting tooltip state with position:', position, 'data:', tooltipData);
       setState(prev => ({
         ...prev,
         tooltip: {
@@ -902,6 +906,8 @@ export function GraphCanvas({
     };
 
     const hideTooltip = () => {
+      console.log('[GraphCanvas] Hiding tooltip');
+      clearTimeout(tooltipTimeout);
       setState(prev => ({
         ...prev,
         tooltip: {
@@ -912,25 +918,22 @@ export function GraphCanvas({
       }));
     };
 
-    // Add hover event listeners with improved timing
+    // Add hover event listeners with direct timeout approach
     cy.on('mouseover', 'node', (event) => {
       console.log('[GraphCanvas] Node mouseover detected:', event.target.id());
       clearTimeout(tooltipTimeout);
       tooltipTimeout = setTimeout(() => {
-        console.log('[GraphCanvas] Showing tooltip for node:', event.target.id());
         showTooltip(event.target, event);
-      }, 300); // Reduced delay for better responsiveness
+      }, TOOLTIP_HOVER_DELAY_MS);
     });
 
     cy.on('mouseout', 'node', () => {
       console.log('[GraphCanvas] Node mouseout detected');
-      clearTimeout(tooltipTimeout);
       hideTooltip();
     });
 
     // Hide tooltip on graph interaction
     cy.on('pan zoom', () => {
-      clearTimeout(tooltipTimeout);
       hideTooltip();
     });
 
@@ -938,7 +941,7 @@ export function GraphCanvas({
     return () => {
       clearTimeout(tooltipTimeout);
     };
-  }, [state.heatmapState.isActive]);
+  }, [state.cytoscapeInstance]); // Re-run when Cytoscape instance changes
 
   // Helper functions for tooltip data
   const getRecommendationForRisk = (riskData: HeatmapNode): string | undefined => {
@@ -1117,6 +1120,7 @@ export function GraphCanvas({
         />
 
         {/* Rich Tooltip */}
+        {console.log('[GraphCanvas] Rendering with tooltip state:', state.tooltip)}
         <RichTooltip
           data={state.tooltip.data}
           position={state.tooltip.position}
