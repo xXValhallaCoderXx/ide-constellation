@@ -9,42 +9,60 @@ inclusion: always
 ### Core Structure
 ```
 src/
-├── extension.ts           # Main entry point - extension lifecycle
-├── constants/             # Application constants
+├── extension.ts              # Main entry - activate/deactivate
+├── constants/
 │   └── sync.constants.ts
-├── mcp/                   # MCP (Model Context Protocol) integration
+├── mcp/                      # Model Context Protocol integration
 │   ├── mcp-stdio.server.ts
-│   └── mcp.provider.ts
-├── services/              # Core business logic services
+│   ├── mcp.provider.ts
+│   └── vi-flood-test.ts      # Load / stress test script
+├── services/                 # Domain-scoped services (see below)
+│   ├── graph.service.ts
 │   ├── graph-cache.service.ts
 │   ├── graph-transformer.service.ts
-│   ├── graph.service.ts
-│   └── summary-generator.service.ts
-├── types/                 # TypeScript type definitions
+│   ├── summary-generator.service.ts
+│   ├── complexity-analyzer.service.ts
+│   ├── git-analyzer.service.ts
+│   ├── health-analyzer.service.ts
+│   ├── metrics-cache.service.ts
+│   ├── recommendations-engine.service.ts
+│   ├── panel-registry.service.ts
+│   ├── health/
+│   │   └── health.services.ts
+│   └── (future: security/, quality/, performance/ ...)
+├── types/
 │   ├── cytoscape.types.ts
 │   ├── graph.types.ts
+│   ├── health-analysis.types.ts
 │   ├── mcp.types.ts
 │   ├── messages.types.ts
+│   ├── routing.types.ts
 │   ├── scanner.types.ts
+│   ├── visual-instruction.types.ts
 │   └── vscode-api.types.ts
-├── utils/                 # Utility functions
+├── utils/
 │   ├── debounce.ts
+│   ├── error-handling.utils.ts
 │   ├── graph-transform.utils.ts
-│   └── path.utils.ts
-├── webview/               # Preact-based UI components
-│   ├── panels/            # Main webview panels
-│   │   └── constellation/
-│   ├── providers/         # VS Code webview providers
+│   ├── heatmap-processor.utils.ts
+│   ├── path.utils.ts
+│   └── performance.utils.ts
+├── webview/
+│   ├── providers/            # Webview + sidebar providers
+│   │   ├── health-dashboard.provider.ts
 │   │   └── sidebar.provider.ts
-│   ├── sidebar/           # Sidebar-specific components
-│   │   ├── components/
-│   │   ├── styles/
-│   │   └── index.tsx
-│   ├── styles/            # Shared styles
+│   ├── ui/                   # Feature-oriented UI (Preact)
+│   │   ├── graph-constellation/
+│   │   ├── dashboard-health/
+│   │   ├── extension-sidebar/
+│   │   └── shared/
+│   ├── styles/               # Global shared styles
 │   │   └── main.css
-│   ├── README.md
-│   └── webview.service.ts
-└── workers/               # Background processing
+│   ├── components/               # Global shared components
+│   │   └── Atomic Components
+│   ├── webview.service.ts    # Bridge / messaging helper
+│   └── README.md
+└── workers/
     └── scan-project.worker.ts
 ```
 
@@ -69,23 +87,39 @@ src/
 - Type-safe message handling with dedicated types
 
 ### Webview Architecture
-- Preact-based UI with TypeScript (not React)
-- Service layer for VS Code API communication
-- Multi-panel architecture: main constellation panel + sidebar
-- Sidebar provider pattern for VS Code activity bar integration
-- Component-based architecture in `src/webview/sidebar/components/`
-- Centralized styling in `src/webview/styles/` and `src/webview/sidebar/styles/`
+- Preact-based UI (TypeScript) grouped by feature in `webview/ui/`
+- Feature folders encapsulate components, hooks, styles, messaging
+- Providers separated from UI in `webview/providers/`
+- Sidebar routing handled in `webview/ui/extension-sidebar/router/`
+- Typed messaging helpers: shared (`shared/postMessage.ts`) + feature-specific (e.g. `dashboard-health/health.postMessage.ts`)
+- Global styles under `webview/styles/`; feature-local styles live beside components
 
 ### Service Layer Architecture
-- **GraphService** - Singleton service for graph data management with reverse-dependency indexing
-- **GraphCache** - Persistent caching of graph data to improve performance
-- **GraphTransformer** - Transforms raw dependency data into graph model
-- **SummaryGenerator** - Generates project summaries and insights
+- Domain-scoped: services reside at root or inside a domain subfolder (`services/<domain>/`)
+- Core graph stack:
+    - **GraphService** – Orchestrates graph state + reverse dependency index
+    - **GraphCache** – Persistent & in-memory caching layer
+    - **GraphTransformer** – Normalizes raw dependency data
+- Analysis & insight:
+    - **ComplexityAnalyzerService** – Complexity metrics
+    - **GitAnalyzerService** – Repository activity & churn
+    - **HealthAnalyzerService** – Aggregates multi-metric health scoring
+    - **MetricsCacheService** – Caches computed metrics
+    - **RecommendationsEngineService** – Suggests improvements
+    - **SummaryGeneratorService** – Narrative summaries
+- UI coordination:
+    - **PanelRegistryService** – Registers & discovers feature panels
+- Future domains: security, quality, performance (planned)
+
+#### Domain Scoping Strategy
+- Each domain may introduce: dedicated subfolder, facade service, internal helpers
+- Keeps cross-domain contracts lean and explicit
 
 ### Worker Pattern
 - Background tasks isolated in worker threads
-- Project scanning and analysis operations using dependency-cruiser
-- Non-blocking UI operations with message-based communication
+- Current worker: project scanning + graph + metric extraction
+- Designed for future specialized workers (git history, complexity) without blocking UI
+- Non-blocking UI via typed message passing
 
 ## Code Conventions
 
@@ -111,10 +145,10 @@ src/
 ## Development Guidelines
 
 ### Component Structure
-- Preact components in PascalCase (not React)
-- Props interfaces co-located with components
-- Functional components with hooks preferred
-- CSS files for styling with VS Code theme variables
+- Preact functional components in PascalCase
+- Feature-first layout (`webview/ui/<feature>/`)
+- Hooks co-located under `hooks/` inside each feature
+- CSS colocated per feature + shared global stylesheet
 
 ### Service Layer
 - Abstract VS Code API interactions
@@ -129,10 +163,11 @@ src/
 - **Error boundaries** - Proper error handling with user-friendly messages
 
 ### Performance Optimizations
-- **Graph caching** - Persistent cache to avoid re-scanning unchanged projects
-- **Singleton services** - Memory-efficient service management
-- **Worker threads** - CPU-intensive operations isolated from main thread
-- **Reverse-dependency indexing** - O(1) lookup for dependent file queries
+- **Graph + metrics caching** for minimal recomputation
+- **Incremental health scoring** where feasible
+- **Worker offload** for scanning & heavy analysis
+- **Reverse-dependency indexing** for O(1) dependent lookups
+- **Debounced UI messaging** to reduce postMessage overhead
 
 ### Testing Strategy
 - Unit tests mirror source structure
@@ -140,3 +175,14 @@ src/
 - Mocha framework with TypeScript support
 - Test files in same directory as source (`.test.ts`)
 - **Note**: Per persona.md directive, unit and integration tests are currently skipped
+
+## Updated / Removed Legacy References
+- Replaced legacy `webview/panels/` + `webview/sidebar/` with feature-based `webview/ui/` layout
+- Added domain-scoped services & new analyzer / recommendation services
+- Clarified panel registration via `PanelRegistryService`
+- Added explicit messaging layer structure (shared + feature-specific)
+- Included new utility modules: error handling, performance, heatmap processor
+
+## Future Notes
+- Additional domain folders (security, quality, performance) will mirror health pattern
+- Potential expansion of worker set for git + complexity if performance thresholds require
