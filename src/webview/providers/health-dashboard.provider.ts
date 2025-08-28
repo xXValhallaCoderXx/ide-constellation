@@ -277,8 +277,8 @@ export class HealthDashboardProvider {
         data.centerNode
       );
     } else {
-      // Fallback to command execution
-      vscode.commands.executeCommand('constellation.healthReportGraph');
+      // Fallback: just open the graph panel; heatmap application requires manager context
+      vscode.commands.executeCommand('constellation.showGraph');
     }
   }
 

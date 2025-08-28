@@ -38,7 +38,7 @@ export class ConstellationSidebarProvider implements vscode.WebviewViewProvider 
     switch (message.command) {
       case 'showGraph':
         try {
-          await vscode.commands.executeCommand('kiro-constellation.showGraph');
+          await vscode.commands.executeCommand('constellation.showGraph');
         } catch (error) {
           console.error('Failed to execute showGraph command:', error);
           vscode.window.showErrorMessage('Failed to open Codebase Map');
@@ -48,7 +48,7 @@ export class ConstellationSidebarProvider implements vscode.WebviewViewProvider 
         const key = message.data?.panel;
         try {
           if (key === 'dependencyGraph') {
-            await vscode.commands.executeCommand('kiro-constellation.showGraph');
+            await vscode.commands.executeCommand('constellation.showGraph');
           } else if (key === 'healthDashboard') {
             await vscode.commands.executeCommand('constellation.healthDashboard');
           } else {
