@@ -23,6 +23,9 @@ export const STATUS_BAR_TIMEOUT_MS = 3000;
 /** Auto-pan animation duration in ms (FR8) */
 export const AUTO_PAN_ANIMATION_MS = 400;
 
+/** Layout change animation duration in ms for graph layout transitions */
+export const LAYOUT_ANIMATION_MS = 500;
+
 /** Portion of viewport margin used to decide if node is "off-screen" (FR8) */
 export const AUTO_PAN_VISIBILITY_THRESHOLD = 0.25; // 25% inset on each axis
 

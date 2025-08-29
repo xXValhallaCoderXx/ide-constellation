@@ -363,6 +363,18 @@ export class WebviewManager {
       )
     );
 
+    const layoutSwitcherCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        "src",
+        "webview",
+        "ui",
+        "graph-constellation",
+        "styles",
+        "layout-switcher.css"
+      )
+    );
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -376,6 +388,7 @@ export class WebviewManager {
     <link href="${loadingIndicatorCssUri}" rel="stylesheet">
     <link href="${contextualHelpCssUri}" rel="stylesheet">
     <link href="${heatmapLegendCssUri}" rel="stylesheet">
+    <link href="${layoutSwitcherCssUri}" rel="stylesheet">
     <style>
         body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); background-color: var(--vscode-editor-background); margin: 0; padding: 0; }
         #root { min-height: 100vh; }

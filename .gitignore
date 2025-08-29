@@ -6,3 +6,4 @@ dist
 tasks
 .env
 .constellation-cache
+.DS_Store

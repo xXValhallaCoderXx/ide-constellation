@@ -56,9 +56,20 @@ const pathUtils = {
  */
 export function resolveWorkspacePath(workspaceRoot: string, fileId: string): { abs: string; within: boolean } {
     const normalized = fileId.replace(/\\/g, '/');
-    const abs = pathUtils.resolve(workspaceRoot, normalized);
+    
+    // Handle absolute paths that are missing the leading slash (common issue in graph data)
+    let abs: string;
+    if (normalized.startsWith('Users/') || normalized.startsWith('home/') || normalized.includes(':/')) {
+        // This looks like an absolute path missing the leading slash, add it
+        abs = '/' + normalized;
+    } else {
+        // This is a relative path, resolve it normally
+        abs = pathUtils.resolve(workspaceRoot, normalized);
+    }
+    
     const rootWithSep = workspaceRoot.endsWith(pathUtils.sep) ? workspaceRoot : workspaceRoot + pathUtils.sep;
     const within = abs.startsWith(rootWithSep);
+    
     return { abs, within };
 }
 

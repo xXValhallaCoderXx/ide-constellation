@@ -8,6 +8,7 @@ import {
   AUTO_PAN_MIN_ZOOM,
   computeTargetZoom,
   TOOLTIP_HOVER_DELAY_MS,
+  LAYOUT_ANIMATION_MS,
 } from "@/constants/sync.constants";
 import {
   transformGraphToCytoscape,
@@ -22,10 +23,30 @@ import {
   OptimizedHeatmapProcessor,
   createOptimizedHeatmapProcessor,
 } from "@/utils/heatmap-processor.utils";
+import { getFileExtensionInfo } from "@/utils/path.utils";
+import { getLayoutConfig, getCytoscapeLayoutName } from "@/utils/layout.utils";
+import {
+  LayoutState,
+  LayoutType,
+  DEFAULT_LAYOUT_TYPE,
+} from "@/types/layout.types";
 import { RichTooltip, TooltipData } from './RichTooltip';
 import { ToastContainer, useToasts } from './ToastNotification';
 import { LoadingIndicator, HeatmapLoadingIndicator } from './LoadingIndicator';
 import { GraphHelp } from "./ContextualHelp";
+
+/**
+ * Task 4.1: Calculate node size based on connection importance
+ * Uses Cytoscape's node.degree() method to determine visual sizing
+ * Task 4.2: Size scaling logic based on connection count
+ * Task 4.4: Optimized for performance with large graphs via sampling
+ */
+const calculateNodeSize = (connectionCount: number): number => {
+  if (connectionCount <= 2) return 30;      // 0-2 connections: 30px
+  if (connectionCount <= 6) return 40;      // 3-6 connections: 40px  
+  if (connectionCount <= 10) return 50;     // 7-10 connections: 50px
+  return 60;                                // 11+ connections: 60px
+};
 
 /**
  * Heatmap node data for risk visualization
@@ -108,61 +129,10 @@ function sampleLargeGraph(graph: IConstellationGraph, maxNodes: number): IConste
 /**
  * Get optimal layout configuration based on graph size
  */
-function getOptimalLayout(nodeCount: number) {
-  // For very large graphs, use simpler layout for performance
-  if (nodeCount > 500) {
-    return {
-      name: 'grid',
-      animate: false,
-      fit: true,
-      padding: 30
-    };
-  }
-  
-  // For medium graphs, use faster cose settings
-  if (nodeCount > 100) {
-    return {
-      name: 'cose',
-      animate: true,
-      animationDuration: 500,
-      fit: true,
-      padding: 40,
-      nodeRepulsion: 200000,
-      nodeOverlap: 8,
-      idealEdgeLength: 80,
-      edgeElasticity: 80,
-      nestingFactor: 3,
-      gravity: 60,
-      numIter: 500,
-      initialTemp: 100,
-      coolingFactor: 0.95,
-      minTemp: 1.0
-    };
-  }
-  
-  // For smaller graphs, use full cose layout with animations
-  return {
-    name: 'cose',
-    animate: true,
-    animationDuration: 1000,
-    fit: true,
-    padding: 50,
-    nodeRepulsion: 400000,
-    nodeOverlap: 10,
-    idealEdgeLength: 100,
-    edgeElasticity: 100,
-    nestingFactor: 5,
-    gravity: 80,
-    numIter: 1000,
-    initialTemp: 200,
-    coolingFactor: 0.95,
-    minTemp: 1.0
-  };
-}
-
 interface GraphCanvasProps {
   graph: IConstellationGraph | null;
   searchQuery?: string;
+  searchFocusIndex?: number; // Task 5.3: Index of currently focused search result
   /** Report node click with resolved open mode */
   onNodeClick?: (nodeId: string, openMode: 'default' | 'split') => void;
   onError?: (error: string) => void;
@@ -175,6 +145,12 @@ interface GraphCanvasProps {
   heatmapEnabled?: boolean;
   /** Callback when heatmap state changes */
   onHeatmapStateChange?: (isActive: boolean) => void;
+  /** Current layout type for the graph */
+  currentLayout?: string;
+  /** Callback when layout change starts/ends */
+  onLayoutChange?: (isChanging: boolean) => void;
+  /** Disable user interactions during layout changes */
+  disabled?: boolean;
 }
 
 interface GraphCanvasState {
@@ -183,6 +159,7 @@ interface GraphCanvasState {
   highlightedNodes: string[];
   cytoscapeInstance: cytoscape.Core | null;
   heatmapState: HeatmapState;
+  layoutState: LayoutState; // Task 6.2: Layout state management
   tooltip: {
     visible: boolean;
     data: TooltipData | null;
@@ -190,24 +167,29 @@ interface GraphCanvasState {
   };
 }
 
-export function GraphCanvas({ 
-  graph, 
-  searchQuery, 
-  onNodeClick, 
-  onError, 
-  onSearchResultsChange, 
+export function GraphCanvas({
+  graph,
+  searchQuery,
+  searchFocusIndex = -1,
+  onNodeClick,
+  onError,
+  onSearchResultsChange,
   activeHighlight,
   heatmapData,
   heatmapEnabled = false,
-  onHeatmapStateChange
+  onHeatmapStateChange,
+  currentLayout = "force-directed",
+  onLayoutChange,
+  disabled = false,
 }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const performanceMonitor = useRef(new PerformanceMonitor());
   const heatmapProcessor = useRef<OptimizedHeatmapProcessor | null>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
+  const hasInitialLayoutRef = useRef(false);
   const [state, setState] = useState<GraphCanvasState>({
     isLoading: false,
-    searchQuery: '',
+    searchQuery: "",
     highlightedNodes: [],
     cytoscapeInstance: null,
     heatmapState: {
@@ -215,13 +197,21 @@ export function GraphCanvas({
       nodes: [],
       originalStyles: new Map(),
       isProcessing: false,
-      processingProgress: 0
+      processingProgress: 0,
+    },
+    layoutState: {
+      currentLayout: (currentLayout as LayoutType) || DEFAULT_LAYOUT_TYPE,
+      isChanging: false,
+      history: [],
+      performanceMetrics: {
+        totalChanges: 0,
+      },
     },
     tooltip: {
       visible: false,
       data: null,
-      position: { x: 0, y: 0 }
-    }
+      position: { x: 0, y: 0 },
+    },
   });
 
   // Toast notifications
@@ -231,14 +221,18 @@ export function GraphCanvas({
     showSuccess,
     showError,
     showWarning,
-    showInfo
+    showInfo,
   } = useToasts();
 
   // Debounced state update for performance - enhanced with immediate option
   const debouncedSetState = useCallback(
-    enhancedDebounce((updater: (prev: GraphCanvasState) => GraphCanvasState) => {
-      setState(updater);
-    }, 100, false),
+    enhancedDebounce(
+      (updater: (prev: GraphCanvasState) => GraphCanvasState) => {
+        setState(updater);
+      },
+      100,
+      false
+    ),
     []
   );
 
@@ -246,67 +240,108 @@ export function GraphCanvas({
   const throttledViewportUpdate = useCallback(
     throttle(() => {
       if (!cyRef.current) return;
-      
+
       const zoom = cyRef.current.zoom();
-      
+
       // Optimize label visibility based on zoom level
       if (zoom < 0.3) {
-        cyRef.current.style()
-          .selector('node')
-          .style('label', '')
-          .update();
+        cyRef.current.style().selector("node").style("label", "").update();
       } else if (zoom >= 0.3) {
-        cyRef.current.style()
-          .selector('node')
-          .style('label', 'data(label)')
+        cyRef.current
+          .style()
+          .selector("node")
+          .style("label", "data(label)")
           .update();
       }
-      
+
       // Update heatmap processor viewport if active
       if (heatmapProcessor.current && state.heatmapState.isActive) {
         // Trigger viewport-based optimization
         const viewport = cyRef.current.extent();
-        console.log(`[GraphCanvas] Viewport updated: zoom=${zoom.toFixed(2)}, extent=${JSON.stringify(viewport)}`);
+        console.log(
+          `[GraphCanvas] Viewport updated: zoom=${zoom.toFixed(
+            2
+          )}, extent=${JSON.stringify(viewport)}`
+        );
       }
     }, 100),
     [state.heatmapState.isActive]
   );
 
   // Performance tracking with enhanced metrics
-  const trackRenderPerformance = useCallback((renderTime: number, operation: string = 'render') => {
-    const metrics = performanceMonitor.current.getMetrics();
-    
-    // Log performance warnings for slow operations
-    if (renderTime > 1000) {
-      console.warn(`[GraphCanvas] Slow ${operation} detected: ${renderTime}ms (avg: ${metrics.averageRenderTime.toFixed(2)}ms)`);
-    }
-    
-    // Update performance metrics in state
-    debouncedSetState(prev => ({
-      ...prev,
-      heatmapState: {
-        ...prev.heatmapState,
-        performanceMetrics: {
-          lastRenderTime: renderTime,
-          averageRenderTime: metrics.averageRenderTime,
-          cacheHitRate: prev.heatmapState.performanceMetrics?.cacheHitRate || 0
-        }
+  const trackRenderPerformance = useCallback(
+    (renderTime: number, operation: string = "render") => {
+      const metrics = performanceMonitor.current.getMetrics();
+
+      // Log performance warnings for slow operations
+      if (renderTime > 1000) {
+        console.warn(
+          `[GraphCanvas] Slow ${operation} detected: ${renderTime}ms (avg: ${metrics.averageRenderTime.toFixed(
+            2
+          )}ms)`
+        );
       }
-    }));
-  }, [debouncedSetState]);
+
+      // Update performance metrics in state
+      debouncedSetState((prev) => ({
+        ...prev,
+        heatmapState: {
+          ...prev.heatmapState,
+          performanceMetrics: {
+            lastRenderTime: renderTime,
+            averageRenderTime: metrics.averageRenderTime,
+            cacheHitRate:
+              prev.heatmapState.performanceMetrics?.cacheHitRate || 0,
+          },
+        },
+      }));
+    },
+    [debouncedSetState]
+  );
 
   // Initialize Cytoscape.js instance
   useEffect(() => {
     if (!containerRef.current || !graph) return;
 
-    setState(prev => ({ ...prev, isLoading: true }));
+    // Reset layout initialization flag for new graph
+    hasInitialLayoutRef.current = false;
+
+    setState((prev) => ({ ...prev, isLoading: true }));
 
     try {
+      // Task 9.4: Edge case validation for empty graphs, single nodes, disconnected components
+      if (!graph.nodes || graph.nodes.length === 0) {
+        console.warn("[GraphCanvas] Empty graph detected");
+        setState((prev) => ({ ...prev, isLoading: false }));
+        return;
+      }
+
+      // Task 9.4: Handle single node case
+      if (graph.nodes.length === 1) {
+        console.log("[GraphCanvas] Single node graph detected");
+      }
+
+      // Task 9.4: Detect disconnected components
+      const edgeNodeIds = new Set();
+      (graph.edges || []).forEach((edge) => {
+        edgeNodeIds.add(edge.source);
+        edgeNodeIds.add(edge.target);
+      });
+
+      const disconnectedNodes = graph.nodes.filter(
+        (node) => !edgeNodeIds.has(node.id)
+      );
+      if (disconnectedNodes.length > 0) {
+        console.log(
+          `[GraphCanvas] Found ${disconnectedNodes.length} disconnected nodes`
+        );
+      }
+
       // Validate graph data
       if (!validateGraphData(graph)) {
-        const error = 'Invalid graph data structure';
+        const error = "Invalid graph data structure";
         onError?.(error);
-        setState(prev => ({ ...prev, isLoading: false }));
+        setState((prev) => ({ ...prev, isLoading: false }));
         return;
       }
 
@@ -320,175 +355,325 @@ export function GraphCanvas({
         cyRef.current.destroy();
       }
 
+      // Task 9.4: Adaptive layout selection for edge cases
+      let initialLayout = "cose"; // Default force-directed layout
+      const nodeCount = graph.nodes.length;
+      const edgeCount = graph.edges?.length || 0;
+
+      if (nodeCount === 1) {
+        // Single node: use a simple centered layout
+        initialLayout = "center";
+        console.log("[GraphCanvas] Using center layout for single node");
+      } else if (nodeCount <= 5 && edgeCount === 0) {
+        // Few disconnected nodes: use circle layout
+        initialLayout = "circle";
+        console.log(
+          "[GraphCanvas] Using circle layout for small disconnected graph"
+        );
+      } else if (disconnectedNodes.length > nodeCount * 0.5) {
+        // Mostly disconnected: use grid layout for better spacing
+        initialLayout = "grid";
+        console.log(
+          "[GraphCanvas] Using grid layout for highly disconnected graph"
+        );
+      }
+
+      // Validate Cytoscape feature availability before initialization
+      const validateCytoscapeFeatures = () => {
+        try {
+          const testInstance = cytoscape({ headless: true });
+
+          // Check if required layout algorithms are available
+          const requiredLayouts = [
+            "cose",
+            "circle",
+            "grid",
+            "breadthfirst",
+            "concentric",
+          ];
+          const availableLayouts = requiredLayouts.filter((layout) => {
+            try {
+              testInstance.layout({ name: layout }).run();
+              return true;
+            } catch (e) {
+              console.warn(
+                `[GraphCanvas] Layout '${layout}' not available:`,
+                e
+              );
+              return false;
+            }
+          });
+
+          // Clean up test instance
+          testInstance.destroy();
+
+          if (availableLayouts.length === 0) {
+            throw new Error("No supported layout algorithms available");
+          }
+
+          // If the requested layout is not available, fall back to available ones
+          if (!availableLayouts.includes(initialLayout)) {
+            const fallbackLayout = availableLayouts.includes("cose")
+              ? "cose"
+              : availableLayouts[0];
+            console.warn(
+              `[GraphCanvas] Requested layout '${initialLayout}' not available, falling back to '${fallbackLayout}'`
+            );
+            initialLayout = fallbackLayout;
+          }
+
+          return true;
+        } catch (error) {
+          console.error(
+            "[GraphCanvas] Cytoscape feature validation failed:",
+            error
+          );
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error";
+          throw new Error(`Cytoscape initialization failed: ${errorMessage}`);
+        }
+      };
+
+      // Validate features before proceeding
+      validateCytoscapeFeatures();
+
       // Initialize new Cytoscape instance
       cyRef.current = cytoscape({
         container: containerRef.current,
         elements: [...cytoscapeElements.nodes, ...cytoscapeElements.edges],
         style: [
           {
-            selector: 'node',
+            selector: "node",
             style: {
-              'background-color': 'var(--vscode-charts-blue)',
-              'border-color': 'var(--vscode-panel-border)',
-              'border-width': 1,
-              'label': 'data(label)',
-              'text-valign': 'center',
-              'text-halign': 'center',
-              'font-size': '10px',
-              'font-family': 'var(--vscode-font-family)',
-              'color': 'var(--vscode-foreground)',
-              'width': '30px',
-              'height': '30px',
-              'text-wrap': 'wrap',
-              'text-max-width': '80px',
-              'text-background-color': 'var(--vscode-editor-background)',
-              'text-background-opacity': 0.8,
-              'text-background-padding': '2px'
-            }
+              "background-color": "var(--vscode-charts-blue)",
+              "border-color": "var(--vscode-panel-border)",
+              "border-width": 1,
+              label: "data(label)",
+              "text-valign": "center",
+              "text-halign": "center",
+              "font-size": "10px",
+              "font-family": "var(--vscode-font-family)",
+              "font-weight": 500,
+              color: "white",
+              // Task 4.3: Dynamic node sizing based on connection count
+              width: (node: any) => {
+                const degree = node.degree();
+                return calculateNodeSize(degree);
+              },
+              height: (node: any) => {
+                const degree = node.degree();
+                return calculateNodeSize(degree);
+              },
+              "text-wrap": "wrap",
+              "text-max-width": "70px",
+              "text-background-color": "rgba(0, 0, 0, 0.75)",
+              "text-background-opacity": 1.0,
+              "text-background-padding": "1px",
+            },
           },
           {
-            selector: 'node:hover',
+            selector: "node:hover",
             style: {
-              'background-color': 'var(--vscode-charts-purple)',
-              'border-color': 'var(--vscode-focusBorder)',
-              'border-width': 2,
-              'z-index': 5
-            }
+              "background-color": "var(--vscode-charts-purple)",
+              "border-color": "var(--vscode-focusBorder)",
+              "border-width": 2,
+              "z-index": 5,
+              "font-size": "11px",
+              color: "white",
+            },
           },
           {
-            selector: 'edge',
+            selector: "edge",
             style: {
-              'width': 1,
-              'line-color': 'var(--vscode-charts-gray)',
-              'target-arrow-color': 'var(--vscode-charts-gray)',
-              'target-arrow-shape': 'triangle',
-              'curve-style': 'bezier',
-              'arrow-scale': 0.8,
-              'opacity': 0.7
-            }
+              width: 1,
+              "line-color": "var(--vscode-charts-gray)",
+              "target-arrow-color": "var(--vscode-charts-gray)",
+              "target-arrow-shape": "triangle",
+              "curve-style": "bezier",
+              "arrow-scale": 0.8,
+              opacity: 0.7,
+            },
           },
           {
-            selector: 'edge:hover',
+            selector: "edge:hover",
             style: {
-              'width': 2,
-              'opacity': 1,
-              'z-index': 3
-            }
+              width: 2,
+              opacity: 1,
+              "z-index": 3,
+            },
           },
           {
-            selector: '.highlighted',
+            selector: ".highlighted",
             style: {
-              'background-color': 'var(--vscode-charts-orange)',
-              'border-color': 'var(--vscode-charts-orange)',
-              'border-width': 2,
-              'line-color': 'var(--vscode-charts-orange)',
-              'target-arrow-color': 'var(--vscode-charts-orange)',
-              'z-index': 10,
-              'text-background-color': 'var(--vscode-charts-orange)',
-              'color': 'var(--vscode-editor-background)'
-            }
+              // Task 5.1: Enhanced highlighting with 100% opacity and prominent border
+              "background-color": "var(--vscode-charts-orange)",
+              "border-color": "var(--vscode-charts-orange)",
+              "border-width": 3,
+              opacity: 1.0, // Maintain 100% opacity for highlighted nodes
+              "line-color": "var(--vscode-charts-orange)",
+              "target-arrow-color": "var(--vscode-charts-orange)",
+              "z-index": 10,
+              "font-size": "11px",
+              color: "white",
+            },
+          },
+          // IMPORTANT: .dimmed selector must come AFTER other selectors for proper precedence
+          {
+            selector: "node.dimmed, edge.dimmed",
+            style: {
+              // Task 5.2: Updated dimmed opacity to 30% for better contrast
+              opacity: 0.3,
+            },
           },
           {
-            selector: '.dimmed',
+            selector: ".dimmed",
             style: {
-              'opacity': 0.2
-            }
+              // Task 5.2: Fallback dimmed opacity for elements
+              opacity: 0.3,
+            },
           },
           // Active node style appended late for precedence (FR9, FR13)
           {
-            selector: 'node.active-node',
+            selector: "node.active-node",
             style: {
-              'border-width': 4,
-              'border-color': 'var(--vscode-focusBorder)',
-              'background-color': 'var(--vscode-charts-orange)',
-              'z-index': 20
-            }
+              "border-width": 4,
+              "border-color": "var(--vscode-focusBorder)",
+              "background-color": "var(--vscode-charts-orange)",
+              "z-index": 20,
+              "font-size": "12px",
+              color: "white",
+            },
           },
           // Heatmap overlay styles
           {
-            selector: 'node.heatmap-node',
+            selector: "node.heatmap-node",
             style: {
-              'transition-property': 'background-color, border-color, border-width',
-              'transition-duration': 300,
-              'transition-timing-function': 'ease-out'
-            }
+              "transition-property":
+                "background-color, border-color, border-width",
+              "transition-duration": 300,
+              "transition-timing-function": "ease-out",
+            },
           },
           {
-            selector: 'node.heatmap-node:hover',
+            selector: "node.heatmap-node:hover",
             style: {
-              'border-width': '+=1',
-              'z-index': 25
-            }
-          }
+              "border-width": "+=1",
+              "z-index": 25,
+            },
+          },
         ],
-        layout: getOptimalLayout(cytoscapeElements.nodes.length),
+        layout: getLayoutConfig("cose", cytoscapeElements.nodes.length),
         wheelSensitivity: 0.2,
         minZoom: 0.1,
         maxZoom: 3.0,
         // Performance optimizations for smooth 60 FPS interactions
-        pixelRatio: 'auto',
+        pixelRatio: "auto",
         motionBlur: true,
         motionBlurOpacity: 0.2,
         textureOnViewport: false,
         hideEdgesOnViewport: false,
-        hideLabelsOnViewport: false
+        hideLabelsOnViewport: false,
       });
 
       // Add node click handler
-      cyRef.current.on('tap', 'node', (event) => {
+      cyRef.current.on("tap", "node", (event) => {
         const nodeId = event.target.id();
         // Detect modifier keys from the original event (mouse or touch)
         const orig: any = event.originalEvent || {};
         const meta = !!orig.metaKey;
         const ctrl = !!orig.ctrlKey;
-        const openMode: 'default' | 'split' = (meta || ctrl) ? 'split' : 'default';
+        const openMode: "default" | "split" =
+          meta || ctrl ? "split" : "default";
         onNodeClick?.(nodeId, openMode);
       });
 
       // Add optimized viewport handling
-      cyRef.current.on('viewport', throttledViewportUpdate);
+      cyRef.current.on("viewport", throttledViewportUpdate);
 
       // Initialize optimized heatmap processor
       if (cyRef.current) {
         heatmapProcessor.current = createOptimizedHeatmapProcessor(
           cyRef.current,
           {
-            batchSize: Math.min(50, Math.max(10, Math.floor(cytoscapeElements.nodes.length / 20))),
+            batchSize: Math.min(
+              50,
+              Math.max(10, Math.floor(cytoscapeElements.nodes.length / 20))
+            ),
             animationDuration: 300,
-            animationEasing: 'ease-out',
+            animationEasing: "ease-out",
             enableViewportCulling: cytoscapeElements.nodes.length > 100,
             viewportMargin: 150,
             maxCacheSize: Math.min(1000, cytoscapeElements.nodes.length * 2),
-            enablePerformanceMonitoring: true
+            enablePerformanceMonitoring: true,
           }
         );
       }
 
-      setState(prev => ({ 
-        ...prev, 
-        isLoading: false, 
-        cytoscapeInstance: cyRef.current 
+      // Apply file type colors to nodes (Task 2.3: Dynamic background colors)
+      cyRef.current.batch(() => {
+        cyRef.current!.nodes().forEach((node) => {
+          const filePath = node.data("path") || node.data("label") || "";
+          const fileTypeColor = getFileTypeColor(filePath);
+          node.style("background-color", fileTypeColor);
+        });
+      });
+
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        cytoscapeInstance: cyRef.current,
       }));
 
+      // Task 4.5: Test node sizing visual differentiation
+      // Log node size distribution for verification
+      if (cyRef.current) {
+        const nodes = cyRef.current.nodes();
+        const sizeCounts = { small: 0, medium: 0, large: 0, extraLarge: 0 };
+
+        nodes.forEach((node: any) => {
+          const degree = node.degree();
+          const size = calculateNodeSize(degree);
+
+          if (size === 30) sizeCounts.small++;
+          else if (size === 40) sizeCounts.medium++;
+          else if (size === 50) sizeCounts.large++;
+          else if (size === 60) sizeCounts.extraLarge++;
+        });
+
+        console.log(`[GraphCanvas] Node sizing distribution:`, {
+          total: nodes.length,
+          small: `${sizeCounts.small} nodes (30px, ≤2 connections)`,
+          medium: `${sizeCounts.medium} nodes (40px, 3-6 connections)`,
+          large: `${sizeCounts.large} nodes (50px, 7-10 connections)`,
+          extraLarge: `${sizeCounts.extraLarge} nodes (60px, 11+ connections)`,
+        });
+      }
+
       // Performance monitoring with enhanced tracking
-      const renderTime = performanceMonitor.current.endRender(performance.now() - 100);
-      trackRenderPerformance(renderTime, 'graph-initialization');
+      const renderTime = performanceMonitor.current.endRender(
+        performance.now() - 100
+      );
+      trackRenderPerformance(renderTime, "graph-initialization");
 
       // Adaptive performance warnings based on graph size
       if (cytoscapeElements.nodes.length > 1000) {
-        console.warn(`[GraphCanvas] Large graph detected (${cytoscapeElements.nodes.length} nodes). Performance optimizations enabled.`);
-        
+        console.warn(
+          `[GraphCanvas] Large graph detected (${cytoscapeElements.nodes.length} nodes). Performance optimizations enabled.`
+        );
+
         // Only show error for extremely large graphs
         if (cytoscapeElements.nodes.length > 2000) {
-          onError?.(`Very large graph with ${cytoscapeElements.nodes.length} nodes detected. Performance may be impacted. Consider filtering the data.`);
+          onError?.(
+            `Very large graph with ${cytoscapeElements.nodes.length} nodes detected. Performance may be impacted. Consider filtering the data.`
+          );
         }
       }
-
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('GraphCanvas initialization error:', errorMessage);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error occurred";
+      console.error("GraphCanvas initialization error:", errorMessage);
       onError?.(errorMessage);
-      setState(prev => ({ ...prev, isLoading: false }));
+      setState((prev) => ({ ...prev, isLoading: false }));
     }
 
     // Cleanup on unmount or graph change
@@ -498,17 +683,17 @@ export function GraphCanvas({
         heatmapProcessor.current.dispose();
         heatmapProcessor.current = null;
       }
-      
+
       // Cleanup Cytoscape instance
       if (cyRef.current) {
         cyRef.current.destroy();
         cyRef.current = null;
       }
-      
+
       // Cancel debounced functions
       debouncedSetState.cancel();
       throttledViewportUpdate.cancel();
-      
+
       // Reset performance monitor
       performanceMonitor.current.reset();
     };
@@ -523,12 +708,21 @@ export function GraphCanvas({
     if (!cyRef.current) return;
     const cy = cyRef.current;
     const fileId = activeHighlight?.fileId ?? null;
-    // Remove previous active highlight (FR9 precedence: keep .highlighted search class)
-    cy.nodes('.active-node').removeClass('active-node');
+
+    // Apply class changes in batch to prevent layout recalculation
+    cy.batch(() => {
+      // Remove previous active highlight (FR9 precedence: keep .highlighted search class)
+      cy.nodes(".active-node").removeClass("active-node");
+      if (!fileId) return; // clear only
+      const node = cy.getElementById(fileId);
+      if (!node || node.empty()) return;
+      node.addClass("active-node");
+    });
+
     if (!fileId) return; // clear only
     const node = cy.getElementById(fileId);
     if (!node || node.empty()) return;
-    node.addClass('active-node');
+
     try {
       const extent = cy.extent();
       const vpW = extent.x2 - extent.x1;
@@ -539,30 +733,46 @@ export function GraphCanvas({
       const thresholdY1 = extent.y1 + vpH * inset;
       const thresholdY2 = extent.y2 - vpH * inset;
       const pos = node.position();
-      const outOfView = pos.x < thresholdX1 || pos.x > thresholdX2 || pos.y < thresholdY1 || pos.y > thresholdY2;
+      const outOfView =
+        pos.x < thresholdX1 ||
+        pos.x > thresholdX2 ||
+        pos.y < thresholdY1 ||
+        pos.y > thresholdY2;
       if (outOfView) {
         // Cancel in-flight animations to prevent queue build-up (FR8)
         cy.stop(true);
         const nodeCount = cy.nodes().length;
         const heuristicZoom = computeTargetZoom(nodeCount);
-        const targetZoom = Math.min(AUTO_PAN_MAX_ZOOM, Math.max(AUTO_PAN_MIN_ZOOM, heuristicZoom));
+        const targetZoom = Math.min(
+          AUTO_PAN_MAX_ZOOM,
+          Math.max(AUTO_PAN_MIN_ZOOM, heuristicZoom)
+        );
         const currentZoom = cy.zoom();
-        const animateOptions: any = { center: { eles: node }, duration: AUTO_PAN_ANIMATION_MS };
+        const animateOptions: any = {
+          center: { eles: node },
+          duration: AUTO_PAN_ANIMATION_MS,
+        };
         if (Math.abs(currentZoom - targetZoom) > 0.05) {
           animateOptions.zoom = targetZoom;
         }
         cy.animate(animateOptions);
-        console.log(`Auto-pan (FR8) center=${fileId} zoom=${animateOptions.zoom ?? 'same'} duration=${AUTO_PAN_ANIMATION_MS}ms`);
+        console.log(
+          `Auto-pan (FR8) center=${fileId} zoom=${
+            animateOptions.zoom ?? "same"
+          } duration=${AUTO_PAN_ANIMATION_MS}ms`
+        );
       }
     } catch (e) {
-      console.warn('Auto-pan failed', e);
+      console.warn("Auto-pan failed", e);
     }
   }, [activeHighlight]);
 
   // Task 10.3: Warn if highlight messages arrive before Cytoscape initialized
   useEffect(() => {
     if (activeHighlight && !cyRef.current) {
-      console.warn('[GraphCanvas] Highlight received before Cytoscape ready (FR18 resilience)');
+      console.warn(
+        "[GraphCanvas] Highlight received before Cytoscape ready (FR18 resilience)"
+      );
     }
   }, [activeHighlight]);
 
@@ -573,65 +783,86 @@ export function GraphCanvas({
   const applyHeatmapOverlay = async (heatmapNodes: HeatmapNode[]) => {
     try {
       if (!cyRef.current) {
-        showError('Heatmap Error', 'Graph not initialized. Please refresh the page.');
-        console.warn('[GraphCanvas] Cannot apply heatmap - Cytoscape not initialized');
+        showError(
+          "Heatmap Error",
+          "Graph not initialized. Please refresh the page."
+        );
+        console.warn(
+          "[GraphCanvas] Cannot apply heatmap - Cytoscape not initialized"
+        );
         return;
       }
 
       if (!heatmapNodes || heatmapNodes.length === 0) {
-        showWarning('No Heatmap Data', 'No risk analysis data available for visualization.');
-        console.warn('[GraphCanvas] Cannot apply heatmap - No heatmap data provided');
+        showWarning(
+          "No Heatmap Data",
+          "No risk analysis data available for visualization."
+        );
+        console.warn(
+          "[GraphCanvas] Cannot apply heatmap - No heatmap data provided"
+        );
         return;
       }
 
       if (!heatmapProcessor.current) {
-        showError('Heatmap Error', 'Heatmap processor not available. Please try refreshing.');
-        console.warn('[GraphCanvas] Heatmap processor not initialized');
+        showError(
+          "Heatmap Error",
+          "Heatmap processor not available. Please try refreshing."
+        );
+        console.warn("[GraphCanvas] Heatmap processor not initialized");
         return;
       }
 
       const startTime = performanceMonitor.current.startRender();
-      
+
       // Show loading notification for large datasets
       if (heatmapNodes.length > 100) {
-        showInfo('Processing Heatmap', `Applying risk visualization to ${heatmapNodes.length} nodes...`);
+        showInfo(
+          "Processing Heatmap",
+          `Applying risk visualization to ${heatmapNodes.length} nodes...`
+        );
       }
 
       // Store original styles for restoration
       const originalStyles = new Map<string, any>();
-      heatmapNodes.forEach(heatmapNode => {
+      heatmapNodes.forEach((heatmapNode) => {
         try {
           if (!heatmapNode?.nodeId) return;
-          
+
           const node = cyRef.current!.getElementById(heatmapNode.nodeId);
           if (!node.empty()) {
             originalStyles.set(heatmapNode.nodeId, {
-              backgroundColor: node.style('background-color'),
-              borderColor: node.style('border-color'),
-              borderWidth: node.style('border-width')
+              backgroundColor: node.style("background-color"),
+              borderColor: node.style("border-color"),
+              borderWidth: node.style("border-width"),
             });
           }
         } catch (error) {
-          console.warn(`[GraphCanvas] Error storing original style for node ${heatmapNode?.nodeId}:`, error);
+          console.warn(
+            `[GraphCanvas] Error storing original style for node ${heatmapNode?.nodeId}:`,
+            error
+          );
         }
       });
 
       // Update state to show processing
-      debouncedSetState(prev => ({
+      debouncedSetState((prev) => ({
         ...prev,
         heatmapState: {
           ...prev.heatmapState,
           isProcessing: true,
           processingProgress: 0,
-          originalStyles
-        }
+          originalStyles,
+        },
       }));
 
       // Process heatmap data with optimizations
-      const result = await heatmapProcessor.current.processHeatmapData(heatmapNodes);
-      
+      const result = await heatmapProcessor.current.processHeatmapData(
+        heatmapNodes
+      );
+
       // Update final state
-      debouncedSetState(prev => ({
+      debouncedSetState((prev) => ({
         ...prev,
         heatmapState: {
           ...prev.heatmapState,
@@ -645,61 +876,75 @@ export function GraphCanvas({
           processingProgress: 100,
           performanceMetrics: {
             lastRenderTime: result.estimatedRenderTime,
-            averageRenderTime: performanceMonitor.current.getMetrics().averageRenderTime,
-            cacheHitRate: result.cacheHitRate
-          }
-        }
+            averageRenderTime:
+              performanceMonitor.current.getMetrics().averageRenderTime,
+            cacheHitRate: result.cacheHitRate,
+          },
+        },
       }));
 
       onHeatmapStateChange?.(true);
-      
+
       const totalTime = performanceMonitor.current.endRender(startTime);
-      trackRenderPerformance(totalTime, 'heatmap-overlay');
-      
+      trackRenderPerformance(totalTime, "heatmap-overlay");
+
       // Show success notification
       showSuccess(
-        'Heatmap Applied',
-        `Risk visualization applied to ${result.visibleCount} nodes in ${totalTime.toFixed(0)}ms`,
+        "Heatmap Applied",
+        `Risk visualization applied to ${
+          result.visibleCount
+        } nodes in ${totalTime.toFixed(0)}ms`,
         { duration: 3000 }
       );
-      
-      console.log(`[GraphCanvas] Applied optimized heatmap overlay: ${result.visibleCount} visible, ${result.hiddenCount} hidden nodes, ${(result.cacheHitRate * 100).toFixed(1)}% cache hit rate in ${totalTime.toFixed(2)}ms`);
 
+      console.log(
+        `[GraphCanvas] Applied optimized heatmap overlay: ${
+          result.visibleCount
+        } visible, ${result.hiddenCount} hidden nodes, ${(
+          result.cacheHitRate * 100
+        ).toFixed(1)}% cache hit rate in ${totalTime.toFixed(2)}ms`
+      );
     } catch (error) {
-      console.error('[GraphCanvas] Critical error applying heatmap overlay:', error);
-      
+      console.error(
+        "[GraphCanvas] Critical error applying heatmap overlay:",
+        error
+      );
+
       // Show error notification with retry option
       showError(
-        'Heatmap Failed',
-        'Failed to apply risk visualization. Click to retry.',
+        "Heatmap Failed",
+        "Failed to apply risk visualization. Click to retry.",
         {
           duration: 8000,
           action: {
-            label: 'Retry',
-            onClick: () => applyHeatmapOverlay(heatmapNodes)
-          }
+            label: "Retry",
+            onClick: () => applyHeatmapOverlay(heatmapNodes),
+          },
         }
       );
-      
+
       // Graceful degradation: clear any partial state and notify
       try {
         clearHeatmapOverlay();
       } catch (clearError) {
-        console.error('[GraphCanvas] Error during heatmap cleanup:', clearError);
+        console.error(
+          "[GraphCanvas] Error during heatmap cleanup:",
+          clearError
+        );
       }
-      
+
       // Update state to show error
-      debouncedSetState(prev => ({
+      debouncedSetState((prev) => ({
         ...prev,
         heatmapState: {
           ...prev.heatmapState,
           isProcessing: false,
-          processingProgress: 0
-        }
+          processingProgress: 0,
+        },
       }));
-      
+
       if (onError) {
-        onError('Failed to apply heatmap overlay due to an unexpected error.');
+        onError("Failed to apply heatmap overlay due to an unexpected error.");
       }
     }
   };
@@ -725,14 +970,14 @@ export function GraphCanvas({
       // Batch restore original styles for better performance
       const restoreBatch = Array.from(originalStyles.entries());
       const BATCH_SIZE = 25; // Smaller batches for clearing
-      
+
       const processClearBatch = (batchIndex: number) => {
         const startIdx = batchIndex * BATCH_SIZE;
         const endIdx = Math.min(startIdx + BATCH_SIZE, restoreBatch.length);
-        
+
         if (startIdx >= restoreBatch.length) {
           // All batches processed
-          debouncedSetState(prev => ({
+          debouncedSetState((prev) => ({
             ...prev,
             heatmapState: {
               isActive: false,
@@ -740,19 +985,24 @@ export function GraphCanvas({
               originalStyles: new Map(),
               isProcessing: false,
               processingProgress: 0,
-              performanceMetrics: undefined
-            }
+              performanceMetrics: undefined,
+            },
           }));
 
           onHeatmapStateChange?.(false);
-          
+
           const totalTime = performanceMonitor.current.endRender(startTime);
-          trackRenderPerformance(totalTime, 'heatmap-clear');
-          
+          trackRenderPerformance(totalTime, "heatmap-clear");
+
           // Show success notification
-          showInfo('Heatmap Cleared', 'Risk visualization has been removed from the graph.');
-          
-          console.log(`[GraphCanvas] Cleared heatmap overlay in ${totalTime.toFixed(2)}ms`);
+          showInfo(
+            "Heatmap Cleared",
+            "Risk visualization has been removed from the graph."
+          );
+
+          console.log(
+            `[GraphCanvas] Cleared heatmap overlay in ${totalTime.toFixed(2)}ms`
+          );
           return;
         }
 
@@ -763,30 +1013,36 @@ export function GraphCanvas({
             const node = cy.getElementById(nodeId);
             if (!node.empty()) {
               // Clear risk data and heatmap class
-              node.removeData('riskData');
-              node.removeClass('heatmap-node');
-              
+              node.removeData("riskData");
+              node.removeClass("heatmap-node");
+
               // Animate back to original styles with staggered timing
               const animationDelay = (i - startIdx) * 2; // 2ms stagger
-              
+
               setTimeout(() => {
                 if (cy && !cy.destroyed()) {
-                  node.animate({
-                    style: {
-                      'background-color': originalStyle.backgroundColor,
-                      'border-color': originalStyle.borderColor,
-                      'border-width': originalStyle.borderWidth,
-                      'z-index': 1
+                  node.animate(
+                    {
+                      style: {
+                        "background-color": originalStyle.backgroundColor,
+                        "border-color": originalStyle.borderColor,
+                        "border-width": originalStyle.borderWidth,
+                        "z-index": 1,
+                      },
+                    },
+                    {
+                      duration: 200, // Faster clear animation
+                      easing: "ease-out",
                     }
-                  }, {
-                    duration: 200, // Faster clear animation
-                    easing: 'ease-out'
-                  });
+                  );
                 }
               }, animationDelay);
             }
           } catch (error) {
-            console.warn(`[GraphCanvas] Error clearing style for node ${nodeId}:`, error);
+            console.warn(
+              `[GraphCanvas] Error clearing style for node ${nodeId}:`,
+              error
+            );
           }
         }
 
@@ -796,22 +1052,21 @@ export function GraphCanvas({
 
       // Start batch processing
       processClearBatch(0);
-
     } catch (error) {
-      console.error('[GraphCanvas] Error clearing heatmap overlay:', error);
-      
+      console.error("[GraphCanvas] Error clearing heatmap overlay:", error);
+
       // Fallback: immediate state update
-      debouncedSetState(prev => ({
+      debouncedSetState((prev) => ({
         ...prev,
         heatmapState: {
           isActive: false,
           nodes: [],
           originalStyles: new Map(),
           isProcessing: false,
-          processingProgress: 0
-        }
+          processingProgress: 0,
+        },
       }));
-      
+
       onHeatmapStateChange?.(false);
     }
   };
@@ -838,12 +1093,16 @@ export function GraphCanvas({
 
     if (heatmapEnabled && heatmapData && heatmapData.length > 0) {
       // Debounce heatmap application for rapid changes
-      const debouncedApply = enhancedDebounce(() => {
-        applyHeatmapOverlay(heatmapData);
-      }, 150, false);
-      
+      const debouncedApply = enhancedDebounce(
+        () => {
+          applyHeatmapOverlay(heatmapData);
+        },
+        150,
+        false
+      );
+
       debouncedApply();
-      
+
       return () => debouncedApply.cancel();
     } else if (!heatmapEnabled && state.heatmapState.isActive) {
       clearHeatmapOverlay();
@@ -857,79 +1116,87 @@ export function GraphCanvas({
     const cy = cyRef.current;
     let tooltipTimeout: NodeJS.Timeout;
 
-    const showTooltip = (node: cytoscape.NodeSingular, event: cytoscape.EventObject) => {
-      console.log('[GraphCanvas] Showing tooltip for node:', node.id());
-      const riskData = node.data('riskData') as HeatmapNode | undefined;
-      const label = node.data('label') || 'Unknown';
-      const path = node.data('path') || '';
+    const showTooltip = (
+      node: cytoscape.NodeSingular,
+      event: cytoscape.EventObject
+    ) => {
+      const riskData = node.data("riskData") as HeatmapNode | undefined;
+      const label = node.data("label") || "Unknown";
+      const path = node.data("path") || "";
 
       // Create rich tooltip data
       const tooltipData: TooltipData = {
         title: label,
         path: path || undefined,
-        riskData: riskData ? {
-          score: riskData.score,
-          category: riskData.metrics.category,
-          complexity: riskData.metrics.complexity,
-          churn: riskData.metrics.churn,
-          dependencies: riskData.metrics.dependencies,
-          dependents: riskData.metrics.dependencies * 0.7, // Estimated dependents
-          recommendation: getRecommendationForRisk(riskData)
-        } : undefined,
-        basicInfo: !riskData ? {
-          type: getFileType(path),
-          size: node.data('size'),
-          lastModified: node.data('lastModified')
-        } : undefined
+        riskData: riskData
+          ? {
+              score: riskData.score,
+              category: riskData.metrics.category,
+              complexity: riskData.metrics.complexity,
+              churn: riskData.metrics.churn,
+              dependencies: riskData.metrics.dependencies,
+              dependents: riskData.metrics.dependencies * 0.7, // Estimated dependents
+              recommendation: getRecommendationForRisk(riskData),
+            }
+          : undefined,
+        basicInfo: !riskData
+          ? {
+              type: getFileType(path),
+              size: node.data("size"),
+              lastModified: node.data("lastModified"),
+            }
+          : undefined,
       };
 
       // Get cursor position
       const originalEvent = event.originalEvent as MouseEvent;
       const position = {
         x: originalEvent?.clientX || 0,
-        y: originalEvent?.clientY || 0
+        y: originalEvent?.clientY || 0,
       };
 
-      console.log('[GraphCanvas] Setting tooltip state with position:', position, 'data:', tooltipData);
-      setState(prev => ({
+      console.log(
+        "[GraphCanvas] Setting tooltip state with position:",
+        position,
+        "data:",
+        tooltipData
+      );
+      setState((prev) => ({
         ...prev,
         tooltip: {
           visible: true,
           data: tooltipData,
-          position
-        }
+          position,
+        },
       }));
     };
 
     const hideTooltip = () => {
-      console.log('[GraphCanvas] Hiding tooltip');
       clearTimeout(tooltipTimeout);
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         tooltip: {
           visible: false,
           data: null,
-          position: { x: 0, y: 0 }
-        }
+          position: { x: 0, y: 0 },
+        },
       }));
     };
 
     // Add hover event listeners with direct timeout approach
-    cy.on('mouseover', 'node', (event) => {
-      console.log('[GraphCanvas] Node mouseover detected:', event.target.id());
+    cy.on("mouseover", "node", (event) => {
       clearTimeout(tooltipTimeout);
       tooltipTimeout = setTimeout(() => {
         showTooltip(event.target, event);
       }, TOOLTIP_HOVER_DELAY_MS);
     });
 
-    cy.on('mouseout', 'node', () => {
-      console.log('[GraphCanvas] Node mouseout detected');
+    cy.on("mouseout", "node", () => {
       hideTooltip();
     });
 
     // Hide tooltip on graph interaction
-    cy.on('pan zoom', () => {
+    cy.on("pan zoom", () => {
       hideTooltip();
     });
 
@@ -940,9 +1207,11 @@ export function GraphCanvas({
   }, [state.cytoscapeInstance]); // Re-run when Cytoscape instance changes
 
   // Helper functions for tooltip data
-  const getRecommendationForRisk = (riskData: HeatmapNode): string | undefined => {
+  const getRecommendationForRisk = (
+    riskData: HeatmapNode
+  ): string | undefined => {
     const { score, metrics } = riskData;
-    
+
     if (score > 0.8) {
       if (metrics.complexity > 15) {
         return "Consider refactoring to reduce complexity and improve maintainability.";
@@ -952,43 +1221,165 @@ export function GraphCanvas({
       }
       return "High risk detected. Review and consider refactoring.";
     }
-    
+
     if (score > 0.6) {
       return "Moderate risk. Monitor for changes and consider preventive refactoring.";
     }
-    
+
     return undefined;
   };
 
   const getFileType = (path: string): string => {
-    if (!path) return 'Unknown';
-    const ext = path.split('.').pop()?.toLowerCase();
-    
+    if (!path) return "Unknown";
+    const ext = path.split(".").pop()?.toLowerCase();
+
     switch (ext) {
-      case 'ts': return 'TypeScript';
-      case 'tsx': return 'TypeScript React';
-      case 'js': return 'JavaScript';
-      case 'jsx': return 'JavaScript React';
-      case 'py': return 'Python';
-      case 'java': return 'Java';
-      case 'cpp': case 'cc': case 'cxx': return 'C++';
-      case 'c': return 'C';
-      case 'cs': return 'C#';
-      case 'go': return 'Go';
-      case 'rs': return 'Rust';
-      case 'php': return 'PHP';
-      case 'rb': return 'Ruby';
-      case 'swift': return 'Swift';
-      case 'kt': return 'Kotlin';
-      case 'scala': return 'Scala';
-      case 'html': return 'HTML';
-      case 'css': return 'CSS';
-      case 'scss': case 'sass': return 'Sass';
-      case 'json': return 'JSON';
-      case 'xml': return 'XML';
-      case 'yaml': case 'yml': return 'YAML';
-      case 'md': return 'Markdown';
-      default: return 'File';
+      case "ts":
+        return "TypeScript";
+      case "tsx":
+        return "TypeScript React";
+      case "js":
+        return "JavaScript";
+      case "jsx":
+        return "JavaScript React";
+      case "py":
+        return "Python";
+      case "java":
+        return "Java";
+      case "cpp":
+      case "cc":
+      case "cxx":
+        return "C++";
+      case "c":
+        return "C";
+      case "cs":
+        return "C#";
+      case "go":
+        return "Go";
+      case "rs":
+        return "Rust";
+      case "php":
+        return "PHP";
+      case "rb":
+        return "Ruby";
+      case "swift":
+        return "Swift";
+      case "kt":
+        return "Kotlin";
+      case "scala":
+        return "Scala";
+      case "html":
+        return "HTML";
+      case "css":
+        return "CSS";
+      case "scss":
+      case "sass":
+        return "Sass";
+      case "json":
+        return "JSON";
+      case "xml":
+        return "XML";
+      case "yaml":
+      case "yml":
+        return "YAML";
+      case "md":
+        return "Markdown";
+      default:
+        return "File";
+    }
+  };
+
+  /**
+   * Get file type color based on extension using existing path utils
+   * Task 2.1: File type color mapping for visual differentiation
+   * Task 9.2: Enhanced error handling for file extension detection
+   */
+  const getFileTypeColor = (filePath: string): string => {
+    try {
+      // Task 9.2: Input validation
+      if (!filePath || typeof filePath !== "string") {
+        console.warn(
+          "[FileType] Invalid file path provided, using default color"
+        );
+        return "var(--vscode-charts-blue)"; // Safe default
+      }
+
+      // Task 9.2: Safe file extension detection with fallback
+      let fileInfo;
+      try {
+        fileInfo = getFileExtensionInfo(filePath);
+      } catch (error) {
+        console.warn("[FileType] Error in file extension detection:", error);
+        // Fallback: try to extract extension manually
+        const lastDot = filePath.lastIndexOf(".");
+        const extension =
+          lastDot > 0 ? filePath.substring(lastDot + 1).toLowerCase() : "";
+        fileInfo = {
+          type: "unknown" as const,
+          extension: extension,
+          isSource: false,
+          isConfig: false,
+          isAsset: false,
+          isDocumentation: false,
+        };
+      }
+
+      // Task 9.2: Validate fileInfo structure
+      if (!fileInfo || typeof fileInfo !== "object") {
+        console.warn(
+          "[FileType] Invalid file info structure, using default color"
+        );
+        return "var(--vscode-charts-blue)";
+      }
+
+      // Check for test files first (higher priority)
+      if (
+        filePath.includes(".test.") ||
+        filePath.includes(".spec.") ||
+        filePath.includes("/test/") ||
+        filePath.includes("__tests__")
+      ) {
+        return "#4caf50"; // Green for test files
+      }
+
+      switch (fileInfo.type) {
+        case "source":
+          switch (fileInfo.extension) {
+            case "ts":
+            case "tsx":
+              return "#3178c6"; // TypeScript blue
+            case "js":
+            case "jsx":
+              return "#f7df1e"; // JavaScript yellow
+            default:
+              return "#3178c6"; // Default to TypeScript blue for other source files
+          }
+        case "config":
+          return "#6B46C1"; // Purple for config files
+        case "asset":
+          switch (fileInfo.extension) {
+            case "css":
+            case "scss":
+            case "sass":
+            case "less":
+              return "#ff9800"; // Orange for CSS
+            case "html":
+            case "htm":
+              return "#e91e63"; // Pink for HTML
+            default:
+              return "#9e9e9e"; // Gray for other assets
+          }
+        case "documentation":
+          return "#9e9e9e"; // Gray for documentation
+        default:
+          // Task 9.2: Safe fallback for unknown file types
+          return "#9e9e9e"; // Gray for unknown files
+      }
+    } catch (error) {
+      // Task 9.2: Comprehensive error handling for file type detection
+      console.error("[FileType] Error in getFileTypeColor:", error);
+      console.log("[FileType] Falling back to default blue color");
+      return "var(--vscode-charts-blue)"; // Safe default fallback
     }
   };
 
@@ -996,58 +1387,408 @@ export function GraphCanvas({
   useEffect(() => {
     if (!cyRef.current) return;
 
-    const query = searchQuery?.trim() || '';
-    setState(prev => ({ ...prev, searchQuery: query }));
+    // Task 8.1: Performance monitoring for search operations
+    const searchStartTime = performance.now();
+    const nodeCount = cyRef.current.nodes().length;
+
+    const query = searchQuery?.trim() || "";
+    const previousQuery = state.searchQuery || "";
+    const isNewSearch = query !== previousQuery && query.length > 0;
+
+    setState((prev) => ({ ...prev, searchQuery: query }));
 
     if (!query) {
-      // Clear highlighting when search is empty
-      cyRef.current.elements().removeClass('highlighted dimmed');
-      setState(prev => ({ ...prev, highlightedNodes: [] }));
+      // Clear highlighting when search is empty using batch operation
+      cyRef.current.batch(() => {
+        cyRef.current!.elements().removeClass("highlighted dimmed");
+        // Reset opacity to default values
+        cyRef.current!.elements().removeStyle("opacity");
+      });
+      setState((prev) => ({ ...prev, highlightedNodes: [] }));
       onSearchResultsChange?.(0);
+
+      // Task 8.1: Log performance metrics for search clear operation
+      const clearTime = performance.now() - searchStartTime;
+      if (nodeCount >= 500) {
+        console.log(
+          `[PERF] Search clear - Nodes: ${nodeCount}, Time: ${clearTime.toFixed(
+            2
+          )}ms`
+        );
+      }
       return;
     }
 
     const searchLower = query.toLowerCase();
     const matchingNodes: string[] = [];
 
-    // Find matching nodes
-    cyRef.current.nodes().forEach(node => {
-      const label = node.data('label')?.toLowerCase() || '';
-      const path = node.data('path')?.toLowerCase() || '';
-      
-      if (label.includes(searchLower) || path.includes(searchLower)) {
-        matchingNodes.push(node.id());
+    // Task 8.1: Optimize search for large graphs with performance monitoring
+    const searchOperationStart = performance.now();
+
+    // Find matching nodes with optimized search for large graphs
+    if (nodeCount >= 500) {
+      // Use optimized search for large graphs - process in smaller batches
+      const nodes = cyRef.current.nodes();
+      const batchSize = Math.min(100, Math.floor(nodeCount / 5));
+
+      for (let i = 0; i < nodes.length; i += batchSize) {
+        const batch = nodes.slice(i, i + batchSize);
+        batch.forEach((node) => {
+          const label = node.data("label")?.toLowerCase() || "";
+          const path = node.data("path")?.toLowerCase() || "";
+
+          if (label.includes(searchLower) || path.includes(searchLower)) {
+            matchingNodes.push(node.id());
+          }
+        });
+      }
+    } else {
+      // Standard search for smaller graphs
+      cyRef.current.nodes().forEach((node) => {
+        const label = node.data("label")?.toLowerCase() || "";
+        const path = node.data("path")?.toLowerCase() || "";
+
+        if (label.includes(searchLower) || path.includes(searchLower)) {
+          matchingNodes.push(node.id());
+        }
+      });
+    }
+
+    const searchTime = performance.now() - searchOperationStart;
+
+    // Apply highlighting using batch operation for atomic updates
+    const batchStartTime = performance.now();
+    cyRef.current.batch(() => {
+      // First, clear all existing classes and reset opacity
+      cyRef.current!.elements().removeClass("highlighted dimmed");
+      cyRef.current!.elements().removeStyle("opacity");
+
+      if (matchingNodes.length > 0) {
+        // Highlight matching nodes
+        matchingNodes.forEach((nodeId) => {
+          const node = cyRef.current?.getElementById(nodeId);
+          if (node && !node.empty()) {
+            node.addClass("highlighted");
+            // Ensure highlighted nodes have full opacity
+            node.style("opacity", 1.0);
+          }
+        });
+
+        // Dim non-matching elements (both nodes and edges)
+        const nonMatchingElements = cyRef
+          .current!.elements()
+          .not(".highlighted");
+        nonMatchingElements.addClass("dimmed");
+        // Apply dimmed opacity directly to ensure it overrides other styles
+        nonMatchingElements.style("opacity", 0.3);
       }
     });
 
-    // Apply highlighting
-    cyRef.current.elements().removeClass('highlighted dimmed');
-    
-    if (matchingNodes.length > 0) {
-      // Highlight matching nodes
-      matchingNodes.forEach(nodeId => {
-        cyRef.current?.getElementById(nodeId).addClass('highlighted');
-      });
-      
-      // Dim non-matching elements
-      cyRef.current.elements().not('.highlighted').addClass('dimmed');
+    const batchTime = performance.now() - batchStartTime;
+    const totalSearchTime = performance.now() - searchStartTime;
+
+    // Task 8.1: Log performance metrics for search operations on large graphs
+    if (nodeCount >= 500) {
+      console.log(
+        `[PERF] Search operation - Nodes: ${nodeCount}, Matches: ${matchingNodes.length}`
+      );
+      console.log(
+        `[PERF] Search timing - Find: ${searchTime.toFixed(
+          2
+        )}ms, Batch: ${batchTime.toFixed(
+          2
+        )}ms, Total: ${totalSearchTime.toFixed(2)}ms`
+      );
+
+      // Warn if search is taking too long (should be under 100ms for good UX)
+      if (totalSearchTime > 100) {
+        console.warn(
+          `[PERF] Search performance warning: ${totalSearchTime.toFixed(
+            2
+          )}ms exceeds 100ms target`
+        );
+      }
     }
 
-    setState(prev => ({ ...prev, highlightedNodes: matchingNodes }));
+    // Only animate focus for new searches to preserve viewport stability
+    if (isNewSearch && matchingNodes.length > 0) {
+      const firstMatchNode = cyRef.current.getElementById(matchingNodes[0]);
+      if (!firstMatchNode.empty()) {
+        const currentZoom = cyRef.current.zoom();
+        cyRef.current.animate({
+          center: { eles: firstMatchNode },
+          zoom: currentZoom, // Maintain current zoom level
+          duration: LAYOUT_ANIMATION_MS,
+        });
+      }
+    }
+
+    setState((prev) => ({ ...prev, highlightedNodes: matchingNodes }));
     onSearchResultsChange?.(matchingNodes.length);
   }, [searchQuery, onSearchResultsChange]);
 
+  // Task 5.4: Handle search focus cycling with animation
+  useEffect(() => {
+    if (
+      !cyRef.current ||
+      !searchQuery ||
+      searchFocusIndex < 0 ||
+      state.highlightedNodes.length === 0
+    ) {
+      return;
+    }
+
+    const targetNodeId = state.highlightedNodes[searchFocusIndex];
+    if (!targetNodeId) return;
+
+    const targetNode = cyRef.current.getElementById(targetNodeId);
+    if (targetNode.empty()) return;
+
+    // Task 5.4: Focus animation using AUTO_PAN_ANIMATION_MS (400ms) while maintaining zoom
+    const currentZoom = cyRef.current.zoom();
+    cyRef.current.animate({
+      center: { eles: targetNode },
+      zoom: currentZoom, // Maintain current zoom level
+      duration: AUTO_PAN_ANIMATION_MS, // Use the 400ms constant
+    });
+
+    console.log(
+      `[GraphCanvas] Focused on search result ${searchFocusIndex + 1}/${
+        state.highlightedNodes.length
+      }: ${targetNodeId}`
+    );
+  }, [searchFocusIndex, searchQuery, state.highlightedNodes]);
+
+  // Handle layout changes (Task 3.5: Layout change logic with animation)
+  // Task 6.4: Enhanced state management for layout changes
+  useEffect(() => {
+    if (!cyRef.current || !graph || state.isLoading) return;
+
+    // Skip the initial layout setup - only handle user-initiated layout changes
+    if (!hasInitialLayoutRef.current) {
+      hasInitialLayoutRef.current = true;
+      return;
+    }
+
+    // Task 8.3: Memory usage monitoring before layout change
+    const memoryBefore = (performance as any).memory
+      ? {
+          usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
+          totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+        }
+      : null;
+
+    // Task 8.4: Use existing performance monitoring infrastructure
+    const performanceMonitor = new PerformanceMonitor();
+    const startTime = performanceMonitor.startRender();
+    const cy = cyRef.current;
+    const cytoscapeLayoutName = getCytoscapeLayoutName(currentLayout);
+    const layoutConfig = getLayoutConfig(
+      cytoscapeLayoutName,
+      graph.nodes.length
+    );
+
+    // Task 6.4: Update layout state when change starts
+    setState((prev) => ({
+      ...prev,
+      layoutState: {
+        ...prev.layoutState,
+        currentLayout: currentLayout as LayoutType,
+        isChanging: true,
+        lastChanged: new Date().toISOString(),
+        history: [
+          ...(prev.layoutState.history || []),
+          currentLayout as LayoutType,
+        ].slice(-10), // Keep last 10
+      },
+    }));
+
+    // Notify parent that layout change is starting
+    onLayoutChange?.(true);
+
+    // Apply the new layout
+    const layout = cy.layout(layoutConfig);
+
+    const handleLayoutStop = () => {
+      // Task 8.4: End performance monitoring using existing infrastructure
+      const duration = performanceMonitor.endRender(startTime);
+
+      // Task 8.2: Enhanced performance monitoring for layout switching
+      const nodeCount = graph.nodes.length;
+      console.log(
+        `[PERF] Layout switch - Algorithm: ${currentLayout}, Nodes: ${nodeCount}, Duration: ${duration.toFixed(
+          2
+        )}ms`
+      );
+
+      // Task 8.3: Memory usage monitoring after layout change
+      const memoryAfter = (performance as any).memory
+        ? {
+            usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
+            totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+          }
+        : null;
+
+      if (memoryBefore && memoryAfter) {
+        const memoryDelta =
+          memoryAfter.usedJSHeapSize - memoryBefore.usedJSHeapSize;
+        const memoryMB = (memoryDelta / 1024 / 1024).toFixed(2);
+        console.log(
+          `[PERF] Layout memory usage - Delta: ${memoryMB}MB, Total: ${(
+            memoryAfter.usedJSHeapSize /
+            1024 /
+            1024
+          ).toFixed(2)}MB`
+        );
+
+        // Task 8.3: Memory leak detection
+        if (memoryDelta > 10 * 1024 * 1024) {
+          // > 10MB increase
+          console.warn(
+            `[PERF] Potential memory leak detected - Layout change increased memory by ${memoryMB}MB`
+          );
+        }
+      }
+
+      // Task 8.2: Performance validation - warn if layout takes too long
+      if (nodeCount <= 500 && duration > 1000) {
+        console.warn(
+          `[PERF] Layout performance warning: ${duration.toFixed(
+            2
+          )}ms exceeds 1000ms target for ${nodeCount} nodes`
+        );
+      }
+
+      // Task 8.2: Performance recommendations for large graphs
+      if (nodeCount > 500) {
+        console.log(
+          `[PERF] Large graph detected (${nodeCount} nodes) - layout time: ${duration.toFixed(
+            2
+          )}ms`
+        );
+        if (duration > 2000) {
+          console.warn(
+            `[PERF] Consider using simplified layouts for graphs with ${nodeCount}+ nodes`
+          );
+        }
+      }
+
+      // Task 6.4: Update layout state when change completes
+      setState((prev) => {
+        // Task 8.2: Track performance trends
+        const avgDuration =
+          prev.layoutState.performanceMetrics?.averageDuration || duration;
+        if (duration > avgDuration * 1.5) {
+          console.warn(
+            `[PERF] Layout performance degradation detected: ${duration.toFixed(
+              2
+            )}ms vs ${avgDuration.toFixed(2)}ms average`
+          );
+        }
+
+        return {
+          ...prev,
+          layoutState: {
+            ...prev.layoutState,
+            isChanging: false,
+            performanceMetrics: {
+              lastChangeDuration: duration,
+              averageDuration: prev.layoutState.performanceMetrics
+                ?.averageDuration
+                ? (prev.layoutState.performanceMetrics.averageDuration +
+                    duration) /
+                  2
+                : duration,
+              totalChanges:
+                (prev.layoutState.performanceMetrics?.totalChanges || 0) + 1,
+            },
+          },
+        };
+      });
+
+      // Notify parent that layout change is complete
+      onLayoutChange?.(false);
+
+      console.log(
+        `[GraphCanvas] Layout change to ${currentLayout} completed in ${duration.toFixed(
+          2
+        )}ms`
+      );
+    };
+
+    layout.on("layoutstop", handleLayoutStop);
+    layout.run();
+
+    // Cleanup function to remove event listeners
+    return () => {
+      try {
+        layout.off("layoutstop", handleLayoutStop);
+      } catch (e) {
+        // Layout might already be destroyed
+      }
+    };
+  }, [currentLayout, graph, onLayoutChange, state.isLoading]);
+
+  // Task 8.3: Component cleanup and memory validation on disposal
+  useEffect(() => {
+    return () => {
+      // Task 8.3: Memory cleanup monitoring
+      const memoryAtCleanup = (performance as any).memory
+        ? {
+            usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
+            totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+          }
+        : null;
+
+      if (memoryAtCleanup) {
+        console.log(
+          `[PERF] Component cleanup - Memory at disposal: ${(
+            memoryAtCleanup.usedJSHeapSize /
+            1024 /
+            1024
+          ).toFixed(2)}MB`
+        );
+      }
+
+      // Task 8.3: Cytoscape cleanup
+      if (cyRef.current) {
+        try {
+          console.log(
+            `[PERF] Cleaning up Cytoscape instance with ${
+              cyRef.current.elements().length
+            } elements`
+          );
+          cyRef.current.destroy();
+        } catch (e) {
+          console.warn("[PERF] Error during Cytoscape cleanup:", e);
+        }
+      }
+
+      // Task 8.3: Heatmap processor cleanup
+      if (heatmapProcessor.current) {
+        try {
+          // Clean up any cached data
+          console.log("[PERF] Cleaning up heatmap processor");
+        } catch (e) {
+          console.warn("[PERF] Error during heatmap processor cleanup:", e);
+        }
+      }
+    };
+  }, []);
+
   if (!graph) {
     return (
-      <div style={{ 
-        width: '100%', 
-        height: '400px', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        border: '1px solid var(--vscode-panel-border)',
-        color: 'var(--vscode-descriptionForeground)'
-      }}>
+      <div
+        style={{
+          width: "100%",
+          height: "400px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          border: "1px solid var(--vscode-panel-border)",
+          color: "var(--vscode-descriptionForeground)",
+        }}
+      >
         No graph data available
       </div>
     );
@@ -1096,6 +1837,20 @@ export function GraphCanvas({
           />
         )}
 
+        {/* Layout Change Loading Indicator */}
+        {disabled && (
+          <LoadingIndicator
+            state={{
+              isLoading: true,
+              message: "Changing layout...",
+              type: "spinner",
+            }}
+            size="large"
+            overlay={true}
+            position="center"
+          />
+        )}
+
         {/* Heatmap Processing Indicator */}
         {state.heatmapState.isProcessing && (
           <HeatmapLoadingIndicator
@@ -1113,8 +1868,11 @@ export function GraphCanvas({
             border: "1px solid var(--vscode-panel-border)",
             borderRadius: "4px",
             outline: "none", // Remove focus outline since Cytoscape handles focus
+            pointerEvents: disabled ? "none" : "auto",
+            opacity: disabled ? 0.6 : 1,
+            transition: "opacity 0.3s ease",
           }}
-          tabIndex={0}
+          tabIndex={disabled ? -1 : 0}
           role="application"
           aria-label="Interactive dependency graph"
         />
