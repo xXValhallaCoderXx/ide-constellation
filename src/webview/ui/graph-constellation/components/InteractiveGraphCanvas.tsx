@@ -1139,13 +1139,23 @@ export function InteractiveGraphCanvas({
       />
 
       {/* Statistics Overlay */}
-      <StatsOverlay
-        stats={graphStats}
-        isVisible={statsVisible}
-        onToggle={() => setStatsVisible(!statsVisible)}
-        position="bottom-right"
-        compact={false}
-      />
+      <div
+        style={{
+          position: "absolute",
+          bottom: 20,
+          right: 20,
+          zIndex: 1500,
+          pointerEvents: "auto",
+        }}
+      >
+        <StatsOverlay
+          stats={graphStats}
+          isVisible={statsVisible}
+          onToggle={() => setStatsVisible(!statsVisible)}
+          position="bottom-right"
+          compact={false}
+        />
+      </div>
     </div>
   );
 }
