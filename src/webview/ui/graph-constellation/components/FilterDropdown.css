@@ -1,0 +1,316 @@
+/* Filter Dropdown Component Styles */
+.filter-dropdown {
+  position: relative;
+  display: inline-block;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+.dropdown-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: 1px solid var(--vscode-button-border);
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.2;
+  transition: all 0.15s ease;
+  min-width: 120px;
+  text-align: left;
+}
+
+.dropdown-button:hover:not(.disabled) {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.dropdown-button:focus:not(.disabled) {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.dropdown-button.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-disabledForeground);
+}
+
+.dropdown-label {
+  color: var(--vscode-button-secondaryForeground);
+  font-weight: 500;
+  flex-grow: 1;
+}
+
+.filter-badge {
+  background-color: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  border-radius: 10px;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: 1rem;
+  text-align: center;
+}
+
+.dropdown-arrow {
+  font-size: 0.75rem;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.dropdown-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: transparent;
+  z-index: 999;
+}
+
+.filter-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background-color: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 3px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 280px;
+  max-height: 500px;
+  overflow-y: auto;
+  margin-top: 2px;
+  animation: dropdownSlideIn 0.15s ease-out;
+}
+
+.filter-section {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.filter-section:last-child {
+  border-bottom: none;
+}
+
+.filter-section-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.filter-checkbox-group,
+.filter-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.filter-checkbox-item,
+.filter-radio-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.25rem 0;
+  border-radius: 2px;
+  transition: background-color 0.15s ease;
+}
+
+.filter-checkbox-item:hover,
+.filter-radio-item:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.filter-checkbox-item input[type="checkbox"],
+.filter-radio-item input[type="radio"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.checkbox-label,
+.radio-label {
+  color: var(--vscode-foreground);
+  font-size: 0.875rem;
+  cursor: pointer;
+  flex-grow: 1;
+}
+
+.filter-slider-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.node-count-slider {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--vscode-scrollbarSlider-background);
+  outline: none;
+  cursor: pointer;
+}
+
+.node-count-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--vscode-scrollbarSlider-activeBackground);
+  cursor: pointer;
+  border: 2px solid var(--vscode-dropdown-background);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.node-count-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--vscode-scrollbarSlider-activeBackground);
+  cursor: pointer;
+  border: 2px solid var(--vscode-dropdown-background);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.slider-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.slider-value {
+  font-weight: 500;
+  color: var(--vscode-foreground);
+  font-size: 0.875rem;
+}
+
+.slider-max {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.8125rem;
+}
+
+.filter-actions {
+  padding: 0.75rem;
+  background-color: var(--vscode-editorWidget-background);
+}
+
+.clear-filters-button {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: 1px solid var(--vscode-button-border);
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.clear-filters-button:hover:not(:disabled) {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.clear-filters-button:focus:not(:disabled) {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.clear-filters-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-disabledForeground);
+}
+
+/* Animation for smooth dropdown appearance */
+@keyframes dropdownSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive behavior */
+@media (max-width: 480px) {
+  .filter-dropdown-menu {
+    min-width: 260px;
+    max-height: 400px;
+  }
+
+  .filter-section {
+    padding: 0.625rem;
+  }
+
+  .filter-section-title {
+    font-size: 0.75rem;
+  }
+
+  .checkbox-label,
+  .radio-label {
+    font-size: 0.8125rem;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .filter-dropdown-menu {
+    border-width: 2px;
+  }
+
+  .filter-badge {
+    border: 1px solid var(--vscode-badge-foreground);
+  }
+
+  .node-count-slider::-webkit-slider-thumb {
+    border-width: 3px;
+  }
+
+  .node-count-slider::-moz-range-thumb {
+    border-width: 3px;
+  }
+}
+
+/* Focus visible improvements */
+.filter-checkbox-item:focus-within,
+.filter-radio-item:focus-within {
+  background-color: var(--vscode-list-focusBackground);
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+/* Scrollbar styling for dropdown menu */
+.filter-dropdown-menu::-webkit-scrollbar {
+  width: 8px;
+}
+
+.filter-dropdown-menu::-webkit-scrollbar-track {
+  background: var(--vscode-scrollbar-shadow);
+}
+
+.filter-dropdown-menu::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+  border-radius: 4px;
+}
+
+.filter-dropdown-menu::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+}

@@ -85,28 +85,38 @@ export function SearchBox({
   };
 
   return (
-    <div style={{
-      position: 'relative',
-      width: '100%',
-      maxWidth: '400px',
-      marginBottom: '10px'
-    }}>
-      <div style={{
-        position: 'relative',
-        display: 'flex',
-        alignItems: 'center',
-        backgroundColor: 'var(--vscode-input-background)',
-        border: `1px solid ${isActive ? 'var(--vscode-focusBorder)' : 'var(--vscode-input-border)'}`,
-        borderRadius: '4px',
-        padding: '6px 8px',
-        transition: 'border-color 0.2s ease'
-      }}>
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        maxWidth: "400px",
+        marginBottom: "10px",
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          backgroundColor: "var(--vscode-input-background)",
+          border: `1px solid ${
+            isActive
+              ? "var(--vscode-focusBorder)"
+              : "var(--vscode-input-border)"
+          }`,
+          borderRadius: "4px",
+          padding: "6px 8px",
+          transition: "border-color 0.2s ease",
+        }}
+      >
         {/* Search icon */}
-        <div style={{
-          marginRight: '8px',
-          color: 'var(--vscode-input-placeholderForeground)',
-          fontSize: '14px'
-        }}>
+        <div
+          style={{
+            marginRight: "8px",
+            color: "var(--vscode-input-placeholderForeground)",
+            fontSize: "14px",
+          }}
+        >
           🔍
         </div>
 
@@ -123,12 +133,12 @@ export function SearchBox({
           onBlur={handleBlur}
           style={{
             flex: 1,
-            border: 'none',
-            outline: 'none',
-            backgroundColor: 'transparent',
-            color: 'var(--vscode-input-foreground)',
-            fontSize: '13px',
-            fontFamily: 'var(--vscode-font-family)'
+            border: "none",
+            outline: "none",
+            backgroundColor: "transparent",
+            color: "var(--vscode-input-foreground)",
+            fontSize: "13px",
+            fontFamily: "var(--vscode-font-family)",
           }}
         />
 
@@ -138,52 +148,124 @@ export function SearchBox({
             onClick={handleClear}
             disabled={disabled}
             style={{
-              marginLeft: '8px',
-              border: 'none',
-              background: 'none',
-              color: 'var(--vscode-input-placeholderForeground)',
-              cursor: disabled ? 'default' : 'pointer',
-              fontSize: '12px',
-              padding: '2px',
-              borderRadius: '2px',
-              opacity: disabled ? 0.5 : 1
+              marginLeft: "8px",
+              border: "none",
+              background: "none",
+              color: "var(--vscode-input-placeholderForeground)",
+              cursor: disabled ? "default" : "pointer",
+              fontSize: "12px",
+              padding: "2px",
+              borderRadius: "2px",
+              opacity: disabled ? 0.5 : 1,
             }}
             onMouseEnter={(e) => {
               if (!disabled) {
-                (e.target as HTMLElement).style.backgroundColor = 'var(--vscode-toolbar-hoverBackground)';
+                (e.target as HTMLElement).style.backgroundColor =
+                  "var(--vscode-toolbar-hoverBackground)";
               }
             }}
             onMouseLeave={(e) => {
-              (e.target as HTMLElement).style.backgroundColor = 'transparent';
+              (e.target as HTMLElement).style.backgroundColor = "transparent";
             }}
           >
             ✕
           </button>
         )}
+
+        {/* Navigation buttons - show when there are results */}
+        {query && resultCount > 0 && onFocusCycle && (
+          <div
+            style={{
+              display: "flex",
+              marginLeft: "8px",
+              gap: "2px",
+              borderLeft: "1px solid var(--vscode-input-border)",
+              paddingLeft: "8px",
+            }}
+          >
+            <button
+              onClick={() => onFocusCycle("previous")}
+              disabled={disabled || resultCount === 0}
+              title="Previous result (↑)"
+              style={{
+                border: "none",
+                background: "none",
+                color: "var(--vscode-input-placeholderForeground)",
+                cursor: disabled ? "default" : "pointer",
+                fontSize: "11px",
+                padding: "2px 4px",
+                borderRadius: "2px",
+                opacity: disabled ? 0.5 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (!disabled) {
+                  (e.target as HTMLElement).style.backgroundColor =
+                    "var(--vscode-toolbar-hoverBackground)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                (e.target as HTMLElement).style.backgroundColor = "transparent";
+              }}
+            >
+              ↑
+            </button>
+            <button
+              onClick={() => onFocusCycle("next")}
+              disabled={disabled || resultCount === 0}
+              title="Next result (↓)"
+              style={{
+                border: "none",
+                background: "none",
+                color: "var(--vscode-input-placeholderForeground)",
+                cursor: disabled ? "default" : "pointer",
+                fontSize: "11px",
+                padding: "2px 4px",
+                borderRadius: "2px",
+                opacity: disabled ? 0.5 : 1,
+              }}
+              onMouseEnter={(e) => {
+                if (!disabled) {
+                  (e.target as HTMLElement).style.backgroundColor =
+                    "var(--vscode-toolbar-hoverBackground)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                (e.target as HTMLElement).style.backgroundColor = "transparent";
+              }}
+            >
+              ↓
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Search results indicator */}
       {query && (
-        <div style={{
-          position: 'absolute',
-          top: '100%',
-          left: '0',
-          right: '0',
-          backgroundColor: 'var(--vscode-editor-background)',
-          border: '1px solid var(--vscode-panel-border)',
-          borderTop: 'none',
-          borderRadius: '0 0 4px 4px',
-          padding: '4px 8px',
-          fontSize: '11px',
-          color: 'var(--vscode-descriptionForeground)',
-          zIndex: 10
-        }}>
-          {resultCount === 0 
-            ? 'No matches found' 
-            : currentFocusIndex >= 0 
-              ? `${currentFocusIndex + 1} of ${resultCount} matches (Enter/↑↓ to cycle)`
-              : `${resultCount} match${resultCount === 1 ? '' : 'es'} found (Enter to focus)`
-          }
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: "0",
+            right: "0",
+            backgroundColor: "var(--vscode-editor-background)",
+            border: "1px solid var(--vscode-panel-border)",
+            borderTop: "none",
+            borderRadius: "0 0 4px 4px",
+            padding: "4px 8px",
+            fontSize: "11px",
+            color: "var(--vscode-descriptionForeground)",
+            zIndex: 10,
+          }}
+        >
+          {resultCount === 0
+            ? "No matches found"
+            : currentFocusIndex >= 0
+            ? `${
+                currentFocusIndex + 1
+              } of ${resultCount} matches (Enter/↑↓ to cycle)`
+            : `${resultCount} match${
+                resultCount === 1 ? "" : "es"
+              } found (Enter to focus)`}
         </div>
       )}
     </div>
