@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'preact/hooks';
 import { IConstellationGraph } from "@/types/graph.types";
+import {
+  LayoutType,
+  DEFAULT_LAYOUT_TYPE,
+  LAYOUT_STORAGE_KEY,
+} from "@/types/layout.types";
 import { GraphCanvas, HeatmapNode } from './GraphCanvas';
 import { SearchBox } from './SearchBox';
 import { HeatmapLegend } from './HeatmapLegend';
@@ -35,14 +40,15 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
   const [searchResultCount, setSearchResultCount] = useState(0);
   const [currentFocusIndex, setCurrentFocusIndex] = useState(-1); // Task 5.3: Focus cycling state
   const [openModeSetting, setOpenModeSetting] = useState<OpenModeSetting>('modifier');
-  const [currentLayout, setCurrentLayout] = useState('force-directed');
+  const [currentLayout, setCurrentLayout] =
+    useState<LayoutType>(DEFAULT_LAYOUT_TYPE); // Task 6.3: Use LayoutType
   const [isLayoutChanging, setIsLayoutChanging] = useState(false);
   const [heatmapState, setHeatmapState] = useState<HeatmapState>({
     isVisible: false,
     isActive: false,
     data: [],
     distribution: undefined,
-    totalFiles: 0
+    totalFiles: 0,
   });
 
   const handleSearchChange = (query: string) => {
@@ -58,7 +64,7 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
   };
 
   // Task 5.3: Handle focus cycling through search results
-  const handleFocusCycle = (direction: 'next' | 'previous') => {
+  const handleFocusCycle = (direction: "next" | "previous") => {
     if (searchResultCount === 0) return;
 
     let newIndex: number;
@@ -67,32 +73,73 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
       newIndex = 0;
     } else {
       // Cycle through results
-      if (direction === 'next') {
+      if (direction === "next") {
         newIndex = (currentFocusIndex + 1) % searchResultCount;
       } else {
-        newIndex = currentFocusIndex === 0 ? searchResultCount - 1 : currentFocusIndex - 1;
+        newIndex =
+          currentFocusIndex === 0
+            ? searchResultCount - 1
+            : currentFocusIndex - 1;
       }
     }
-    
+
     setCurrentFocusIndex(newIndex);
-    
+
     // Trigger focus animation on the graph canvas
     // This will be handled by the GraphCanvas component via a new prop
   };
 
-  const handleNodeClick = (nodeId: string, computedOpenMode: 'default' | 'split') => {
+  const handleNodeClick = (
+    nodeId: string,
+    computedOpenMode: "default" | "split"
+  ) => {
     // Override computed open mode based on user setting
-    let finalMode: 'default' | 'split' = computedOpenMode;
-    if (openModeSetting === 'default') finalMode = 'default';
-    else if (openModeSetting === 'split') finalMode = 'split';
+    let finalMode: "default" | "split" = computedOpenMode;
+    if (openModeSetting === "default") finalMode = "default";
+    else if (openModeSetting === "split") finalMode = "split";
     onNodeClick?.(nodeId, finalMode);
   };
 
   const handleLayoutChange = (layoutId: string) => {
-    setCurrentLayout(layoutId);
+    const layoutType = layoutId as LayoutType; // Task 6.3: Type-safe layout handling
+    setCurrentLayout(layoutType);
     // Layout changing state will be managed by GraphCanvas via onLayoutChange callback
     // No need to manually set isLayoutChanging here
   };
+
+  // Task 6.5: Session-based layout persistence
+  useEffect(() => {
+    // Reset to default layout on component mount (new session)
+    const savedLayout = sessionStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (
+      savedLayout &&
+      [
+        "force-directed",
+        "circle",
+        "grid",
+        "hierarchical",
+        "concentric",
+      ].includes(savedLayout)
+    ) {
+      setCurrentLayout(savedLayout as LayoutType);
+      console.log(
+        `[InteractiveGraphCanvas] Restored layout from session: ${savedLayout}`
+      );
+    } else {
+      setCurrentLayout(DEFAULT_LAYOUT_TYPE);
+      console.log(
+        `[InteractiveGraphCanvas] Using default layout: ${DEFAULT_LAYOUT_TYPE}`
+      );
+    }
+  }, []); // Run only on mount
+
+  // Save layout changes to session storage
+  useEffect(() => {
+    sessionStorage.setItem(LAYOUT_STORAGE_KEY, currentLayout);
+    console.log(
+      `[InteractiveGraphCanvas] Layout saved to session: ${currentLayout}`
+    );
+  }, [currentLayout]);
 
   // Ensure clean state on mount
   useEffect(() => {
