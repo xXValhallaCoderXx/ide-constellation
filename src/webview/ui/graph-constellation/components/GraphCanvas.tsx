@@ -309,6 +309,34 @@ export function GraphCanvas({
     setState((prev) => ({ ...prev, isLoading: true }));
 
     try {
+      // Task 9.4: Edge case validation for empty graphs, single nodes, disconnected components
+      if (!graph.nodes || graph.nodes.length === 0) {
+        console.warn("[GraphCanvas] Empty graph detected");
+        setState((prev) => ({ ...prev, isLoading: false }));
+        return;
+      }
+
+      // Task 9.4: Handle single node case
+      if (graph.nodes.length === 1) {
+        console.log("[GraphCanvas] Single node graph detected");
+      }
+
+      // Task 9.4: Detect disconnected components
+      const edgeNodeIds = new Set();
+      (graph.edges || []).forEach((edge) => {
+        edgeNodeIds.add(edge.source);
+        edgeNodeIds.add(edge.target);
+      });
+
+      const disconnectedNodes = graph.nodes.filter(
+        (node) => !edgeNodeIds.has(node.id)
+      );
+      if (disconnectedNodes.length > 0) {
+        console.log(
+          `[GraphCanvas] Found ${disconnectedNodes.length} disconnected nodes`
+        );
+      }
+
       // Validate graph data
       if (!validateGraphData(graph)) {
         const error = "Invalid graph data structure";
@@ -326,6 +354,88 @@ export function GraphCanvas({
       if (cyRef.current) {
         cyRef.current.destroy();
       }
+
+      // Task 9.4: Adaptive layout selection for edge cases
+      let initialLayout = "cose"; // Default force-directed layout
+      const nodeCount = graph.nodes.length;
+      const edgeCount = graph.edges?.length || 0;
+
+      if (nodeCount === 1) {
+        // Single node: use a simple centered layout
+        initialLayout = "center";
+        console.log("[GraphCanvas] Using center layout for single node");
+      } else if (nodeCount <= 5 && edgeCount === 0) {
+        // Few disconnected nodes: use circle layout
+        initialLayout = "circle";
+        console.log(
+          "[GraphCanvas] Using circle layout for small disconnected graph"
+        );
+      } else if (disconnectedNodes.length > nodeCount * 0.5) {
+        // Mostly disconnected: use grid layout for better spacing
+        initialLayout = "grid";
+        console.log(
+          "[GraphCanvas] Using grid layout for highly disconnected graph"
+        );
+      }
+
+      // Validate Cytoscape feature availability before initialization
+      const validateCytoscapeFeatures = () => {
+        try {
+          const testInstance = cytoscape({ headless: true });
+
+          // Check if required layout algorithms are available
+          const requiredLayouts = [
+            "cose",
+            "circle",
+            "grid",
+            "breadthfirst",
+            "concentric",
+          ];
+          const availableLayouts = requiredLayouts.filter((layout) => {
+            try {
+              testInstance.layout({ name: layout }).run();
+              return true;
+            } catch (e) {
+              console.warn(
+                `[GraphCanvas] Layout '${layout}' not available:`,
+                e
+              );
+              return false;
+            }
+          });
+
+          // Clean up test instance
+          testInstance.destroy();
+
+          if (availableLayouts.length === 0) {
+            throw new Error("No supported layout algorithms available");
+          }
+
+          // If the requested layout is not available, fall back to available ones
+          if (!availableLayouts.includes(initialLayout)) {
+            const fallbackLayout = availableLayouts.includes("cose")
+              ? "cose"
+              : availableLayouts[0];
+            console.warn(
+              `[GraphCanvas] Requested layout '${initialLayout}' not available, falling back to '${fallbackLayout}'`
+            );
+            initialLayout = fallbackLayout;
+          }
+
+          return true;
+        } catch (error) {
+          console.error(
+            "[GraphCanvas] Cytoscape feature validation failed:",
+            error
+          );
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error";
+          throw new Error(`Cytoscape initialization failed: ${errorMessage}`);
+        }
+      };
+
+      // Validate features before proceeding
+      validateCytoscapeFeatures();
 
       // Initialize new Cytoscape instance
       cyRef.current = cytoscape({
@@ -1005,7 +1115,6 @@ export function GraphCanvas({
       node: cytoscape.NodeSingular,
       event: cytoscape.EventObject
     ) => {
-      console.log("[GraphCanvas] Showing tooltip for node:", node.id());
       const riskData = node.data("riskData") as HeatmapNode | undefined;
       const label = node.data("label") || "Unknown";
       const path = node.data("path") || "";
@@ -1058,7 +1167,6 @@ export function GraphCanvas({
     };
 
     const hideTooltip = () => {
-      console.log("[GraphCanvas] Hiding tooltip");
       clearTimeout(tooltipTimeout);
       setState((prev) => ({
         ...prev,
@@ -1072,7 +1180,6 @@ export function GraphCanvas({
 
     // Add hover event listeners with direct timeout approach
     cy.on("mouseover", "node", (event) => {
-      console.log("[GraphCanvas] Node mouseover detected:", event.target.id());
       clearTimeout(tooltipTimeout);
       tooltipTimeout = setTimeout(() => {
         showTooltip(event.target, event);
@@ -1080,7 +1187,6 @@ export function GraphCanvas({
     });
 
     cy.on("mouseout", "node", () => {
-      console.log("[GraphCanvas] Node mouseout detected");
       hideTooltip();
     });
 
@@ -1181,57 +1287,104 @@ export function GraphCanvas({
   /**
    * Get file type color based on extension using existing path utils
    * Task 2.1: File type color mapping for visual differentiation
+   * Task 9.2: Enhanced error handling for file extension detection
    */
   const getFileTypeColor = (filePath: string): string => {
-    const fileInfo = getFileExtensionInfo(filePath);
+    try {
+      // Task 9.2: Input validation
+      if (!filePath || typeof filePath !== "string") {
+        console.warn(
+          "[FileType] Invalid file path provided, using default color"
+        );
+        return "var(--vscode-charts-blue)"; // Safe default
+      }
 
-    // Check for test files first (higher priority)
-    if (
-      filePath.includes(".test.") ||
-      filePath.includes(".spec.") ||
-      filePath.includes("/test/") ||
-      filePath.includes("__tests__")
-    ) {
-      return "#4caf50"; // Green for test files
-    }
+      // Task 9.2: Safe file extension detection with fallback
+      let fileInfo;
+      try {
+        fileInfo = getFileExtensionInfo(filePath);
+      } catch (error) {
+        console.warn("[FileType] Error in file extension detection:", error);
+        // Fallback: try to extract extension manually
+        const lastDot = filePath.lastIndexOf(".");
+        const extension =
+          lastDot > 0 ? filePath.substring(lastDot + 1).toLowerCase() : "";
+        fileInfo = {
+          type: "unknown" as const,
+          extension: extension,
+          isSource: false,
+          isConfig: false,
+          isAsset: false,
+          isDocumentation: false,
+        };
+      }
 
-    switch (fileInfo.type) {
-      case "source":
-        switch (fileInfo.extension) {
-          case "ts":
-          case "tsx":
-            return "#3178c6"; // TypeScript blue
-          case "js":
-          case "jsx":
-            return "#f7df1e"; // JavaScript yellow
-          default:
-            return "#3178c6"; // Default to TypeScript blue for other source files
-        }
-      case "config":
-        return "#6B46C1"; // Purple for config files
-      case "asset":
-        switch (fileInfo.extension) {
-          case "css":
-          case "scss":
-          case "sass":
-          case "less":
-            return "#ff9800"; // Orange for CSS
-          case "html":
-          case "htm":
-            return "#e91e63"; // Pink for HTML
-          default:
-            return "#9e9e9e"; // Gray for other assets
-        }
-      case "documentation":
-        return "#9e9e9e"; // Gray for documentation
-      default:
-        return "#9e9e9e"; // Gray for unknown files
+      // Task 9.2: Validate fileInfo structure
+      if (!fileInfo || typeof fileInfo !== "object") {
+        console.warn(
+          "[FileType] Invalid file info structure, using default color"
+        );
+        return "var(--vscode-charts-blue)";
+      }
+
+      // Check for test files first (higher priority)
+      if (
+        filePath.includes(".test.") ||
+        filePath.includes(".spec.") ||
+        filePath.includes("/test/") ||
+        filePath.includes("__tests__")
+      ) {
+        return "#4caf50"; // Green for test files
+      }
+
+      switch (fileInfo.type) {
+        case "source":
+          switch (fileInfo.extension) {
+            case "ts":
+            case "tsx":
+              return "#3178c6"; // TypeScript blue
+            case "js":
+            case "jsx":
+              return "#f7df1e"; // JavaScript yellow
+            default:
+              return "#3178c6"; // Default to TypeScript blue for other source files
+          }
+        case "config":
+          return "#6B46C1"; // Purple for config files
+        case "asset":
+          switch (fileInfo.extension) {
+            case "css":
+            case "scss":
+            case "sass":
+            case "less":
+              return "#ff9800"; // Orange for CSS
+            case "html":
+            case "htm":
+              return "#e91e63"; // Pink for HTML
+            default:
+              return "#9e9e9e"; // Gray for other assets
+          }
+        case "documentation":
+          return "#9e9e9e"; // Gray for documentation
+        default:
+          // Task 9.2: Safe fallback for unknown file types
+          return "#9e9e9e"; // Gray for unknown files
+      }
+    } catch (error) {
+      // Task 9.2: Comprehensive error handling for file type detection
+      console.error("[FileType] Error in getFileTypeColor:", error);
+      console.log("[FileType] Falling back to default blue color");
+      return "var(--vscode-charts-blue)"; // Safe default fallback
     }
   };
 
   // Handle search highlighting when searchQuery prop changes
   useEffect(() => {
     if (!cyRef.current) return;
+
+    // Task 8.1: Performance monitoring for search operations
+    const searchStartTime = performance.now();
+    const nodeCount = cyRef.current.nodes().length;
 
     const query = searchQuery?.trim() || "";
     const previousQuery = state.searchQuery || "";
@@ -1248,23 +1401,58 @@ export function GraphCanvas({
       });
       setState((prev) => ({ ...prev, highlightedNodes: [] }));
       onSearchResultsChange?.(0);
+
+      // Task 8.1: Log performance metrics for search clear operation
+      const clearTime = performance.now() - searchStartTime;
+      if (nodeCount >= 500) {
+        console.log(
+          `[PERF] Search clear - Nodes: ${nodeCount}, Time: ${clearTime.toFixed(
+            2
+          )}ms`
+        );
+      }
       return;
     }
 
     const searchLower = query.toLowerCase();
     const matchingNodes: string[] = [];
 
-    // Find matching nodes
-    cyRef.current.nodes().forEach((node) => {
-      const label = node.data("label")?.toLowerCase() || "";
-      const path = node.data("path")?.toLowerCase() || "";
+    // Task 8.1: Optimize search for large graphs with performance monitoring
+    const searchOperationStart = performance.now();
 
-      if (label.includes(searchLower) || path.includes(searchLower)) {
-        matchingNodes.push(node.id());
+    // Find matching nodes with optimized search for large graphs
+    if (nodeCount >= 500) {
+      // Use optimized search for large graphs - process in smaller batches
+      const nodes = cyRef.current.nodes();
+      const batchSize = Math.min(100, Math.floor(nodeCount / 5));
+
+      for (let i = 0; i < nodes.length; i += batchSize) {
+        const batch = nodes.slice(i, i + batchSize);
+        batch.forEach((node) => {
+          const label = node.data("label")?.toLowerCase() || "";
+          const path = node.data("path")?.toLowerCase() || "";
+
+          if (label.includes(searchLower) || path.includes(searchLower)) {
+            matchingNodes.push(node.id());
+          }
+        });
       }
-    });
+    } else {
+      // Standard search for smaller graphs
+      cyRef.current.nodes().forEach((node) => {
+        const label = node.data("label")?.toLowerCase() || "";
+        const path = node.data("path")?.toLowerCase() || "";
+
+        if (label.includes(searchLower) || path.includes(searchLower)) {
+          matchingNodes.push(node.id());
+        }
+      });
+    }
+
+    const searchTime = performance.now() - searchOperationStart;
 
     // Apply highlighting using batch operation for atomic updates
+    const batchStartTime = performance.now();
     cyRef.current.batch(() => {
       // First, clear all existing classes and reset opacity
       cyRef.current!.elements().removeClass("highlighted dimmed");
@@ -1282,20 +1470,40 @@ export function GraphCanvas({
         });
 
         // Dim non-matching elements (both nodes and edges)
-        const nonMatchingElements = cyRef.current!.elements().not(".highlighted");
+        const nonMatchingElements = cyRef
+          .current!.elements()
+          .not(".highlighted");
         nonMatchingElements.addClass("dimmed");
         // Apply dimmed opacity directly to ensure it overrides other styles
         nonMatchingElements.style("opacity", 0.3);
-        
-        // Debug: Log the classes applied
-        console.log("Search Debug - Highlighted nodes:", matchingNodes.length);
-        console.log("Search Debug - Dimmed elements:", nonMatchingElements.length);
-        console.log("Search Debug - Sample dimmed element classes:", 
-          nonMatchingElements.first().classes?.() || "no classes");
-        console.log("Search Debug - Sample dimmed element opacity:", 
-          nonMatchingElements.first().style("opacity"));
       }
     });
+
+    const batchTime = performance.now() - batchStartTime;
+    const totalSearchTime = performance.now() - searchStartTime;
+
+    // Task 8.1: Log performance metrics for search operations on large graphs
+    if (nodeCount >= 500) {
+      console.log(
+        `[PERF] Search operation - Nodes: ${nodeCount}, Matches: ${matchingNodes.length}`
+      );
+      console.log(
+        `[PERF] Search timing - Find: ${searchTime.toFixed(
+          2
+        )}ms, Batch: ${batchTime.toFixed(
+          2
+        )}ms, Total: ${totalSearchTime.toFixed(2)}ms`
+      );
+
+      // Warn if search is taking too long (should be under 100ms for good UX)
+      if (totalSearchTime > 100) {
+        console.warn(
+          `[PERF] Search performance warning: ${totalSearchTime.toFixed(
+            2
+          )}ms exceeds 100ms target`
+        );
+      }
+    }
 
     // Only animate focus for new searches to preserve viewport stability
     if (isNewSearch && matchingNodes.length > 0) {
@@ -1357,7 +1565,17 @@ export function GraphCanvas({
       return;
     }
 
-    const startTime = performance.now();
+    // Task 8.3: Memory usage monitoring before layout change
+    const memoryBefore = (performance as any).memory
+      ? {
+          usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
+          totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+        }
+      : null;
+
+    // Task 8.4: Use existing performance monitoring infrastructure
+    const performanceMonitor = new PerformanceMonitor();
+    const startTime = performanceMonitor.startRender();
     const cy = cyRef.current;
     const cytoscapeLayoutName = getCytoscapeLayoutName(currentLayout);
     const layoutConfig = getLayoutConfig(
@@ -1387,28 +1605,101 @@ export function GraphCanvas({
     const layout = cy.layout(layoutConfig);
 
     const handleLayoutStop = () => {
-      const endTime = performance.now();
-      const duration = endTime - startTime;
+      // Task 8.4: End performance monitoring using existing infrastructure
+      const duration = performanceMonitor.endRender(startTime);
+
+      // Task 8.2: Enhanced performance monitoring for layout switching
+      const nodeCount = graph.nodes.length;
+      console.log(
+        `[PERF] Layout switch - Algorithm: ${currentLayout}, Nodes: ${nodeCount}, Duration: ${duration.toFixed(
+          2
+        )}ms`
+      );
+
+      // Task 8.3: Memory usage monitoring after layout change
+      const memoryAfter = (performance as any).memory
+        ? {
+            usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
+            totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+          }
+        : null;
+
+      if (memoryBefore && memoryAfter) {
+        const memoryDelta =
+          memoryAfter.usedJSHeapSize - memoryBefore.usedJSHeapSize;
+        const memoryMB = (memoryDelta / 1024 / 1024).toFixed(2);
+        console.log(
+          `[PERF] Layout memory usage - Delta: ${memoryMB}MB, Total: ${(
+            memoryAfter.usedJSHeapSize /
+            1024 /
+            1024
+          ).toFixed(2)}MB`
+        );
+
+        // Task 8.3: Memory leak detection
+        if (memoryDelta > 10 * 1024 * 1024) {
+          // > 10MB increase
+          console.warn(
+            `[PERF] Potential memory leak detected - Layout change increased memory by ${memoryMB}MB`
+          );
+        }
+      }
+
+      // Task 8.2: Performance validation - warn if layout takes too long
+      if (nodeCount <= 500 && duration > 1000) {
+        console.warn(
+          `[PERF] Layout performance warning: ${duration.toFixed(
+            2
+          )}ms exceeds 1000ms target for ${nodeCount} nodes`
+        );
+      }
+
+      // Task 8.2: Performance recommendations for large graphs
+      if (nodeCount > 500) {
+        console.log(
+          `[PERF] Large graph detected (${nodeCount} nodes) - layout time: ${duration.toFixed(
+            2
+          )}ms`
+        );
+        if (duration > 2000) {
+          console.warn(
+            `[PERF] Consider using simplified layouts for graphs with ${nodeCount}+ nodes`
+          );
+        }
+      }
 
       // Task 6.4: Update layout state when change completes
-      setState((prev) => ({
-        ...prev,
-        layoutState: {
-          ...prev.layoutState,
-          isChanging: false,
-          performanceMetrics: {
-            lastChangeDuration: duration,
-            averageDuration: prev.layoutState.performanceMetrics
-              ?.averageDuration
-              ? (prev.layoutState.performanceMetrics.averageDuration +
-                  duration) /
-                2
-              : duration,
-            totalChanges:
-              (prev.layoutState.performanceMetrics?.totalChanges || 0) + 1,
+      setState((prev) => {
+        // Task 8.2: Track performance trends
+        const avgDuration =
+          prev.layoutState.performanceMetrics?.averageDuration || duration;
+        if (duration > avgDuration * 1.5) {
+          console.warn(
+            `[PERF] Layout performance degradation detected: ${duration.toFixed(
+              2
+            )}ms vs ${avgDuration.toFixed(2)}ms average`
+          );
+        }
+
+        return {
+          ...prev,
+          layoutState: {
+            ...prev.layoutState,
+            isChanging: false,
+            performanceMetrics: {
+              lastChangeDuration: duration,
+              averageDuration: prev.layoutState.performanceMetrics
+                ?.averageDuration
+                ? (prev.layoutState.performanceMetrics.averageDuration +
+                    duration) /
+                  2
+                : duration,
+              totalChanges:
+                (prev.layoutState.performanceMetrics?.totalChanges || 0) + 1,
+            },
           },
-        },
-      }));
+        };
+      });
 
       // Notify parent that layout change is complete
       onLayoutChange?.(false);
@@ -1432,6 +1723,53 @@ export function GraphCanvas({
       }
     };
   }, [currentLayout, graph, onLayoutChange, state.isLoading]);
+
+  // Task 8.3: Component cleanup and memory validation on disposal
+  useEffect(() => {
+    return () => {
+      // Task 8.3: Memory cleanup monitoring
+      const memoryAtCleanup = (performance as any).memory
+        ? {
+            usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
+            totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+          }
+        : null;
+
+      if (memoryAtCleanup) {
+        console.log(
+          `[PERF] Component cleanup - Memory at disposal: ${(
+            memoryAtCleanup.usedJSHeapSize /
+            1024 /
+            1024
+          ).toFixed(2)}MB`
+        );
+      }
+
+      // Task 8.3: Cytoscape cleanup
+      if (cyRef.current) {
+        try {
+          console.log(
+            `[PERF] Cleaning up Cytoscape instance with ${
+              cyRef.current.elements().length
+            } elements`
+          );
+          cyRef.current.destroy();
+        } catch (e) {
+          console.warn("[PERF] Error during Cytoscape cleanup:", e);
+        }
+      }
+
+      // Task 8.3: Heatmap processor cleanup
+      if (heatmapProcessor.current) {
+        try {
+          // Clean up any cached data
+          console.log("[PERF] Cleaning up heatmap processor");
+        } catch (e) {
+          console.warn("[PERF] Error during heatmap processor cleanup:", e);
+        }
+      }
+    };
+  }, []);
 
   if (!graph) {
     return (

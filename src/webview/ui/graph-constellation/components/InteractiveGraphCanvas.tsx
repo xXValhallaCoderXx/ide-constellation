@@ -9,6 +9,7 @@ import { GraphCanvas, HeatmapNode } from './GraphCanvas';
 import { SearchBox } from './SearchBox';
 import { HeatmapLegend } from './HeatmapLegend';
 import { LayoutSwitcher } from './LayoutSwitcher';
+import { GraphErrorBoundary } from './ErrorBoundary'; // Task 9.3: Error boundary import
 import "@/types/vscode-api.types";
 
 interface ActiveHighlightState { fileId: string | null; reason?: string }
@@ -223,15 +224,18 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
   };
 
   return (
-    <div style={{ width: '100%' }}>
+    <div style={{ width: "100%" }}>
       {/* Header controls (FR12) */}
-      <div className="graph-header" style={{
-        marginBottom: '10px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        flexWrap: 'wrap'
-      }}>
+      <div
+        className="graph-header"
+        style={{
+          marginBottom: "10px",
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          flexWrap: "wrap",
+        }}
+      >
         <SearchBox
           onSearchChange={handleSearchChange}
           onFocusCycle={handleFocusCycle}
@@ -250,30 +254,43 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
             nodeCount={graph.nodes.length}
           />
         )}
-        
+
         {graph && (
-          <div style={{
-            fontSize: '12px',
-            color: 'var(--vscode-descriptionForeground)',
-            whiteSpace: 'nowrap'
-          }}>
+          <div
+            style={{
+              fontSize: "12px",
+              color: "var(--vscode-descriptionForeground)",
+              whiteSpace: "nowrap",
+            }}
+          >
             {graph.nodes.length} files, {graph.edges.length} dependencies
           </div>
         )}
 
         {/* Open mode toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <label style={{ fontSize: '11px', color: 'var(--vscode-descriptionForeground)' }}>Open:</label>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          <label
+            style={{
+              fontSize: "11px",
+              color: "var(--vscode-descriptionForeground)",
+            }}
+          >
+            Open:
+          </label>
           <select
             value={openModeSetting}
-            onChange={(e) => setOpenModeSetting((e.target as HTMLSelectElement).value as OpenModeSetting)}
+            onChange={(e) =>
+              setOpenModeSetting(
+                (e.target as HTMLSelectElement).value as OpenModeSetting
+              )
+            }
             style={{
-              fontSize: '11px',
-              background: 'var(--vscode-input-background)',
-              color: 'var(--vscode-input-foreground)',
-              border: '1px solid var(--vscode-input-border)',
-              borderRadius: '4px',
-              padding: '2px 4px'
+              fontSize: "11px",
+              background: "var(--vscode-input-background)",
+              color: "var(--vscode-input-foreground)",
+              border: "1px solid var(--vscode-input-border)",
+              borderRadius: "4px",
+              padding: "2px 4px",
             }}
             title="Choose how node clicks open files (Modifier = Ctrl/Cmd for split)"
           >
@@ -284,22 +301,33 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
         </div>
       </div>
 
-      {/* Graph canvas */}
-      <GraphCanvas
-        graph={graph}
-        searchQuery={searchQuery}
-        searchFocusIndex={currentFocusIndex}
-        onNodeClick={handleNodeClick}
-        onError={onError}
-        onSearchResultsChange={handleSearchResultsChange}
-        activeHighlight={activeHighlight}
-        heatmapData={heatmapState.data}
-        heatmapEnabled={heatmapState.isActive}
-        onHeatmapStateChange={handleHeatmapStateChange}
-        currentLayout={currentLayout}
-        onLayoutChange={setIsLayoutChanging}
-        disabled={isLayoutChanging}
-      />
+      {/* Graph canvas with error boundary - Task 9.3 */}
+      <GraphErrorBoundary
+        onError={(error, errorInfo) => {
+          console.error(
+            "[InteractiveGraphCanvas] Error boundary caught:",
+            error
+          );
+          onError?.(`Graph error: ${error.message}`);
+        }}
+        maxRetries={3}
+      >
+        <GraphCanvas
+          graph={graph}
+          searchQuery={searchQuery}
+          searchFocusIndex={currentFocusIndex}
+          onNodeClick={handleNodeClick}
+          onError={onError}
+          onSearchResultsChange={handleSearchResultsChange}
+          activeHighlight={activeHighlight}
+          heatmapData={heatmapState.data}
+          heatmapEnabled={heatmapState.isActive}
+          onHeatmapStateChange={handleHeatmapStateChange}
+          currentLayout={currentLayout}
+          onLayoutChange={setIsLayoutChanging}
+          disabled={isLayoutChanging}
+        />
+      </GraphErrorBoundary>
 
       {/* Heatmap Legend */}
       <HeatmapLegend

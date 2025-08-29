@@ -48,110 +48,165 @@ export interface LayoutConfig {
 /**
  * Get optimized layout configuration for different layout types
  * Includes performance optimizations based on graph size
+ * Task 9.1: Enhanced error handling with fallback to default layout
  */
 export function getLayoutConfig(
   layoutType: string, 
   nodeCount: number = 0,
   customOptions: Partial<LayoutConfig> = {}
 ): LayoutConfig {
-  const baseConfig: LayoutConfig = {
-    name: layoutType,
-    animate: true,
-    animationDuration: LAYOUT_ANIMATION_MS,
-    fit: true,
-    padding: 30,
-    ...customOptions
-  };
+  // Task 9.1: Input validation and error handling
+  try {
+    // Validate inputs
+    if (typeof layoutType !== "string" || !layoutType.trim()) {
+      console.warn(
+        "[Layout] Invalid layout type provided, falling back to force-directed"
+      );
+      layoutType = "cose";
+    }
 
-  // Performance optimizations for large graphs
-  const isLargeGraph = nodeCount > 500;
-  const isVeryLargeGraph = nodeCount > 1000;
+    if (
+      typeof nodeCount !== "number" ||
+      nodeCount < 0 ||
+      !isFinite(nodeCount)
+    ) {
+      console.warn("[Layout] Invalid node count provided, using default value");
+      nodeCount = 0;
+    }
 
-  switch (layoutType) {
-    case 'cose': // Force-directed
-      return {
-        ...baseConfig,
-        name: 'cose',
-        idealEdgeLength: isLargeGraph ? 50 : 100,
-        nodeOverlap: 20,
-        refresh: 20,
-        fit: true,
-        padding: 30,
-        randomize: false,
-        componentSpacing: isLargeGraph ? 60 : 80,
-        nodeRepulsion: isLargeGraph ? 400000 : 2048,
-        nodeSpacing: isLargeGraph ? 5 : 10,
-        edgeElasticity: isLargeGraph ? 100 : 200,
-        nestingFactor: 5,
-        gravity: isLargeGraph ? 80 : 250,
-        numIter: isVeryLargeGraph ? 500 : isLargeGraph ? 750 : 1000,
-        initialTemp: 200,
-        coolingFactor: 0.95,
-        minTemp: 1.0,
-        useMultitasking: true
-      };
+    if (customOptions && typeof customOptions !== "object") {
+      console.warn("[Layout] Invalid custom options provided, ignoring");
+      customOptions = {};
+    }
 
-    case 'circle':
-      return {
-        ...baseConfig,
-        name: 'circle',
-        fit: true,
-        padding: 50,
-        spacingFactor: isLargeGraph ? 1.2 : 1.75,
-        avoidOverlap: true,
-        radius: isLargeGraph ? Math.min(300, nodeCount * 0.5) : undefined
-      };
+    const baseConfig: LayoutConfig = {
+      name: layoutType,
+      animate: true,
+      animationDuration: LAYOUT_ANIMATION_MS,
+      fit: true,
+      padding: 30,
+      ...customOptions,
+    };
 
-    case 'grid':
-      return {
-        ...baseConfig,
-        name: 'grid',
-        fit: true,
-        padding: 30,
-        spacingFactor: isLargeGraph ? 1.1 : 1.5,
-        avoidOverlap: true,
-        // Calculate optimal grid dimensions
-        rows: nodeCount > 0 ? Math.ceil(Math.sqrt(nodeCount)) : undefined,
-        cols: nodeCount > 0 ? Math.ceil(Math.sqrt(nodeCount)) : undefined
-      };
+    // Performance optimizations for large graphs
+    const isLargeGraph = nodeCount > 500;
+    const isVeryLargeGraph = nodeCount > 1000;
 
-    case 'breadthfirst': // Hierarchical tree
-      return {
-        ...baseConfig,
-        name: 'breadthfirst',
-        fit: true,
-        directed: false,
-        padding: 50,
-        spacingFactor: isLargeGraph ? 1.2 : 1.75,
-        avoidOverlap: true,
-        // For large graphs, we might want to specify roots
-        roots: nodeCount > 100 ? undefined : []
-      };
+    switch (layoutType) {
+      case "cose": // Force-directed
+        return {
+          ...baseConfig,
+          name: "cose",
+          idealEdgeLength: isLargeGraph ? 50 : 100,
+          nodeOverlap: 20,
+          refresh: 20,
+          fit: true,
+          padding: 30,
+          randomize: false,
+          componentSpacing: isLargeGraph ? 60 : 80,
+          nodeRepulsion: isLargeGraph ? 400000 : 2048,
+          nodeSpacing: isLargeGraph ? 5 : 10,
+          edgeElasticity: isLargeGraph ? 100 : 200,
+          nestingFactor: 5,
+          gravity: isLargeGraph ? 80 : 250,
+          numIter: isVeryLargeGraph ? 500 : isLargeGraph ? 750 : 1000,
+          initialTemp: 200,
+          coolingFactor: 0.95,
+          minTemp: 1.0,
+          useMultitasking: true,
+        };
 
-    case 'concentric':
-      return {
-        ...baseConfig,
-        name: 'concentric',
-        fit: true,
-        padding: 50,
-        spacingFactor: isLargeGraph ? 1.1 : 1.5,
-        avoidOverlap: true,
-        minNodeSpacing: isLargeGraph ? 20 : 30,
-        startAngle: 0,
-        sweep: 2 * Math.PI,
-        clockwise: true,
-        // Define concentric levels based on node degree
-        concentric: (node: any) => {
-          return node.degree() || 1;
-        },
-        levelWidth: (nodes: any[]) => {
-          return Math.max(1, Math.ceil(nodes.length / 4));
-        }
-      };
+      case "circle":
+        return {
+          ...baseConfig,
+          name: "circle",
+          fit: true,
+          padding: 50,
+          spacingFactor: isLargeGraph ? 1.2 : 1.75,
+          avoidOverlap: true,
+          radius: isLargeGraph ? Math.min(300, nodeCount * 0.5) : undefined,
+        };
 
-    default:
-      console.warn(`Unknown layout type: ${layoutType}, falling back to cose`);
-      return getLayoutConfig('cose', nodeCount, customOptions);
+      case "grid":
+        return {
+          ...baseConfig,
+          name: "grid",
+          fit: true,
+          padding: 30,
+          spacingFactor: isLargeGraph ? 1.1 : 1.5,
+          avoidOverlap: true,
+          // Calculate optimal grid dimensions
+          rows: nodeCount > 0 ? Math.ceil(Math.sqrt(nodeCount)) : undefined,
+          cols: nodeCount > 0 ? Math.ceil(Math.sqrt(nodeCount)) : undefined,
+        };
+
+      case "breadthfirst": // Hierarchical tree
+        return {
+          ...baseConfig,
+          name: "breadthfirst",
+          fit: true,
+          directed: false,
+          padding: 50,
+          spacingFactor: isLargeGraph ? 1.2 : 1.75,
+          avoidOverlap: true,
+          // For large graphs, we might want to specify roots
+          roots: nodeCount > 100 ? undefined : [],
+        };
+
+      case "concentric":
+        return {
+          ...baseConfig,
+          name: "concentric",
+          fit: true,
+          padding: 50,
+          spacingFactor: isLargeGraph ? 1.1 : 1.5,
+          avoidOverlap: true,
+          minNodeSpacing: isLargeGraph ? 20 : 30,
+          startAngle: 0,
+          sweep: 2 * Math.PI,
+          clockwise: true,
+          // Define concentric levels based on node degree
+          concentric: (node: any) => {
+            return node.degree() || 1;
+          },
+          levelWidth: (nodes: any[]) => {
+            return Math.max(1, Math.ceil(nodes.length / 4));
+          },
+        };
+
+      default:
+        // Task 9.1: Fallback for unknown layout types
+        console.warn(
+          `[Layout] Unknown layout type: ${layoutType}, falling back to force-directed`
+        );
+        return getLayoutConfig("cose", nodeCount, customOptions);
+    }
+  } catch (error) {
+    // Task 9.1: Comprehensive error handling with fallback
+    console.error("[Layout] Error in layout configuration:", error);
+    console.log("[Layout] Falling back to default force-directed layout");
+
+    // Return safe default configuration
+    return {
+      name: "cose",
+      animate: true,
+      animationDuration: 500, // Use safe default if LAYOUT_ANIMATION_MS is unavailable
+      fit: true,
+      padding: 30,
+      idealEdgeLength: 100,
+      nodeOverlap: 20,
+      refresh: 20,
+      randomize: false,
+      componentSpacing: 40,
+      nodeRepulsion: 400000,
+      edgeElasticity: 100,
+      nestingFactor: 5,
+      gravity: 80,
+      numIter: 1000,
+      initialTemp: 200,
+      coolingFactor: 0.95,
+      minTemp: 1.0,
+    };
   }
 }
 
