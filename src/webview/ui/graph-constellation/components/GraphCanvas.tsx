@@ -453,7 +453,8 @@ export function GraphCanvas({
               "text-halign": "center",
               "font-size": "10px",
               "font-family": "var(--vscode-font-family)",
-              color: "var(--vscode-foreground)",
+              "font-weight": 500,
+              color: "white",
               // Task 4.3: Dynamic node sizing based on connection count
               width: (node: any) => {
                 const degree = node.degree();
@@ -464,10 +465,10 @@ export function GraphCanvas({
                 return calculateNodeSize(degree);
               },
               "text-wrap": "wrap",
-              "text-max-width": "80px",
-              "text-background-color": "var(--vscode-editor-background)",
-              "text-background-opacity": 0.8,
-              "text-background-padding": "2px",
+              "text-max-width": "70px",
+              "text-background-color": "rgba(0, 0, 0, 0.75)",
+              "text-background-opacity": 1.0,
+              "text-background-padding": "1px",
             },
           },
           {
@@ -477,6 +478,8 @@ export function GraphCanvas({
               "border-color": "var(--vscode-focusBorder)",
               "border-width": 2,
               "z-index": 5,
+              "font-size": "11px",
+              color: "white",
             },
           },
           {
@@ -510,8 +513,8 @@ export function GraphCanvas({
               "line-color": "var(--vscode-charts-orange)",
               "target-arrow-color": "var(--vscode-charts-orange)",
               "z-index": 10,
-              "text-background-color": "var(--vscode-charts-orange)",
-              color: "var(--vscode-editor-background)",
+              "font-size": "11px",
+              color: "white",
             },
           },
           // IMPORTANT: .dimmed selector must come AFTER other selectors for proper precedence
@@ -537,6 +540,8 @@ export function GraphCanvas({
               "border-color": "var(--vscode-focusBorder)",
               "background-color": "var(--vscode-charts-orange)",
               "z-index": 20,
+              "font-size": "12px",
+              color: "white",
             },
           },
           // Heatmap overlay styles
