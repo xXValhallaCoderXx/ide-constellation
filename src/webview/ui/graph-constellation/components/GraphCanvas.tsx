@@ -127,6 +127,7 @@ function sampleLargeGraph(graph: IConstellationGraph, maxNodes: number): IConste
 interface GraphCanvasProps {
   graph: IConstellationGraph | null;
   searchQuery?: string;
+  searchFocusIndex?: number; // Task 5.3: Index of currently focused search result
   /** Report node click with resolved open mode */
   onNodeClick?: (nodeId: string, openMode: 'default' | 'split') => void;
   onError?: (error: string) => void;
@@ -163,6 +164,7 @@ interface GraphCanvasState {
 export function GraphCanvas({ 
   graph, 
   searchQuery, 
+  searchFocusIndex = -1,
   onNodeClick, 
   onError, 
   onSearchResultsChange, 
@@ -362,9 +364,11 @@ export function GraphCanvas({
           {
             selector: '.highlighted',
             style: {
+              // Task 5.1: Enhanced highlighting with 100% opacity and prominent border
               'background-color': 'var(--vscode-charts-orange)',
               'border-color': 'var(--vscode-charts-orange)',
-              'border-width': 2,
+              'border-width': 3,
+              'opacity': 1.0, // Maintain 100% opacity for highlighted nodes
               'line-color': 'var(--vscode-charts-orange)',
               'target-arrow-color': 'var(--vscode-charts-orange)',
               'z-index': 10,
@@ -375,7 +379,8 @@ export function GraphCanvas({
           {
             selector: '.dimmed',
             style: {
-              'opacity': 0.2
+              // Task 5.2: Updated dimmed opacity to 30% for better contrast
+              'opacity': 0.3
             }
           },
           // Active node style appended late for precedence (FR9, FR13)
@@ -1129,6 +1134,29 @@ export function GraphCanvas({
     setState(prev => ({ ...prev, highlightedNodes: matchingNodes }));
     onSearchResultsChange?.(matchingNodes.length);
   }, [searchQuery, onSearchResultsChange]);
+
+  // Task 5.4: Handle search focus cycling with animation
+  useEffect(() => {
+    if (!cyRef.current || !searchQuery || searchFocusIndex < 0 || state.highlightedNodes.length === 0) {
+      return;
+    }
+
+    const targetNodeId = state.highlightedNodes[searchFocusIndex];
+    if (!targetNodeId) return;
+
+    const targetNode = cyRef.current.getElementById(targetNodeId);
+    if (targetNode.empty()) return;
+
+    // Task 5.4: Focus animation using AUTO_PAN_ANIMATION_MS (400ms) while maintaining zoom
+    const currentZoom = cyRef.current.zoom();
+    cyRef.current.animate({
+      center: { eles: targetNode },
+      zoom: currentZoom, // Maintain current zoom level  
+      duration: AUTO_PAN_ANIMATION_MS // Use the 400ms constant
+    });
+
+    console.log(`[GraphCanvas] Focused on search result ${searchFocusIndex + 1}/${state.highlightedNodes.length}: ${targetNodeId}`);
+  }, [searchFocusIndex, searchQuery, state.highlightedNodes]);
 
   // Handle layout changes (Task 3.5: Layout change logic with animation)
   useEffect(() => {

@@ -2,16 +2,20 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 
 interface SearchBoxProps {
   onSearchChange: (query: string) => void;
+  onFocusCycle?: (direction: 'next' | 'previous') => void; // Task 5.3: Focus cycling callback
   placeholder?: string;
   disabled?: boolean;
   resultCount?: number;
+  currentFocusIndex?: number; // Task 5.3: Current focused result index
 }
 
 export function SearchBox({ 
   onSearchChange, 
+  onFocusCycle,
   placeholder = "Search files...", 
   disabled = false,
-  resultCount = 0
+  resultCount = 0,
+  currentFocusIndex = -1
 }: SearchBoxProps) {
   const [query, setQuery] = useState('');
   const [isActive, setIsActive] = useState(false);
@@ -45,11 +49,25 @@ export function SearchBox({
       setQuery('');
       inputRef.current?.blur();
     } else if (event.key === 'Enter') {
-      // Trigger immediate search on Enter
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
+      // Task 5.3: Focus cycling on Enter key
+      if (query && resultCount > 0 && onFocusCycle) {
+        event.preventDefault();
+        onFocusCycle('next');
+      } else {
+        // Trigger immediate search on Enter if no results or no cycling
+        if (debounceRef.current) {
+          clearTimeout(debounceRef.current);
+        }
+        onSearchChange(query);
       }
-      onSearchChange(query);
+    } else if (event.key === 'ArrowDown' && query && resultCount > 0 && onFocusCycle) {
+      // Task 5.3: Cycle to next result with arrow keys
+      event.preventDefault();
+      onFocusCycle('next');
+    } else if (event.key === 'ArrowUp' && query && resultCount > 0 && onFocusCycle) {
+      // Task 5.3: Cycle to previous result with arrow keys
+      event.preventDefault();
+      onFocusCycle('previous');
     }
   };
 
@@ -160,7 +178,12 @@ export function SearchBox({
           color: 'var(--vscode-descriptionForeground)',
           zIndex: 10
         }}>
-          {resultCount === 0 ? 'No matches found' : `${resultCount} match${resultCount === 1 ? '' : 'es'} found`}
+          {resultCount === 0 
+            ? 'No matches found' 
+            : currentFocusIndex >= 0 
+              ? `${currentFocusIndex + 1} of ${resultCount} matches (Enter/↑↓ to cycle)`
+              : `${resultCount} match${resultCount === 1 ? '' : 'es'} found (Enter to focus)`
+          }
         </div>
       )}
     </div>

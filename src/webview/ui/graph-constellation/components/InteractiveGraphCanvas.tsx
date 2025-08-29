@@ -33,6 +33,7 @@ type OpenModeSetting = 'modifier' | 'default' | 'split';
 export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHighlight }: InteractiveGraphCanvasProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResultCount, setSearchResultCount] = useState(0);
+  const [currentFocusIndex, setCurrentFocusIndex] = useState(-1); // Task 5.3: Focus cycling state
   const [openModeSetting, setOpenModeSetting] = useState<OpenModeSetting>('modifier');
   const [currentLayout, setCurrentLayout] = useState('force-directed');
   const [isLayoutChanging, setIsLayoutChanging] = useState(false);
@@ -46,10 +47,37 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
 
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
+    // Reset focus index when search query changes
+    setCurrentFocusIndex(-1);
   };
 
   const handleSearchResultsChange = (count: number) => {
     setSearchResultCount(count);
+    // Reset focus index when result count changes
+    setCurrentFocusIndex(-1);
+  };
+
+  // Task 5.3: Handle focus cycling through search results
+  const handleFocusCycle = (direction: 'next' | 'previous') => {
+    if (searchResultCount === 0) return;
+
+    let newIndex: number;
+    if (currentFocusIndex === -1) {
+      // First time focusing, start at 0
+      newIndex = 0;
+    } else {
+      // Cycle through results
+      if (direction === 'next') {
+        newIndex = (currentFocusIndex + 1) % searchResultCount;
+      } else {
+        newIndex = currentFocusIndex === 0 ? searchResultCount - 1 : currentFocusIndex - 1;
+      }
+    }
+    
+    setCurrentFocusIndex(newIndex);
+    
+    // Trigger focus animation on the graph canvas
+    // This will be handled by the GraphCanvas component via a new prop
   };
 
   const handleNodeClick = (nodeId: string, computedOpenMode: 'default' | 'split') => {
@@ -159,9 +187,11 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
       }}>
         <SearchBox
           onSearchChange={handleSearchChange}
+          onFocusCycle={handleFocusCycle}
           placeholder="Search files by name or path..."
           disabled={!graph}
           resultCount={searchQuery ? searchResultCount : undefined}
+          currentFocusIndex={searchQuery ? currentFocusIndex : -1}
         />
 
         {/* Layout Switcher */}
@@ -211,6 +241,7 @@ export function InteractiveGraphCanvas({ graph, onNodeClick, onError, activeHigh
       <GraphCanvas
         graph={graph}
         searchQuery={searchQuery}
+        searchFocusIndex={currentFocusIndex}
         onNodeClick={handleNodeClick}
         onError={onError}
         onSearchResultsChange={handleSearchResultsChange}
