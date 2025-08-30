@@ -7,30 +7,60 @@
   "engines": {
     "vscode": "^1.103.0"
   },
-  "extensionKind": ["workspace"],
-  "categories": ["Other"],
-  "activationEvents": [],
+  "extensionKind": [
+    "workspace"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
-  "repository": { "type": "git", "url": "https://github.com/xXValhallaCoderXx/ide-constellation.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xXValhallaCoderXx/ide-constellation.git"
+  },
   "license": "MIT",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
-        { "id": "kiro-constellation", "title": "Kiro Constellation", "icon": "$(graph)" }
+        {
+          "id": "kiro-constellation",
+          "title": "Kiro Constellation",
+          "icon": "$(graph)"
+        }
       ]
     },
     "views": {
       "kiro-constellation": [
-  { "id": "kiro-constellation.sidebar", "name": "Constellation", "type": "webview", "icon": "$(graph)" }
+        {
+          "id": "kiro-constellation.sidebar",
+          "name": "Constellation",
+          "type": "webview",
+          "icon": "$(graph)"
+        }
       ]
     },
     "commands": [
-      { "command": "constellation.showGraph", "title": "Constellation: Show Codebase Map" },
-      { "command": "constellation.scanProject", "title": "Constellation: Scan Project" },
-      { "command": "constellation.healthDashboard", "title": "Constellation: Open Health Dashboard" }
+      {
+        "command": "constellation.showGraph",
+        "title": "Constellation: Show Codebase Map"
+      },
+      {
+        "command": "constellation.scanProject",
+        "title": "Constellation: Scan Project"
+      },
+      {
+        "command": "constellation.healthDashboard",
+        "title": "Constellation: Open Health Dashboard"
+      }
     ],
     "mcpServerDefinitionProviders": [
-      { "id": "kiro-constellation", "label": "Constellation MCP (POC)" }
+      {
+        "id": "kiro-constellation",
+        "label": "Constellation MCP (POC)"
+      }
     ]
   },
   "scripts": {

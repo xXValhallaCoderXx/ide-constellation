@@ -30,22 +30,98 @@ import {
   LayoutType,
   DEFAULT_LAYOUT_TYPE,
 } from "@/types/layout.types";
+import { FilterState } from "./FilterDropdown";
 import { RichTooltip, TooltipData } from './RichTooltip';
-import { ToastContainer, useToasts } from './ToastNotification';
-import { LoadingIndicator, HeatmapLoadingIndicator } from './LoadingIndicator';
+
+interface FocusState {
+  enabled: boolean;
+  selectedNode: string | null;
+  depth: number;
+  showDependencies: boolean;
+  showDependents: boolean;
+  keyboardNavigatedNode?: string | null;
+}
+import { ToastContainer, useToasts } from "./ToastNotification";
+import { LoadingIndicator, HeatmapLoadingIndicator } from "./LoadingIndicator";
 import { GraphHelp } from "./ContextualHelp";
 
 /**
- * Task 4.1: Calculate node size based on connection importance
- * Uses Cytoscape's node.degree() method to determine visual sizing
- * Task 4.2: Size scaling logic based on connection count
- * Task 4.4: Optimized for performance with large graphs via sampling
+ * Task 4.1: Enhanced node size calculation based on multiple criteria
+ * Considers connection count, complexity, and file characteristics
  */
-const calculateNodeSize = (connectionCount: number): number => {
-  if (connectionCount <= 2) return 30;      // 0-2 connections: 30px
-  if (connectionCount <= 6) return 40;      // 3-6 connections: 40px  
-  if (connectionCount <= 10) return 50;     // 7-10 connections: 50px
-  return 60;                                // 11+ connections: 60px
+const calculateNodeSize = (connectionCount: number, node?: any): number => {
+  // Base size ranges: Small (20-40px), Medium (30-60px), Large (40-80px)
+  let baseSize = 30; // Default medium size
+  let sizeMultiplier = 1.0;
+
+  // 1. Connection count scoring (primary factor)
+  const connectionScore = Math.min(connectionCount / 10, 1.0); // Normalize to 0-1
+
+  // 2. Complexity scoring (if available in node data)
+  let complexityScore = 0;
+  if (node?.data) {
+    const path = node.data.path || "";
+    // Simple heuristic: path depth as complexity indicator
+    const pathDepth = path.split("/").length;
+    complexityScore = Math.min(pathDepth / 8, 1.0); // Normalize to 0-1
+
+    // File type complexity weighting
+    const extension = path.split(".").pop()?.toLowerCase();
+    const complexFileTypes = ["ts", "tsx", "js", "jsx"];
+    if (complexFileTypes.includes(extension || "")) {
+      complexityScore *= 1.2; // Boost for complex file types
+    }
+  }
+
+  // 3. File size estimation (based on file name length as proxy)
+  let fileSizeScore = 0;
+  if (node?.data?.label) {
+    const nameLength = node.data.label.length;
+    fileSizeScore = Math.min(nameLength / 50, 1.0); // Normalize to 0-1
+  }
+
+  // Calculate weighted composite score
+  const weights = {
+    connections: 0.5, // 50% weight to connections (most important)
+    complexity: 0.3, // 30% weight to complexity
+    fileSize: 0.2, // 20% weight to file size
+  };
+
+  const compositeScore =
+    connectionScore * weights.connections +
+    complexityScore * weights.complexity +
+    fileSizeScore * weights.fileSize;
+
+  // Determine size category and calculate final size
+  if (compositeScore <= 0.33) {
+    // Small category: 20-40px
+    baseSize = 20;
+    sizeMultiplier = 1 + compositeScore / 0.33; // 1.0 to 2.0
+  } else if (compositeScore <= 0.66) {
+    // Medium category: 30-60px
+    baseSize = 30;
+    sizeMultiplier = 1 + (compositeScore - 0.33) / 0.33; // 1.0 to 2.0
+  } else {
+    // Large category: 40-80px
+    baseSize = 40;
+    sizeMultiplier = 1 + (compositeScore - 0.66) / 0.34; // 1.0 to 2.0
+  }
+
+  const finalSize = Math.round(baseSize * sizeMultiplier);
+
+  // Ensure size stays within bounds
+  return Math.min(Math.max(finalSize, 20), 80);
+};
+
+/**
+ * Legacy calculateNodeSize function for backward compatibility
+ * @deprecated Use the enhanced version with node parameter
+ */
+const calculateNodeSizeLegacy = (connectionCount: number): number => {
+  if (connectionCount <= 2) return 30; // 0-2 connections: 30px
+  if (connectionCount <= 6) return 40; // 3-6 connections: 40px
+  if (connectionCount <= 10) return 50; // 7-10 connections: 50px
+  return 60; // 11+ connections: 60px
 };
 
 /**
@@ -86,7 +162,10 @@ interface HeatmapState {
 /**
  * Sample large graphs to improve performance
  */
-function sampleLargeGraph(graph: IConstellationGraph, maxNodes: number): IConstellationGraph {
+function sampleLargeGraph(
+  graph: IConstellationGraph,
+  maxNodes: number
+): IConstellationGraph {
   if (graph.nodes.length <= maxNodes) {
     return graph;
   }
@@ -95,25 +174,32 @@ function sampleLargeGraph(graph: IConstellationGraph, maxNodes: number): IConste
 
   // Sort nodes by connection count (degree centrality) to keep most connected nodes
   const nodeConnections = new Map<string, number>();
-  
+
   // Count connections for each node
-  graph.edges.forEach(edge => {
-    nodeConnections.set(edge.source, (nodeConnections.get(edge.source) || 0) + 1);
-    nodeConnections.set(edge.target, (nodeConnections.get(edge.target) || 0) + 1);
+  graph.edges.forEach((edge) => {
+    nodeConnections.set(
+      edge.source,
+      (nodeConnections.get(edge.source) || 0) + 1
+    );
+    nodeConnections.set(
+      edge.target,
+      (nodeConnections.get(edge.target) || 0) + 1
+    );
   });
 
   // Sort nodes by connection count (descending)
-  const sortedNodes = [...graph.nodes].sort((a, b) => 
-    (nodeConnections.get(b.id) || 0) - (nodeConnections.get(a.id) || 0)
+  const sortedNodes = [...graph.nodes].sort(
+    (a, b) =>
+      (nodeConnections.get(b.id) || 0) - (nodeConnections.get(a.id) || 0)
   );
 
   // Take top connected nodes
   const sampledNodes = sortedNodes.slice(0, maxNodes);
-  const sampledNodeIds = new Set(sampledNodes.map(n => n.id));
+  const sampledNodeIds = new Set(sampledNodes.map((n) => n.id));
 
   // Filter edges to only include those between sampled nodes
-  const sampledEdges = graph.edges.filter(edge => 
-    sampledNodeIds.has(edge.source) && sampledNodeIds.has(edge.target)
+  const sampledEdges = graph.edges.filter(
+    (edge) => sampledNodeIds.has(edge.source) && sampledNodeIds.has(edge.target)
   );
 
   return {
@@ -121,8 +207,217 @@ function sampleLargeGraph(graph: IConstellationGraph, maxNodes: number): IConste
     edges: sampledEdges,
     metadata: {
       ...graph.metadata,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+    },
+  };
+}
+
+/**
+ * Filter graph nodes based on filter criteria
+ * @param graph - The graph to filter
+ * @param filters - Filter criteria to apply
+ * @returns Filtered graph with nodes and edges that match criteria
+ */
+function filterNodes(
+  graph: IConstellationGraph,
+  filters: FilterState
+): IConstellationGraph {
+  if (!filters) {
+    return graph;
+  }
+
+  let filteredNodes = [...graph.nodes];
+
+  // Filter by file types
+  if (filters.fileTypes.length > 0) {
+    filteredNodes = filteredNodes.filter((node) => {
+      const extension = node.path?.split(".").pop()?.toLowerCase();
+      return extension && filters.fileTypes.includes(extension);
+    });
+  }
+
+  // Filter by complexity level (placeholder - would need health analysis data)
+  if (filters.complexity !== "all") {
+    // For now, implement a simple heuristic based on file size or path depth
+    filteredNodes = filteredNodes.filter((node) => {
+      const pathDepth = node.path.split("/").length;
+      switch (filters.complexity) {
+        case "low":
+          return pathDepth <= 3;
+        case "medium":
+          return pathDepth > 3 && pathDepth <= 6;
+        case "high":
+          return pathDepth > 6;
+        default:
+          return true;
+      }
+    });
+  }
+
+  // Filter by risk level (placeholder - would need risk analysis data)
+  if (filters.riskLevel !== "all") {
+    // For now, implement a simple heuristic based on file type
+    filteredNodes = filteredNodes.filter((node) => {
+      const extension = node.path?.split(".").pop()?.toLowerCase();
+      const isHighRisk = ["js", "jsx", "ts", "tsx"].includes(extension || "");
+
+      switch (filters.riskLevel) {
+        case "low":
+          return !isHighRisk;
+        case "medium":
+          return isHighRisk && node.path.includes("components");
+        case "high":
+          return isHighRisk && !node.path.includes("components");
+        default:
+          return true;
+      }
+    });
+  }
+
+  // Filter by dependencies
+  if (filters.dependencies !== "all") {
+    const nodeIds = new Set(filteredNodes.map((n) => n.id));
+    filteredNodes = filteredNodes.filter((node) => {
+      const nodeEdges = graph.edges.filter(
+        (e) => e.source === node.id || e.target === node.id
+      );
+
+      if (filters.dependencies === "internal") {
+        // Keep nodes that have internal dependencies (within project)
+        return nodeEdges.some(
+          (edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)
+        );
+      } else if (filters.dependencies === "external") {
+        // Keep nodes that have external dependencies (simplified: any dependencies)
+        return nodeEdges.length > 0;
+      }
+      return true;
+    });
+  }
+
+  // Filter by node count limit
+  if (filters.nodeCount < filteredNodes.length) {
+    // Sort by importance (connection count) and take top N
+    const nodeConnections = new Map<string, number>();
+    graph.edges.forEach((edge) => {
+      nodeConnections.set(
+        edge.source,
+        (nodeConnections.get(edge.source) || 0) + 1
+      );
+      nodeConnections.set(
+        edge.target,
+        (nodeConnections.get(edge.target) || 0) + 1
+      );
+    });
+
+    filteredNodes = filteredNodes
+      .sort(
+        (a, b) =>
+          (nodeConnections.get(b.id) || 0) - (nodeConnections.get(a.id) || 0)
+      )
+      .slice(0, filters.nodeCount);
+  }
+
+  // Filter edges to only include those between filtered nodes
+  const filteredNodeIds = new Set(filteredNodes.map((n) => n.id));
+  const filteredEdges = graph.edges.filter(
+    (edge) =>
+      filteredNodeIds.has(edge.source) && filteredNodeIds.has(edge.target)
+  );
+
+  return {
+    nodes: filteredNodes,
+    edges: filteredEdges,
+    metadata: {
+      ...graph.metadata,
+      timestamp: new Date().toISOString(),
+    },
+  };
+}
+
+/**
+ * Calculate focus subgraph based on selected node and focus settings
+ * @param graph - The graph to analyze
+ * @param focusState - Focus configuration
+ * @returns Filtered graph containing only nodes within focus range
+ */
+function calculateFocusSubgraph(
+  graph: IConstellationGraph,
+  focusState: FocusState
+): IConstellationGraph {
+  if (!focusState.enabled || !focusState.selectedNode) {
+    return graph;
+  }
+
+  const { selectedNode, depth, showDependencies, showDependents } = focusState;
+  const focusedNodes = new Set<string>();
+  const edgeMap = new Map<string, string[]>();
+
+  // Build adjacency map for efficient traversal
+  graph.edges.forEach((edge) => {
+    // Ensure keys exist
+    if (!edgeMap.has(edge.source)) edgeMap.set(edge.source, []);
+    if (!edgeMap.has(edge.target)) edgeMap.set(edge.target, []);
+
+    // Corrected semantics:
+    // Edge source -> target means: source depends on target.
+    // showDependencies: follow outgoing edges (source -> target) to the things the node depends on.
+    // showDependents: follow incoming edges (target -> source) to nodes that depend on the current node.
+    if (showDependencies) {
+      edgeMap.get(edge.source)!.push(edge.target); // dependencies: outward traversal
     }
+    if (showDependents) {
+      edgeMap.get(edge.target)!.push(edge.source); // dependents: inward traversal
+    }
+  });
+
+  // Breadth-first search to find nodes within specified depth
+  const queue: Array<{ nodeId: string; currentDepth: number }> = [
+    { nodeId: selectedNode, currentDepth: 0 },
+  ];
+  const visited = new Set<string>();
+
+  while (queue.length > 0) {
+    const { nodeId, currentDepth } = queue.shift()!;
+
+    if (visited.has(nodeId) || currentDepth > depth) {
+      continue;
+    }
+
+    visited.add(nodeId);
+    focusedNodes.add(nodeId);
+
+    // Add connected nodes to queue if within depth limit
+    if (currentDepth < depth) {
+      const connectedNodes = edgeMap.get(nodeId) || [];
+      connectedNodes.forEach((connectedNodeId) => {
+        if (!visited.has(connectedNodeId)) {
+          queue.push({
+            nodeId: connectedNodeId,
+            currentDepth: currentDepth + 1,
+          });
+        }
+      });
+    }
+  }
+
+  // Filter nodes and edges to include only focused subgraph
+  const filteredNodes = graph.nodes.filter((node) => focusedNodes.has(node.id));
+  const filteredEdges = graph.edges.filter(
+    (edge) => focusedNodes.has(edge.source) && focusedNodes.has(edge.target)
+  );
+
+  console.log(
+    `[calculateFocusSubgraph] Focus on "${selectedNode}" (depth ${depth}): ${filteredNodes.length}/${graph.nodes.length} nodes`
+  );
+
+  return {
+    nodes: filteredNodes,
+    edges: filteredEdges,
+    metadata: {
+      ...graph.metadata,
+      timestamp: new Date().toISOString(),
+    },
   };
 }
 
@@ -134,7 +429,11 @@ interface GraphCanvasProps {
   searchQuery?: string;
   searchFocusIndex?: number; // Task 5.3: Index of currently focused search result
   /** Report node click with resolved open mode */
-  onNodeClick?: (nodeId: string, openMode: 'default' | 'split') => void;
+  onNodeClick?: (
+    nodeId: string,
+    openMode: "default" | "split",
+    event?: { ctrlKey?: boolean; metaKey?: boolean; detail?: number }
+  ) => void;
   onError?: (error: string) => void;
   onSearchResultsChange?: (count: number) => void;
   /** Highlight state from extension (FR6/FR11) */
@@ -151,6 +450,22 @@ interface GraphCanvasProps {
   onLayoutChange?: (isChanging: boolean) => void;
   /** Disable user interactions during layout changes */
   disabled?: boolean;
+  /** Filter state for node filtering */
+  filterState?: FilterState;
+  /** Focus state for focus mode */
+  focusState?: FocusState;
+  /** Callback when a node is selected for focus */
+  onFocusNodeSelect?: (nodeId: string | null) => void;
+  /** Callback for performance metrics updates */
+  onPerformanceUpdate?: (metrics: {
+    renderTime: number;
+    layoutTime: number;
+  }) => void;
+  /** Callback with current visible vs total node counts after filtering/focus */
+  onVisibleCountsChange?: (counts: {
+    visibleNodes: number;
+    totalNodes: number;
+  }) => void;
 }
 
 interface GraphCanvasState {
@@ -181,6 +496,11 @@ export function GraphCanvas({
   currentLayout = "force-directed",
   onLayoutChange,
   disabled = false,
+  filterState,
+  focusState,
+  onFocusNodeSelect,
+  onPerformanceUpdate,
+  onVisibleCountsChange,
 }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const performanceMonitor = useRef(new PerformanceMonitor());
@@ -300,6 +620,7 @@ export function GraphCanvas({
   );
 
   // Initialize Cytoscape.js instance
+  // Initial graph build (no filter/focus dependencies to preserve viewport)
   useEffect(() => {
     if (!containerRef.current || !graph) return;
 
@@ -345,10 +666,34 @@ export function GraphCanvas({
         return;
       }
 
-      // Transform graph data to Cytoscape format with optional sampling
-      const cytoscapeElements = transformGraphToCytoscape(
-        graph.nodes.length > 1000 ? sampleLargeGraph(graph, 1000) : graph
-      );
+      // Transform graph data to Cytoscape format with optional sampling and filtering
+      let processedGraph = graph;
+
+      // Apply filters if provided
+      if (filterState) {
+        processedGraph = filterNodes(graph, filterState);
+        console.log(
+          `[GraphCanvas] Applied filters, nodes: ${graph.nodes.length} -> ${processedGraph.nodes.length}`
+        );
+      }
+
+      // Apply focus mode if enabled
+      if (focusState?.enabled && focusState.selectedNode) {
+        processedGraph = calculateFocusSubgraph(processedGraph, focusState);
+        console.log(
+          `[GraphCanvas] Applied focus, final nodes: ${processedGraph.nodes.length}`
+        );
+      }
+
+      // Apply sampling for large graphs
+      if (processedGraph.nodes.length > 1000) {
+        processedGraph = sampleLargeGraph(processedGraph, 1000);
+        console.log(
+          `[GraphCanvas] Applied sampling, final nodes: ${processedGraph.nodes.length}`
+        );
+      }
+
+      const cytoscapeElements = transformGraphToCytoscape(processedGraph);
 
       // Dispose existing instance if it exists
       if (cyRef.current) {
@@ -455,14 +800,14 @@ export function GraphCanvas({
               "font-family": "var(--vscode-font-family)",
               "font-weight": 500,
               color: "white",
-              // Task 4.3: Dynamic node sizing based on connection count
+              // Task 4.3: Enhanced dynamic node sizing based on multiple criteria
               width: (node: any) => {
                 const degree = node.degree();
-                return calculateNodeSize(degree);
+                return calculateNodeSize(degree, node);
               },
               height: (node: any) => {
                 const degree = node.degree();
-                return calculateNodeSize(degree);
+                return calculateNodeSize(degree, node);
               },
               "text-wrap": "wrap",
               "text-max-width": "70px",
@@ -575,16 +920,46 @@ export function GraphCanvas({
         hideLabelsOnViewport: false,
       });
 
-      // Add node click handler
+      // Add node click handler with enhanced UX
       cyRef.current.on("tap", "node", (event) => {
         const nodeId = event.target.id();
-        // Detect modifier keys from the original event (mouse or touch)
+
+        // Detect modifier keys and click details from the original event
         const orig: any = event.originalEvent || {};
         const meta = !!orig.metaKey;
         const ctrl = !!orig.ctrlKey;
         const openMode: "default" | "split" =
           meta || ctrl ? "split" : "default";
-        onNodeClick?.(nodeId, openMode);
+
+        // Pass click event details to the handler for enhanced UX logic
+        const clickEvent = {
+          ctrlKey: ctrl,
+          metaKey: meta,
+          detail: orig.detail || 1, // Click count for double-click detection
+        };
+
+        // Enhanced UX: Let InteractiveGraphCanvas decide behavior based on focus mode
+        onNodeClick?.(nodeId, openMode, clickEvent);
+      });
+
+      // Add double-click handler for reliable double-click detection
+      cyRef.current.on("dblclick", "node", (event) => {
+        const nodeId = event.target.id();
+
+        // Double-click always opens the file
+        const orig: any = event.originalEvent || {};
+        const meta = !!orig.metaKey;
+        const ctrl = !!orig.ctrlKey;
+        const openMode: "default" | "split" =
+          meta || ctrl ? "split" : "default";
+
+        const clickEvent = {
+          ctrlKey: ctrl,
+          metaKey: meta,
+          detail: 2, // Force double-click
+        };
+
+        onNodeClick?.(nodeId, openMode, clickEvent);
       });
 
       // Add optimized viewport handling
@@ -632,12 +1007,12 @@ export function GraphCanvas({
 
         nodes.forEach((node: any) => {
           const degree = node.degree();
-          const size = calculateNodeSize(degree);
+          const size = calculateNodeSize(degree, node);
 
-          if (size === 30) sizeCounts.small++;
-          else if (size === 40) sizeCounts.medium++;
-          else if (size === 50) sizeCounts.large++;
-          else if (size === 60) sizeCounts.extraLarge++;
+          if (size <= 30) sizeCounts.small++;
+          else if (size <= 45) sizeCounts.medium++;
+          else if (size <= 60) sizeCounts.large++;
+          else sizeCounts.extraLarge++;
         });
 
         console.log(`[GraphCanvas] Node sizing distribution:`, {
@@ -697,7 +1072,167 @@ export function GraphCanvas({
       // Reset performance monitor
       performanceMonitor.current.reset();
     };
-  }, [graph, onNodeClick, onError]);
+    // After first build, report counts (safely)
+    if (graph && cyRef.current) {
+      const localGraph = graph!; // guarded above
+      const cyInstance = cyRef.current!; // guarded above
+      try {
+        const visibleCount = cyInstance.nodes().length;
+        const total = localGraph.nodes.length;
+        onVisibleCountsChange?.({
+          visibleNodes: visibleCount,
+          totalNodes: total,
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [
+    graph,
+    onNodeClick,
+    onError,
+    /* filterState removed for incremental filtering */ /* focusState removed for incremental focus */ onFocusNodeSelect,
+  ]);
+
+  // Ref to track currently filtered-in node IDs
+  const filteredIdsRef = useRef<Set<string> | null>(null);
+
+  // Incremental filtering (hide/show without rebuilding instance)
+  useEffect(() => {
+    if (!cyRef.current || !graph) return;
+    if (!filterState) {
+      filteredIdsRef.current = null; // No filtering
+      return;
+    }
+    const filteredGraph = filterNodes(graph, filterState);
+    const allowedIds = new Set(filteredGraph.nodes.map((n) => n.id));
+    filteredIdsRef.current = allowedIds;
+    const cy = cyRef.current;
+    cy.batch(() => {
+      cy.nodes().forEach((n) => {
+        const id = n.id();
+        if (!filteredIdsRef.current || filteredIdsRef.current.has(id)) {
+          if (n.style("display") === "none") n.style("display", "element");
+        } else {
+          if (n.style("display") !== "none") n.style("display", "none");
+        }
+      });
+      cy.edges().forEach((e) => {
+        const src = e.data("source");
+        const tgt = e.data("target");
+        const visible =
+          !filteredIdsRef.current ||
+          (filteredIdsRef.current.has(src) && filteredIdsRef.current.has(tgt));
+        if (visible) {
+          if (e.style("display") === "none") e.style("display", "element");
+        } else {
+          if (e.style("display") !== "none") e.style("display", "none");
+        }
+      });
+    });
+    // Report counts post filtering
+    if (onVisibleCountsChange) {
+      const visibleNodes = cy
+        .nodes()
+        .filter((n) => n.style("display") !== "none").length;
+      onVisibleCountsChange({ visibleNodes, totalNodes: graph.nodes.length });
+    }
+    console.log("[GraphCanvas] Incremental filter applied:", {
+      visible: filteredIdsRef.current
+        ? filteredIdsRef.current.size
+        : graph.nodes.length,
+      total: graph.nodes.length,
+      filters: filterState,
+    });
+  }, [filterState, graph, onVisibleCountsChange]);
+
+  // Incremental focus mode application without rebuilding Cytoscape instance
+  useEffect(() => {
+    if (!cyRef.current || !graph) return;
+
+    const cy = cyRef.current;
+
+    // If focus disabled or no selected node -> show all
+    if (!focusState?.enabled || !focusState.selectedNode) {
+      cy.batch(() => {
+        cy.nodes().forEach((n) => {
+          if (n.removed()) return;
+          const id = n.id();
+          const shouldBeVisible =
+            !filteredIdsRef.current || filteredIdsRef.current.has(id);
+          const desiredDisplay = shouldBeVisible ? "element" : "none";
+          if (n.style("display") !== desiredDisplay)
+            n.style("display", desiredDisplay);
+        });
+        cy.edges().forEach((e) => {
+          if (e.removed()) return;
+          const src = e.data("source");
+          const tgt = e.data("target");
+          const shouldBeVisible =
+            !filteredIdsRef.current ||
+            (filteredIdsRef.current.has(src) &&
+              filteredIdsRef.current.has(tgt));
+          const desiredDisplay = shouldBeVisible ? "element" : "none";
+          if (e.style("display") !== desiredDisplay)
+            e.style("display", desiredDisplay);
+        });
+      });
+      if (onVisibleCountsChange) {
+        const visibleNodes = cy
+          .nodes()
+          .filter((n) => n.style("display") !== "none").length;
+        onVisibleCountsChange({ visibleNodes, totalNodes: graph.nodes.length });
+      }
+      return;
+    }
+
+    // Compute focused subgraph (node IDs to keep)
+    const focusSubgraph = calculateFocusSubgraph(graph, focusState); // uses full graph
+    // Intersection with filtered set (if any)
+    const allowedIds = new Set<string>();
+    const focusIds = new Set(focusSubgraph.nodes.map((n) => n.id));
+    if (filteredIdsRef.current) {
+      filteredIdsRef.current.forEach((id) => {
+        if (focusIds.has(id)) allowedIds.add(id);
+      });
+    } else {
+      focusIds.forEach((id) => allowedIds.add(id));
+    }
+
+    // Always hide non-focused nodes for clarity
+    cy.batch(() => {
+      cy.nodes().forEach((n) => {
+        const id = n.id();
+        const inFocus = allowedIds.has(id);
+        const desired = inFocus ? "element" : "none";
+        if (n.style("display") !== desired) n.style("display", desired);
+        if (!inFocus) n.removeClass("dimmed");
+      });
+      cy.edges().forEach((e) => {
+        const src = e.data("source");
+        const tgt = e.data("target");
+        const visible = allowedIds.has(src) && allowedIds.has(tgt);
+        const desired = visible ? "element" : "none";
+        if (e.style("display") !== desired) e.style("display", desired);
+        if (!visible) e.removeClass("dimmed");
+      });
+    });
+
+    // Report counts post focus
+    if (onVisibleCountsChange) {
+      const visibleNodes = cy
+        .nodes()
+        .filter((n) => n.style("display") !== "none").length;
+      onVisibleCountsChange({ visibleNodes, totalNodes: graph.nodes.length });
+    }
+
+    console.log("[GraphCanvas] Incremental focus applied:", {
+      visibleAfterFocus: allowedIds.size,
+      total: graph.nodes.length,
+      depth: focusState.depth,
+      selected: focusState.selectedNode,
+    });
+  }, [focusState, graph]);
 
   /**
    * Apply active highlight & auto-pan logic.
@@ -887,6 +1422,12 @@ export function GraphCanvas({
 
       const totalTime = performanceMonitor.current.endRender(startTime);
       trackRenderPerformance(totalTime, "heatmap-overlay");
+
+      // Report performance metrics to parent component
+      onPerformanceUpdate?.({
+        renderTime: totalTime,
+        layoutTime: 0, // Heatmap is not a layout operation
+      });
 
       // Show success notification
       showSuccess(
@@ -1527,6 +2068,49 @@ export function GraphCanvas({
     onSearchResultsChange?.(matchingNodes.length);
   }, [searchQuery, onSearchResultsChange]);
 
+  // Handle focus mode visual styling
+  useEffect(() => {
+    if (!cyRef.current) return;
+
+    // Clear any existing focus styling
+    cyRef.current.elements().removeClass("focus-center keyboard-navigated");
+    cyRef.current
+      .elements()
+      .removeStyle("border-width border-color border-style");
+
+    // Apply focus center styling if focus mode is enabled
+    if (focusState?.enabled && focusState.selectedNode) {
+      const focusNode = cyRef.current.getElementById(focusState.selectedNode);
+      if (focusNode && !focusNode.empty()) {
+        focusNode.addClass("focus-center");
+        focusNode.style({
+          "border-width": "4px",
+          "border-color": "#007acc", // VS Code blue
+          "border-style": "solid",
+        });
+      }
+    }
+
+    // Apply keyboard navigation highlighting (different from focus center)
+    if (
+      focusState?.enabled &&
+      focusState.keyboardNavigatedNode &&
+      focusState.keyboardNavigatedNode !== focusState.selectedNode
+    ) {
+      const keyboardNode = cyRef.current.getElementById(
+        focusState.keyboardNavigatedNode
+      );
+      if (keyboardNode && !keyboardNode.empty()) {
+        keyboardNode.addClass("keyboard-navigated");
+        keyboardNode.style({
+          "border-width": "2px",
+          "border-color": "#ffcc00", // Yellow for keyboard navigation
+          "border-style": "dashed",
+        });
+      }
+    }
+  }, [focusState]);
+
   // Task 5.4: Handle search focus cycling with animation
   useEffect(() => {
     if (
@@ -1612,6 +2196,12 @@ export function GraphCanvas({
     const handleLayoutStop = () => {
       // Task 8.4: End performance monitoring using existing infrastructure
       const duration = performanceMonitor.endRender(startTime);
+
+      // Report performance metrics to parent component
+      onPerformanceUpdate?.({
+        renderTime: duration,
+        layoutTime: duration,
+      });
 
       // Task 8.2: Enhanced performance monitoring for layout switching
       const nodeCount = graph.nodes.length;
