@@ -95,3 +95,36 @@ export const CONSTELLATION_HEALTH_REPORT_TOOL: ToolDefinition = {
         required: []
     }
 };
+
+// Trace impact tool for change impact analysis
+export const CONSTELLATION_TRACE_IMPACT_TOOL: ToolDefinition = {
+    name: 'constellation_trace_impact',
+    description: 'Analyze the blast radius and downstream impact of modifying any file or function. Provides risk scoring, visual animations, and actionable safeguards for proposed changes. Trigger terms: impact, blast radius, change analysis, what breaks, dependencies, risk.',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            target: {
+                type: 'string',
+                description: 'File path to analyze (workspace-relative path)',
+            },
+            changeType: {
+                type: 'string',
+                description: 'Type of change being made to the target file',
+                enum: ['refactor', 'delete', 'modify', 'add-feature'],
+            },
+            depth: {
+                type: 'number',
+                description: 'Maximum depth to traverse dependencies (default: 3, max: 5)',
+                minimum: 1,
+                maximum: 5,
+                default: 3
+            },
+            workspaceRoot: {
+                type: 'string',
+                description: 'Path to the workspace root directory (defaults to current working directory)',
+                default: ''
+            }
+        },
+        required: ['target', 'changeType']
+    }
+};

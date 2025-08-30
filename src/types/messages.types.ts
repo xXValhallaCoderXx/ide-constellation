@@ -157,6 +157,37 @@ export interface GraphClearHeatmapMessage extends WebviewMessage {
   command: 'graph:clearHeatmap';
 }
 
+/** Impact animation request message */
+export interface ImpactAnimationRequestMessage extends WebviewMessage {
+  command: 'impact:animate';
+  data: import('../types/impact-animation.types').ImpactAnimationPayload;
+}
+
+/** Impact animation response message */
+export interface ImpactAnimationResponseMessage extends WebviewMessage {
+  command: 'impact:animate:response';
+  data: {
+    success: boolean;
+    animationId: string;
+    error?: string;
+  };
+}
+
+/** Impact animation complete message */
+export interface ImpactAnimationCompleteMessage extends WebviewMessage {
+  command: 'impact:animate:complete';
+  data: {
+    animationId: string;
+    duration: number;
+    nodesAnimated: number;
+  };
+}
+
+/** Impact animation clear message */
+export interface ImpactAnimationClearMessage extends WebviewMessage {
+  command: 'impact:animate:clear';
+}
+
 /** Visual instruction message from MCP provider */
 export interface VisualInstructionMessage extends WebviewMessage {
   command: 'visualInstruction';
@@ -253,6 +284,22 @@ export function isHealthExportResultMessage(msg: WebviewMessage): msg is HealthE
   return msg.command === 'health:export:result' && !!(msg as any).data && typeof (msg as any).data.success === 'boolean';
 }
 
-export type WebviewToExtensionMessage = CheckStatusMessage | GraphRequestMessage | EditorOpenMessage | HealthRequestMessage | HealthShowHeatmapMessage | HealthFocusNodeMessage | HealthRefreshMessage | VisualInstructionMessage | PanelOpenMessage | ProjectScanMessage | RouteNavigateMessage | HealthExportMessage;
+export function isImpactAnimationRequestMessage(msg: WebviewMessage): msg is ImpactAnimationRequestMessage {
+  return msg.command === 'impact:animate' && !!(msg as any).data;
+}
 
-export type ExtensionToWebviewMessage = StatusUpdateMessage | ServerInfoMessage | GraphResponseMessage | GraphErrorMessage | GraphHighlightNodeMessage | HealthResponseMessage | HealthErrorMessage | HealthLoadingMessage | DashboardHighlightRiskMessage | GraphApplyHeatmapMessage | GraphClearHeatmapMessage | DashboardNotificationMessage | HealthExportResultMessage;
+export function isImpactAnimationResponseMessage(msg: WebviewMessage): msg is ImpactAnimationResponseMessage {
+  return msg.command === 'impact:animate:response' && !!(msg as any).data && typeof (msg as any).data.success === 'boolean';
+}
+
+export function isImpactAnimationCompleteMessage(msg: WebviewMessage): msg is ImpactAnimationCompleteMessage {
+  return msg.command === 'impact:animate:complete' && !!(msg as any).data && typeof (msg as any).data.animationId === 'string';
+}
+
+export function isImpactAnimationClearMessage(msg: WebviewMessage): msg is ImpactAnimationClearMessage {
+  return msg.command === 'impact:animate:clear';
+}
+
+export type WebviewToExtensionMessage = CheckStatusMessage | GraphRequestMessage | EditorOpenMessage | HealthRequestMessage | HealthShowHeatmapMessage | HealthFocusNodeMessage | HealthRefreshMessage | VisualInstructionMessage | PanelOpenMessage | ProjectScanMessage | RouteNavigateMessage | HealthExportMessage | ImpactAnimationRequestMessage | ImpactAnimationClearMessage;
+
+export type ExtensionToWebviewMessage = StatusUpdateMessage | ServerInfoMessage | GraphResponseMessage | GraphErrorMessage | GraphHighlightNodeMessage | HealthResponseMessage | HealthErrorMessage | HealthLoadingMessage | DashboardHighlightRiskMessage | GraphApplyHeatmapMessage | GraphClearHeatmapMessage | DashboardNotificationMessage | HealthExportResultMessage | ImpactAnimationResponseMessage | ImpactAnimationCompleteMessage;

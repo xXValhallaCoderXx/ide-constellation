@@ -6,12 +6,14 @@ import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types';
-import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL } from '../types/mcp.types';
+import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL, CONSTELLATION_TRACE_IMPACT_TOOL } from '../types/mcp.types';
 import { GraphService } from '../services/graph.service';
 import { GraphCache } from '../services/graph-cache.service';
 import { SummaryGenerator } from '../services/summary-generator.service';
 import { DualToolResponse } from '../types/visual-instruction.types';
 import { executeHealthReport, generateHealthSummary } from './tools/health-report.tool';
+import { executeTraceImpact } from './tools/trace-impact.tool';
+import { ChangeType } from '../services/impact-analyzer/impact-types';
 import * as path from 'path';
 
 // Conditional vscode import - only available in extension context
@@ -55,7 +57,8 @@ export class MCPStdioServer {
                     '- constellation_example_tool: echoes an optional "message" string.',
                     '- constellation_get_graph_summary: provides intelligent codebase analysis with architectural insights.',
                     '- constellation_health_report: generates comprehensive health analysis with dual-view dashboard and heatmap visualization.',
-                    'Prefer using tools when asked to validate MCP connectivity, echo a message, analyze the codebase, or generate health reports.'
+                    '- constellation_trace_impact: analyzes the blast radius and impact of code changes with visual animations and risk scoring.',
+                    'Prefer using tools when asked to validate MCP connectivity, echo a message, analyze the codebase, generate health reports, or analyze change impact.'
                 ].join('\n')
             }
         );
@@ -72,7 +75,7 @@ export class MCPStdioServer {
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
             console.error('[MCP DEBUG] Received tools/list request');
             return {
-                tools: [CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL],
+                tools: [CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL, CONSTELLATION_TRACE_IMPACT_TOOL],
             };
         });
 
@@ -158,6 +161,55 @@ export class MCPStdioServer {
                 
                 // Execute health report with dual-view response
                 return await this.executeHealthReport(workspaceRoot, forceRefresh, this.extensionContext);
+            }
+
+            if (name === CONSTELLATION_TRACE_IMPACT_TOOL.name) {
+                console.error('[MCP DEBUG] TRACE IMPACT tool executed');
+                const target = args?.target as string;
+                const changeType = args?.changeType as string;
+                const depth = (args?.depth as number) || 3;
+                const providedWorkspaceRoot = (args?.workspaceRoot as string) || '';
+
+                // Validate required parameters
+                if (!target) {
+                    throw new Error('Target file path is required for impact analysis');
+                }
+                if (!changeType || !Object.values(ChangeType).includes(changeType as ChangeType)) {
+                    throw new Error(`Invalid change type: ${changeType}. Must be one of: ${Object.values(ChangeType).join(', ')}`);
+                }
+
+                // Determine the workspace root to analyze
+                let workspaceRoot: string;
+
+                if (providedWorkspaceRoot && providedWorkspaceRoot.trim()) {
+                    // Use provided workspace root (most reliable when called from external tools like Kiro)
+                    workspaceRoot = path.resolve(providedWorkspaceRoot.trim());
+                    console.error(`[TRACE_IMPACT] Using provided workspace root: ${workspaceRoot}`);
+                } else if (vscode && vscode.workspace && vscode.workspace.workspaceFolders) {
+                    // Extension mode - use VS Code workspace API
+                    workspaceRoot = vscode.workspace.workspaceFolders[0]?.uri.fsPath;
+                    if (!workspaceRoot) {
+                        throw new Error('No workspace folder open - cannot analyze impact');
+                    }
+                    console.error(`[TRACE_IMPACT] Using VS Code workspace root: ${workspaceRoot}`);
+                } else {
+                    // Standalone mode fallback - use current working directory as workspace root
+                    workspaceRoot = process.cwd();
+                    console.error(`[TRACE_IMPACT] Using current working directory as workspace root: ${workspaceRoot}`);
+                }
+
+                // Validate workspace root exists
+                const fs = require('fs');
+                if (!fs.existsSync(workspaceRoot)) {
+                    throw new Error(`Workspace root does not exist: ${workspaceRoot}`);
+                }
+
+                // Execute trace impact analysis
+                return await this.executeTraceImpact(workspaceRoot, {
+                    target,
+                    changeType: changeType as ChangeType,
+                    depth
+                }, this.extensionContext);
             }
 
             if (name !== CONSTELLATION_EXAMPLE_TOOL.name) {
@@ -551,6 +603,87 @@ export class MCPStdioServer {
             }
 
             throw new Error(`Health report failed: ${userFriendlyMessage}`);
+        }
+    }
+
+    /**
+     * Execute trace impact analysis with dual-view response structure
+     * Works in both extension and standalone modes
+     */
+    private async executeTraceImpact(
+        workspaceRoot: string,
+        input: { target: string; changeType: ChangeType; depth: number },
+        extensionContext: any
+    ): Promise<any> {
+        try {
+            console.error(`[TRACE_IMPACT] Starting impact analysis`);
+            console.error(`[TRACE_IMPACT] Workspace: ${workspaceRoot}`);
+            console.error(`[TRACE_IMPACT] Target: ${input.target}, Change: ${input.changeType}, Depth: ${input.depth}`);
+
+            // Execute trace impact using the tool function
+            const traceImpactResponse = await executeTraceImpact(workspaceRoot, input, extensionContext);
+
+            console.error(`[TRACE_IMPACT] Generated impact analysis with ${traceImpactResponse.dataForAI.impactedFiles.length} impacted files`);
+            console.error(`[TRACE_IMPACT] Risk score: ${traceImpactResponse.dataForAI.riskScore}/10`);
+            console.error(`[TRACE_IMPACT] Visual instruction generated for animation`);
+
+            // Create the response structure
+            const responseData = {
+                // Summary for AI reasoning
+                summary: traceImpactResponse.dataForAI.summary,
+                // Impact data for analysis
+                impactData: {
+                    riskScore: traceImpactResponse.dataForAI.riskScore,
+                    impactedFiles: traceImpactResponse.dataForAI.impactedFiles,
+                    recommendations: traceImpactResponse.dataForAI.recommendations,
+                    metadata: traceImpactResponse.dataForAI.metadata
+                },
+                // Visual instruction for webview routing
+                visualInstruction: traceImpactResponse.visualInstruction
+            };
+
+            const responseText = JSON.stringify(responseData);
+
+            // Route visual instruction if we have a provider instance
+            if (this.providerInstance && traceImpactResponse.visualInstruction) {
+                console.error(`[TRACE_IMPACT] Routing visual instruction: ${traceImpactResponse.visualInstruction.action}`);
+                try {
+                    // Create a dual response structure for routing
+                    const dualResponse = JSON.stringify({
+                        dataForAI: traceImpactResponse.dataForAI,
+                        visualInstruction: traceImpactResponse.visualInstruction
+                    });
+                    this.providerInstance.handleToolResult(dualResponse);
+                } catch (routingError) {
+                    console.error(`[TRACE_IMPACT] Visual instruction routing failed: ${routingError instanceof Error ? routingError.message : String(routingError)}`);
+                }
+            }
+
+            // Return dual payload response structure
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: responseText
+                }]
+            };
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error('[TRACE_IMPACT ERROR]', errorMessage);
+
+            // Provide user-friendly error messages
+            let userFriendlyMessage = errorMessage;
+            if (errorMessage.includes('No workspace folder open')) {
+                userFriendlyMessage = 'Please open a workspace folder in VS Code to analyze impact.';
+            } else if (errorMessage.includes('Failed to load graph data')) {
+                userFriendlyMessage = 'Unable to analyze project structure. Please scan the project first using the "Scan Project" command.';
+            } else if (errorMessage.includes('Target file not found')) {
+                userFriendlyMessage = 'The specified file was not found in the project dependency graph.';
+            } else if (errorMessage.includes('Permission denied') || errorMessage.includes('EACCES')) {
+                userFriendlyMessage = 'Permission denied accessing project files. Please check file permissions.';
+            }
+
+            throw new Error(`Impact analysis failed: ${userFriendlyMessage}`);
         }
     }
 
