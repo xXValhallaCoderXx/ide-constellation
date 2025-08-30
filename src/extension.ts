@@ -18,174 +18,204 @@ let panelRegistry: PanelRegistry | null = null; // Single instance (FR1, FR15)
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
 export async function activate(context: vscode.ExtensionContext) {
-	const output = vscode.window.createOutputChannel('Kiro Constellation');
-	context.subscriptions.push(output);
-	const log = (msg: string) => {
-		const line = `[${new Date().toISOString()}] ${msg}`;
-		console.log(line);
-		output.appendLine(line);
-	};
+  const output = vscode.window.createOutputChannel("Kiro Constellation");
+  context.subscriptions.push(output);
+  const log = (msg: string) => {
+    const line = `[${new Date().toISOString()}] ${msg}`;
+    console.log(line);
+    output.appendLine(line);
+  };
 
-	log('Extension activating...');
+  log("Extension activating...");
 
-	if (CONFIG.USE_STANDARD_PROVIDER_POC) {
-    log("[POC] VS Code Standard MCP Provider POC mode enabled");
-    log("[POC] Starting VS Code Standard MCP Provider POC...");
+  // --- Always create webview + panel infrastructure first ---
+  webviewManager = new WebviewManager(null, output);
+  webviewManager.initialize(context);
+  panelRegistry = new PanelRegistry(webviewManager, output);
+  webviewManager.setPanelRegistry(panelRegistry);
 
-    // Initialize MCP Provider for POC
-    try {
-      mcpProvider = new KiroConstellationMCPProvider(context, output);
-      const success = await mcpProvider.registerProvider();
-
-      if (success) {
-        log("[POC] MCP Provider registration completed successfully");
-        log("[POC] Testing provider functionality...");
+  // --- Always attempt MCP provider registration (previously only in POC branch) ---
+  try {
+    mcpProvider = new KiroConstellationMCPProvider(context, output);
+    const registered = await mcpProvider.registerProvider();
+    if (registered) {
+      log("[MCP] Provider registration successful");
+      if (CONFIG.USE_STANDARD_PROVIDER_POC) {
+        log("[POC] Running provider self-test");
         await mcpProvider.testProvider();
-      } else {
-        log(
-          "[POC] MCP Provider registration failed - API may not be available"
-        );
       }
-    } catch (error) {
+    } else {
       log(
-        `[POC] Error in MCP Provider setup: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        "[MCP] Provider registration did not complete (API unavailable). Fallback config logic executed if possible."
       );
     }
-
-    // Initialize Webview Manager (always available)
-    webviewManager = new WebviewManager(null, output);
-    webviewManager.initialize(context);
-    // Initialize Panel Registry once
-    panelRegistry = new PanelRegistry(webviewManager, output);
-    webviewManager.setPanelRegistry(panelRegistry);
-    // Inject into provider for visualInstruction routing
-    if (
-      mcpProvider &&
-      typeof (mcpProvider as any).setWebviewManager === "function"
-    ) {
-      (mcpProvider as any).setWebviewManager(webviewManager);
-    }
-  } else {
-    // Legacy HTTP server path removed; MCP provider is the default
-    log("[PRODUCTION] MCP provider path active");
-    webviewManager = new WebviewManager(null, output);
-    webviewManager.initialize(context);
-    // Initialize Panel Registry once
-    panelRegistry = new PanelRegistry(webviewManager, output);
-    webviewManager.setPanelRegistry(panelRegistry);
-    if (
-      mcpProvider &&
-      typeof (mcpProvider as any).setWebviewManager === "function"
-    ) {
-      (mcpProvider as any).setWebviewManager(webviewManager);
-    }
+  } catch (err) {
+    log(
+      `[MCP] Error during provider setup: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
   }
 
-	// Register the sidebar provider
-	const sidebarProvider = new ConstellationSidebarProvider(context);
-	const sidebarDisposable = vscode.window.registerWebviewViewProvider(
-		'kiro-constellation.sidebar',
-		sidebarProvider
-	);
+  // Inject webview manager for visualInstruction routing if supported
+  if (
+    mcpProvider &&
+    typeof (mcpProvider as any).setWebviewManager === "function"
+  ) {
+    (mcpProvider as any).setWebviewManager(webviewManager);
+  }
 
-	// Register the Show Graph command (renamed to constellation.showGraph for consistency)
-	const showGraphDisposable = vscode.commands.registerCommand('constellation.showGraph', () => {
-		log('Show Graph command executed');
-		panelRegistry?.open("dependencyGraph", "command:showGraph");
-	});
+  // Register the sidebar provider
+  const sidebarProvider = new ConstellationSidebarProvider(context);
+  const sidebarDisposable = vscode.window.registerWebviewViewProvider(
+    "kiro-constellation.sidebar",
+    sidebarProvider
+  );
 
-	// Register the Scan Project command
-	const scanProjectDisposable = vscode.commands.registerCommand('constellation.scanProject', async () => {
-		log('Scan Project command executed');
-		try {
-			if (mcpProvider) {
-				await mcpProvider.scanProject();
-				vscode.window.showInformationMessage('Project scan completed. Check the output channel for results.');
-			} else {
-				log('[ERROR] MCP Provider not available for scanning');
-				vscode.window.showErrorMessage('MCP Provider not available. Cannot perform scan.');
-			}
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error);
-			log(`[ERROR] Scan Project command failed: ${errorMessage}`);
-			vscode.window.showErrorMessage(`Scan failed: ${errorMessage}`);
-		}
-	});
+  // Register the Show Graph command (renamed to constellation.showGraph for consistency)
+  const showGraphDisposable = vscode.commands.registerCommand(
+    "constellation.showGraph",
+    () => {
+      log("Show Graph command executed");
+      panelRegistry?.open("dependencyGraph", "command:showGraph");
+    }
+  );
 
-	// Register the Health Dashboard command (simple open)
-	const healthDashboardDisposable = vscode.commands.registerCommand('constellation.healthDashboard', () => {
-		log('Health Dashboard command executed');
-		panelRegistry?.open("healthDashboard", "command:healthDashboard");
-	});
+  // Register the Scan Project command
+  const scanProjectDisposable = vscode.commands.registerCommand(
+    "constellation.scanProject",
+    async () => {
+      log("Scan Project command executed");
+      try {
+        if (mcpProvider) {
+          await mcpProvider.scanProject();
+          vscode.window.showInformationMessage(
+            "Project scan completed. Check the output channel for results."
+          );
+        } else {
+          log("[ERROR] MCP Provider not available for scanning");
+          vscode.window.showErrorMessage(
+            "MCP Provider not available. Cannot perform scan."
+          );
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        log(`[ERROR] Scan Project command failed: ${errorMessage}`);
+        vscode.window.showErrorMessage(`Scan failed: ${errorMessage}`);
+      }
+    }
+  );
 
-	// Removed deprecated/legacy commands: healthReport, healthReportGraph, clearHeatmap, analyzeHealth, debugLaunchMcp
+  // Register the Health Dashboard command (simple open)
+  const healthDashboardDisposable = vscode.commands.registerCommand(
+    "constellation.healthDashboard",
+    () => {
+      log("Health Dashboard command executed");
+      panelRegistry?.open("healthDashboard", "command:healthDashboard");
+    }
+  );
 
-	context.subscriptions.push(
-		sidebarDisposable,
-		showGraphDisposable,
-		scanProjectDisposable,
-		healthDashboardDisposable
-	);
+  // Removed deprecated/legacy commands: healthReport, healthReportGraph, clearHeatmap, analyzeHealth, debugLaunchMcp
 
-	// (FR4/FR5/FR6) Active editor tracking -> highlight graph node (debounced per FR5)
-	let statusTimer: NodeJS.Timeout | null = null;
-	let statusItem: vscode.StatusBarItem | null = null;
-	/**
-	 * Show a temporary status bar message for missing node scenarios.
-	 * FR7: Transient status feedback.
-	 */
-	const showTransientStatus = (text: string) => {
-		if (!statusItem) {
-			statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-			context.subscriptions.push(statusItem);
-		}
-		statusItem.text = text;
-		statusItem.show();
-		if (statusTimer) { clearTimeout(statusTimer); }
-		statusTimer = setTimeout(() => { statusItem?.hide(); }, STATUS_BAR_TIMEOUT_MS);
-	};
-	/**
-	 * Dispatch highlight message to webview for active editor file.
-	 * FR4/FR6: Synchronize active editor -> graph highlight.
-	 * Guards for panel existence and file membership.
-	 */
-	const sendHighlight = async (editor: vscode.TextEditor | undefined) => {
-		if (!webviewManager) { return; }
-		const panel = (webviewManager as any).currentPanel as vscode.WebviewPanel | undefined; // access private for now
-		if (!panel) { return; }
-		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-		if (!workspaceRoot) { return; }
-		if (!editor || editor.document.isUntitled || editor.document.uri.scheme !== 'file') {
-			panel.webview.postMessage({ command: 'graph:highlightNode', data: { fileId: null } }); // Task 10.1 guard already ensured
-			return;
-		}
-		const rel = path.relative(workspaceRoot, editor.document.uri.fsPath).replace(/\\/g, '/');
-		const graph = GraphService.getInstance().getGraph();
-		const exists = !!graph?.nodes.find(n => n.id === rel);
-		if (exists) {
-			panel.webview.postMessage({ command: 'graph:highlightNode', data: { fileId: rel } });
-		} else {
-			panel.webview.postMessage({ command: 'graph:highlightNode', data: { fileId: null, reason: 'notInGraph' } });
-			showTransientStatus('Constellation: File not in graph');
-		}
-	};
+  context.subscriptions.push(
+    sidebarDisposable,
+    showGraphDisposable,
+    scanProjectDisposable,
+    healthDashboardDisposable
+  );
 
-	const debouncedHighlight = debounce((ed: vscode.TextEditor | undefined) => {
-		sendHighlight(ed);
-	}, SYNC_DEBOUNCE_MS); // FR5 debounce
-	vscode.window.onDidChangeActiveTextEditor((ed) => {
-		debouncedHighlight(ed);
-	}, null, context.subscriptions);
+  // (FR4/FR5/FR6) Active editor tracking -> highlight graph node (debounced per FR5)
+  let statusTimer: NodeJS.Timeout | null = null;
+  let statusItem: vscode.StatusBarItem | null = null;
+  /**
+   * Show a temporary status bar message for missing node scenarios.
+   * FR7: Transient status feedback.
+   */
+  const showTransientStatus = (text: string) => {
+    if (!statusItem) {
+      statusItem = vscode.window.createStatusBarItem(
+        vscode.StatusBarAlignment.Left,
+        100
+      );
+      context.subscriptions.push(statusItem);
+    }
+    statusItem.text = text;
+    statusItem.show();
+    if (statusTimer) {
+      clearTimeout(statusTimer);
+    }
+    statusTimer = setTimeout(() => {
+      statusItem?.hide();
+    }, STATUS_BAR_TIMEOUT_MS);
+  };
+  /**
+   * Dispatch highlight message to webview for active editor file.
+   * FR4/FR6: Synchronize active editor -> graph highlight.
+   * Guards for panel existence and file membership.
+   */
+  const sendHighlight = async (editor: vscode.TextEditor | undefined) => {
+    if (!webviewManager) {
+      return;
+    }
+    const panel = (webviewManager as any).currentPanel as
+      | vscode.WebviewPanel
+      | undefined; // access private for now
+    if (!panel) {
+      return;
+    }
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot) {
+      return;
+    }
+    if (
+      !editor ||
+      editor.document.isUntitled ||
+      editor.document.uri.scheme !== "file"
+    ) {
+      panel.webview.postMessage({
+        command: "graph:highlightNode",
+        data: { fileId: null },
+      }); // Task 10.1 guard already ensured
+      return;
+    }
+    const rel = path
+      .relative(workspaceRoot, editor.document.uri.fsPath)
+      .replace(/\\/g, "/");
+    const graph = GraphService.getInstance().getGraph();
+    const exists = !!graph?.nodes.find((n) => n.id === rel);
+    if (exists) {
+      panel.webview.postMessage({
+        command: "graph:highlightNode",
+        data: { fileId: rel },
+      });
+    } else {
+      panel.webview.postMessage({
+        command: "graph:highlightNode",
+        data: { fileId: null, reason: "notInGraph" },
+      });
+      showTransientStatus("Constellation: File not in graph");
+    }
+  };
 
-	// Task 10.4: Log unhandled promise rejections for resilience diagnostics
-	if (!(global as any).__constellationUnhandledRejectionHookInstalled) {
-		process.on('unhandledRejection', (reason) => {
-			console.warn('[Constellation] Unhandled promise rejection:', reason);
-		});
-		(global as any).__constellationUnhandledRejectionHookInstalled = true;
-	}
+  const debouncedHighlight = debounce((ed: vscode.TextEditor | undefined) => {
+    sendHighlight(ed);
+  }, SYNC_DEBOUNCE_MS); // FR5 debounce
+  vscode.window.onDidChangeActiveTextEditor(
+    (ed) => {
+      debouncedHighlight(ed);
+    },
+    null,
+    context.subscriptions
+  );
+
+  // Task 10.4: Log unhandled promise rejections for resilience diagnostics
+  if (!(global as any).__constellationUnhandledRejectionHookInstalled) {
+    process.on("unhandledRejection", (reason) => {
+      console.warn("[Constellation] Unhandled promise rejection:", reason);
+    });
+    (global as any).__constellationUnhandledRejectionHookInstalled = true;
+  }
 }
 
 
