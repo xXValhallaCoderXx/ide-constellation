@@ -44,6 +44,8 @@ interface FocusState {
 import { ToastContainer, useToasts } from "./ToastNotification";
 import { LoadingIndicator, HeatmapLoadingIndicator } from "./LoadingIndicator";
 import { GraphHelp } from "./ContextualHelp";
+import { ImpactAnimationHandler, useImpactAnimation } from "./ImpactAnimationHandler";
+import { ImpactAnimationInstruction, AnimationEvent, AnimationEventType } from "../../../../types/impact-animation.types";
 
 /**
  * Task 4.1: Enhanced node size calculation based on multiple criteria
@@ -466,6 +468,8 @@ interface GraphCanvasProps {
     visibleNodes: number;
     totalNodes: number;
   }) => void;
+  /** Ref to expose GraphCanvas methods */
+  ref?: { current: GraphCanvasRef | null };
 }
 
 interface GraphCanvasState {
@@ -480,6 +484,22 @@ interface GraphCanvasState {
     data: TooltipData | null;
     position: { x: number; y: number };
   };
+}
+
+/**
+ * Ref interface for GraphCanvas component
+ */
+export interface GraphCanvasRef {
+  /** Get the current Cytoscape instance */
+  getCytoscapeInstance: () => cytoscape.Core | null;
+  /** Apply impact animation to the graph */
+  applyImpactAnimation: (payload: any) => Promise<void>;
+  /** Clear any active animations */
+  clearAnimation: () => void;
+  /** Reset animation state */
+  resetAnimation: () => void;
+  /** Check if animation is currently running */
+  isAnimating: () => boolean;
 }
 
 export function GraphCanvas({
@@ -501,6 +521,7 @@ export function GraphCanvas({
   onFocusNodeSelect,
   onPerformanceUpdate,
   onVisibleCountsChange,
+  ref,
 }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const performanceMonitor = useRef(new PerformanceMonitor());
@@ -543,6 +564,45 @@ export function GraphCanvas({
     showWarning,
     showInfo,
   } = useToasts();
+
+  // Impact animation handler
+  const handleAnimationEvent = useCallback((event: AnimationEvent) => {
+    switch (event.type) {
+      case AnimationEventType.ANIMATION_START:
+        showInfo("Impact analysis animation started");
+        break;
+      case AnimationEventType.ANIMATION_COMPLETE:
+        showSuccess("Impact analysis animation completed");
+        break;
+      case AnimationEventType.ANIMATION_ERROR:
+        showError("Impact animation failed");
+        break;
+    }
+  }, [showInfo, showSuccess, showError]);
+
+  const { applyImpactAnimation, clearAnimation, isAnimating } = useImpactAnimation({
+    cy: cyRef.current,
+    onAnimationEvent: handleAnimationEvent,
+    enabled: true
+  });
+
+  // Expose ref methods
+  useEffect(() => {
+    if (ref) {
+      ref.current = {
+        getCytoscapeInstance: () => cyRef.current,
+        applyImpactAnimation,
+        clearAnimation,
+        resetAnimation: clearAnimation, // resetAnimation is an alias for clearAnimation
+        isAnimating: () => isAnimating
+      };
+    }
+    return () => {
+      if (ref) {
+        ref.current = null;
+      }
+    };
+  }, [ref, applyImpactAnimation, clearAnimation, isAnimating]);
 
   // Debounced state update for performance - enhanced with immediate option
   const debouncedSetState = useCallback(
@@ -1292,8 +1352,7 @@ export function GraphCanvas({
         }
         cy.animate(animateOptions);
         console.log(
-          `Auto-pan (FR8) center=${fileId} zoom=${
-            animateOptions.zoom ?? "same"
+          `Auto-pan (FR8) center=${fileId} zoom=${animateOptions.zoom ?? "same"
           } duration=${AUTO_PAN_ANIMATION_MS}ms`
         );
       }
@@ -1432,15 +1491,13 @@ export function GraphCanvas({
       // Show success notification
       showSuccess(
         "Heatmap Applied",
-        `Risk visualization applied to ${
-          result.visibleCount
+        `Risk visualization applied to ${result.visibleCount
         } nodes in ${totalTime.toFixed(0)}ms`,
         { duration: 3000 }
       );
 
       console.log(
-        `[GraphCanvas] Applied optimized heatmap overlay: ${
-          result.visibleCount
+        `[GraphCanvas] Applied optimized heatmap overlay: ${result.visibleCount
         } visible, ${result.hiddenCount} hidden nodes, ${(
           result.cacheHitRate * 100
         ).toFixed(1)}% cache hit rate in ${totalTime.toFixed(2)}ms`
@@ -1671,21 +1728,21 @@ export function GraphCanvas({
         path: path || undefined,
         riskData: riskData
           ? {
-              score: riskData.score,
-              category: riskData.metrics.category,
-              complexity: riskData.metrics.complexity,
-              churn: riskData.metrics.churn,
-              dependencies: riskData.metrics.dependencies,
-              dependents: riskData.metrics.dependencies * 0.7, // Estimated dependents
-              recommendation: getRecommendationForRisk(riskData),
-            }
+            score: riskData.score,
+            category: riskData.metrics.category,
+            complexity: riskData.metrics.complexity,
+            churn: riskData.metrics.churn,
+            dependencies: riskData.metrics.dependencies,
+            dependents: riskData.metrics.dependencies * 0.7, // Estimated dependents
+            recommendation: getRecommendationForRisk(riskData),
+          }
           : undefined,
         basicInfo: !riskData
           ? {
-              type: getFileType(path),
-              size: node.data("size"),
-              lastModified: node.data("lastModified"),
-            }
+            type: getFileType(path),
+            size: node.data("size"),
+            lastModified: node.data("lastModified"),
+          }
           : undefined,
       };
 
@@ -2137,8 +2194,7 @@ export function GraphCanvas({
     });
 
     console.log(
-      `[GraphCanvas] Focused on search result ${searchFocusIndex + 1}/${
-        state.highlightedNodes.length
+      `[GraphCanvas] Focused on search result ${searchFocusIndex + 1}/${state.highlightedNodes.length
       }: ${targetNodeId}`
     );
   }, [searchFocusIndex, searchQuery, state.highlightedNodes]);
@@ -2157,9 +2213,9 @@ export function GraphCanvas({
     // Task 8.3: Memory usage monitoring before layout change
     const memoryBefore = (performance as any).memory
       ? {
-          usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
-          totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
-        }
+        usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
+        totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+      }
       : null;
 
     // Task 8.4: Use existing performance monitoring infrastructure
@@ -2214,9 +2270,9 @@ export function GraphCanvas({
       // Task 8.3: Memory usage monitoring after layout change
       const memoryAfter = (performance as any).memory
         ? {
-            usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
-            totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
-          }
+          usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
+          totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+        }
         : null;
 
       if (memoryBefore && memoryAfter) {
@@ -2286,8 +2342,8 @@ export function GraphCanvas({
               averageDuration: prev.layoutState.performanceMetrics
                 ?.averageDuration
                 ? (prev.layoutState.performanceMetrics.averageDuration +
-                    duration) /
-                  2
+                  duration) /
+                2
                 : duration,
               totalChanges:
                 (prev.layoutState.performanceMetrics?.totalChanges || 0) + 1,
@@ -2325,9 +2381,9 @@ export function GraphCanvas({
       // Task 8.3: Memory cleanup monitoring
       const memoryAtCleanup = (performance as any).memory
         ? {
-            usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
-            totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
-          }
+          usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
+          totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
+        }
         : null;
 
       if (memoryAtCleanup) {
@@ -2344,8 +2400,7 @@ export function GraphCanvas({
       if (cyRef.current) {
         try {
           console.log(
-            `[PERF] Cleaning up Cytoscape instance with ${
-              cyRef.current.elements().length
+            `[PERF] Cleaning up Cytoscape instance with ${cyRef.current.elements().length
             } elements`
           );
           cyRef.current.destroy();
@@ -2477,6 +2532,13 @@ export function GraphCanvas({
 
         {/* Toast Notifications */}
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+        {/* Impact Animation Handler */}
+        <ImpactAnimationHandler
+          cy={cyRef.current}
+          onAnimationEvent={handleAnimationEvent}
+          enabled={true}
+        />
       </div>
     </>
   );

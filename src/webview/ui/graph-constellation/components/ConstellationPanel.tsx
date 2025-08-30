@@ -23,6 +23,7 @@ export function ConstellationPanel() {
     // Listen for messages from the extension
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
+      console.log('[ConstellationPanel] Received message:', message?.command, message);
       
       switch (message.command) {
         case 'statusUpdate':
@@ -45,6 +46,32 @@ export function ConstellationPanel() {
           break;
         case 'graph:highlightNode':
           setActiveHighlight({ fileId: message.data.fileId, reason: message.data.reason });
+          break;
+        case 'impact:animate':
+          // Trigger impact animation via custom event
+          const animationEvent = new CustomEvent('impact:animate', {
+            detail: message.data
+          });
+          window.dispatchEvent(animationEvent);
+          break;
+        case 'impact:animate:clear':
+          // Clear impact animation via custom event
+          const clearEvent = new CustomEvent('impact:clear');
+          window.dispatchEvent(clearEvent);
+          break;
+        case 'visualInstruction':
+          // Handle visual instructions from MCP tools
+          const instruction = message.data;
+          if (instruction && instruction.action === 'applyImpactAnimation') {
+            // Route impact animation instructions to the animation handler
+            const impactAnimationEvent = new CustomEvent('impact:animate', {
+              detail: instruction.payload
+            });
+            window.dispatchEvent(impactAnimationEvent);
+            console.log('[ConstellationPanel] Routed visual instruction to impact animation:', instruction.correlationId);
+          } else {
+            console.warn('[ConstellationPanel] Unknown visual instruction action:', instruction?.action);
+          }
           break;
         default:
           console.warn('Unknown message command:', message.command);

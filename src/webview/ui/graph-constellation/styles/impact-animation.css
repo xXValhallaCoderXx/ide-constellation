@@ -1,0 +1,290 @@
+/**
+ * Impact Animation Styles
+ * 
+ * CSS styles for impact analysis animations including ripple effects,
+ * node highlighting, and color-coded impact levels.
+ */
+
+/* Target node (where the change originates) */
+.impact-target-node {
+  border-width: 4px !important;
+  border-style: solid !important;
+  border-color: #8b5cf6 !important; /* Purple for target */
+  background-color: #8b5cf6 !important;
+  z-index: 1000 !important;
+}
+
+/* Impact level colors */
+.impact-critical {
+  border-color: #ef4444 !important; /* Red */
+  background-color: #ef4444 !important;
+  z-index: 900 !important;
+}
+
+.impact-high {
+  border-color: #f97316 !important; /* Orange */
+  background-color: #f97316 !important;
+  z-index: 800 !important;
+}
+
+.impact-medium {
+  border-color: #eab308 !important; /* Yellow */
+  background-color: #eab308 !important;
+  z-index: 700 !important;
+}
+
+.impact-low {
+  border-color: #22c55e !important; /* Green */
+  background-color: #22c55e !important;
+  z-index: 600 !important;
+}
+
+/* Ripple circle animation */
+.impact-ripple-circle {
+  background-color: transparent !important;
+  border-width: 2px !important;
+  border-style: solid !important;
+  border-color: #8b5cf6 !important;
+  opacity: 0.6 !important;
+  z-index: 500 !important;
+  pointer-events: none !important;
+}
+
+/* Pulse animation for high-impact nodes */
+.impact-pulse {
+  animation: impact-pulse-animation 1s ease-in-out infinite alternate !important;
+}
+
+@keyframes impact-pulse-animation {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+}
+
+/* Fade-in animation for newly highlighted nodes */
+.impact-fade-in {
+  animation: impact-fade-in-animation 0.5s ease-out forwards !important;
+}
+
+@keyframes impact-fade-in-animation {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Hover effects for impacted nodes */
+.impact-critical:hover,
+.impact-high:hover,
+.impact-medium:hover,
+.impact-low:hover,
+.impact-target-node:hover {
+  transform: scale(1.05) !important;
+  transition: transform 0.2s ease-out !important;
+  cursor: pointer !important;
+}
+
+/* Animation container styles */
+.impact-animation-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Impact legend overlay */
+.impact-legend {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family);
+  color: var(--vscode-foreground);
+  z-index: 2000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 180px;
+}
+
+.impact-legend-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--vscode-foreground);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  padding-bottom: 4px;
+}
+
+.impact-legend-item {
+  display: flex;
+  align-items: center;
+  margin: 4px 0;
+  gap: 8px;
+}
+
+.impact-legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.impact-legend-label {
+  flex: 1;
+  font-size: 11px;
+}
+
+.impact-legend-count {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  font-weight: 500;
+}
+
+/* Risk score display */
+.impact-risk-score {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-family: var(--vscode-font-family);
+  z-index: 2000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.impact-risk-score-title {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.impact-risk-score-value {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.impact-risk-score-value.critical {
+  color: #ef4444;
+}
+
+.impact-risk-score-value.high {
+  color: #f97316;
+}
+
+.impact-risk-score-value.medium {
+  color: #eab308;
+}
+
+.impact-risk-score-value.low {
+  color: #22c55e;
+}
+
+.impact-risk-score-label {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Animation progress indicator */
+.impact-animation-progress {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 11px;
+  color: var(--vscode-foreground);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.impact-animation-progress-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--vscode-panel-border);
+  border-top: 2px solid var(--vscode-progressBar-background);
+  border-radius: 50%;
+  animation: impact-spinner 1s linear infinite;
+}
+
+@keyframes impact-spinner {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .impact-legend,
+  .impact-risk-score {
+    position: relative;
+    top: auto;
+    right: auto;
+    left: auto;
+    margin: 10px;
+    display: inline-block;
+  }
+  
+  .impact-animation-progress {
+    bottom: 10px;
+    font-size: 10px;
+    padding: 6px 12px;
+  }
+}
+
+/* Dark theme adjustments */
+.vscode-dark .impact-legend,
+.vscode-dark .impact-risk-score,
+.vscode-dark .impact-animation-progress {
+  background: var(--vscode-editor-background);
+  border-color: var(--vscode-widget-border);
+}
+
+/* High contrast theme adjustments */
+.vscode-high-contrast .impact-target-node {
+  border-color: #ffffff !important;
+  background-color: #ffffff !important;
+}
+
+.vscode-high-contrast .impact-critical {
+  border-color: #ff6b6b !important;
+  background-color: #ff6b6b !important;
+}
+
+.vscode-high-contrast .impact-high {
+  border-color: #ffa726 !important;
+  background-color: #ffa726 !important;
+}
+
+.vscode-high-contrast .impact-medium {
+  border-color: #ffeb3b !important;
+  background-color: #ffeb3b !important;
+}
+
+.vscode-high-contrast .impact-low {
+  border-color: #4caf50 !important;
+  background-color: #4caf50 !important;
+}

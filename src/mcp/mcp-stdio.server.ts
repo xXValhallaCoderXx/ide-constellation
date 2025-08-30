@@ -646,17 +646,20 @@ export class MCPStdioServer {
 
             // Route visual instruction if we have a provider instance
             if (this.providerInstance && traceImpactResponse.visualInstruction) {
-                console.error(`[TRACE_IMPACT] Routing visual instruction: ${traceImpactResponse.visualInstruction.action}`);
+                console.log(`[TRACE_IMPACT] Routing visual instruction: ${traceImpactResponse.visualInstruction.action}`);
                 try {
                     // Create a dual response structure for routing
                     const dualResponse = JSON.stringify({
                         dataForAI: traceImpactResponse.dataForAI,
                         visualInstruction: traceImpactResponse.visualInstruction
                     });
+                    console.log(`[TRACE_IMPACT] Calling handleToolResult with dual response`);
                     this.providerInstance.handleToolResult(dualResponse);
                 } catch (routingError) {
                     console.error(`[TRACE_IMPACT] Visual instruction routing failed: ${routingError instanceof Error ? routingError.message : String(routingError)}`);
                 }
+            } else {
+                console.log(`[TRACE_IMPACT] Not routing visual instruction - providerInstance: ${!!this.providerInstance}, visualInstruction: ${!!traceImpactResponse.visualInstruction}`);
             }
 
             // Return dual payload response structure

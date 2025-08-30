@@ -345,7 +345,9 @@ export class KiroConstellationMCPProvider {
      * Future tasks will expand with debounce & size guards.
      */
     public handleToolResult(rawText: string) {
+        console.log('[MCP Provider] handleToolResult called with:', rawText.substring(0, 200) + '...');
         const envelope = this.parseDualResponse(rawText);
+        console.log('[MCP Provider] Parsed envelope:', envelope.kind, envelope.dual?.visualInstruction?.action);
         if (envelope.kind === 'dual' && envelope.dual?.visualInstruction) {
             // Placeholder dispatch call; actual implementation (debounce, size guard, panel ensure) in later tasks 6-7
             this.logVI('INFO', `Handle tool result detected visualInstruction action=${envelope.dual.visualInstruction.action}`);

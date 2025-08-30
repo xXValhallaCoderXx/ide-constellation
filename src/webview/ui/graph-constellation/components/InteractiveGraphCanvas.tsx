@@ -6,7 +6,7 @@ import {
   DEFAULT_LAYOUT_TYPE,
   LAYOUT_STORAGE_KEY,
 } from "@/types/layout.types";
-import { GraphCanvas, HeatmapNode } from "./GraphCanvas";
+import { GraphCanvas, HeatmapNode, GraphCanvasRef } from "./GraphCanvas";
 import { SearchBox } from "./SearchBox";
 import { HeatmapLegend } from "./HeatmapLegend";
 import { LayoutSwitcher } from "./LayoutSwitcher";
@@ -14,6 +14,7 @@ import { FilterDropdown, FilterState } from "./FilterDropdown";
 import { StatsOverlay, GraphStats } from "./StatsOverlay";
 import { GraphErrorBoundary } from "./ErrorBoundary"; // Task 9.3: Error boundary import
 import { PerformanceMonitor } from "@/utils/performance.utils";
+import { ImpactAnimationPayload, ImpactAnimationInstruction } from "@/types/impact-animation.types";
 import "@/types/vscode-api.types";
 
 interface ActiveHighlightState {
@@ -75,6 +76,12 @@ export function InteractiveGraphCanvas({
 
   // Create performance monitor instance
   const [performanceMonitor] = useState(() => new PerformanceMonitor());
+  
+  // Ref for GraphCanvas to access animation functions
+  const graphCanvasRef = useRef<GraphCanvasRef>(null);
+  
+  // Impact animation state
+  const [impactAnimationData, setImpactAnimationData] = useState<ImpactAnimationPayload | null>(null);
 
   // Use ref to track current focus state for keyboard handlers
   const focusStateRef = useRef<FocusState>({
@@ -706,6 +713,95 @@ export function InteractiveGraphCanvas({
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
+  // Listen for impact animation custom events from ConstellationPanel
+  useEffect(() => {
+    const handleImpactAnimation = async (event: CustomEvent) => {
+      console.log('[InteractiveGraphCanvas] Received impact animation event:', event.detail);
+      
+      try {
+        const animationData = event.detail as ImpactAnimationPayload;
+        setImpactAnimationData(animationData);
+        
+        // Apply animation through GraphCanvas if available
+        if (graphCanvasRef.current) {
+          const instruction: ImpactAnimationInstruction = {
+            action: 'applyImpactAnimation',
+            correlationId: `impact-${Date.now()}`,
+            ts: Date.now(),
+            payload: animationData
+          };
+          
+          await graphCanvasRef.current.applyImpactAnimation(instruction);
+          console.log('[InteractiveGraphCanvas] Impact animation completed successfully');
+          
+          // Send success response back to extension via postMessage
+          if (window.vscode) {
+            window.vscode.postMessage({
+              command: 'impact:animate:response',
+              data: {
+                success: true,
+                animationId: instruction.correlationId
+              }
+            });
+          }
+          
+        } else {
+          console.warn('[InteractiveGraphCanvas] Cannot apply impact animation - GraphCanvas ref not available');
+          
+          // Send error response
+          if (window.vscode) {
+            window.vscode.postMessage({
+              command: 'impact:animate:response',
+              data: {
+                success: false,
+                animationId: `impact-${Date.now()}`,
+                error: 'GraphCanvas not available'
+              }
+            });
+          }
+        }
+        
+      } catch (error) {
+        console.error('[InteractiveGraphCanvas] Impact animation failed:', error);
+        
+        // Send error response
+        if (window.vscode) {
+          window.vscode.postMessage({
+            command: 'impact:animate:response',
+            data: {
+              success: false,
+              animationId: `impact-${Date.now()}`,
+              error: error instanceof Error ? error.message : String(error)
+            }
+          });
+        }
+      }
+    };
+
+    const handleClearAnimation = async () => {
+      console.log('[InteractiveGraphCanvas] Clearing impact animation');
+      
+      try {
+        if (graphCanvasRef.current) {
+          await graphCanvasRef.current.resetAnimation();
+          setImpactAnimationData(null);
+          console.log('[InteractiveGraphCanvas] Impact animation cleared successfully');
+        }
+      } catch (error) {
+        console.error('[InteractiveGraphCanvas] Failed to clear impact animation:', error);
+      }
+    };
+
+    // Listen for custom events dispatched by ConstellationPanel
+    window.addEventListener('impact:animate', handleImpactAnimation as any);
+    window.addEventListener('impact:clear', handleClearAnimation as any);
+    
+    return () => {
+      window.removeEventListener('impact:animate', handleImpactAnimation as any);
+      window.removeEventListener('impact:clear', handleClearAnimation as any);
+    };
+  }, []);
+
   // Calculate graph statistics when graph or state changes (throttled to reduce re-renders)
   useEffect(() => {
     // Throttle statistics calculation to prevent excessive re-renders
@@ -1107,6 +1203,7 @@ export function InteractiveGraphCanvas({
         maxRetries={3}
       >
         <GraphCanvas
+          ref={graphCanvasRef}
           graph={graph}
           searchQuery={searchQuery}
           searchFocusIndex={currentFocusIndex}

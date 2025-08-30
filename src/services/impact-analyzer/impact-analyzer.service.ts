@@ -23,15 +23,30 @@ import {
 import * as path from 'path';
 
 /**
+ * Cache entry for impact analysis results
+ */
+interface CacheEntry {
+    result: ImpactAnalysis;
+    timestamp: number;
+    inputHash: string;
+}
+
+/**
  * Service for analyzing the impact of code changes on dependent files
  */
 export class ImpactAnalyzer {
     private graphService: GraphService;
     private config: ImpactAnalysisConfig;
+    private cache: Map<string, CacheEntry> = new Map();
+    private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+    private readonly MAX_CACHE_SIZE = 100;
 
     constructor(graphService?: GraphService, config?: Partial<ImpactAnalysisConfig>) {
         this.graphService = graphService || GraphService.getInstance();
         this.config = { ...DEFAULT_CONFIG, ...config };
+
+        // Periodic cache cleanup
+        setInterval(() => this.cleanupCache(), 60000); // Every minute
     }
 
     /**
@@ -43,46 +58,137 @@ export class ImpactAnalyzer {
         const startTime = Date.now();
 
         try {
-            // Validate input parameters
+            // Validate input parameters with detailed error messages
             this.validateInput(input);
 
-            // Ensure we have graph data
-            const graph = this.graphService.getGraph();
-            if (!graph) {
-                throw new Error('No graph data available. Please scan the project first.');
+            // Check cache first
+            const cacheKey = this.generateCacheKey(input);
+            const cachedResult = this.getCachedResult(cacheKey);
+            if (cachedResult) {
+                console.log(`[ImpactAnalyzer] Cache hit for ${input.target} (${Date.now() - startTime}ms)`);
+                return cachedResult;
+            }
+
+            // Ensure we have graph data with comprehensive checks
+            let graph: IConstellationGraph;
+            try {
+                const graphData = this.graphService.getGraph();
+                if (!graphData) {
+                    throw new Error('No graph data available. Please scan the project first.');
+                }
+                graph = graphData;
+            } catch (error) {
+                throw new Error(`Failed to retrieve graph data: ${error instanceof Error ? error.message : String(error)}`);
+            }
+
+            // Validate graph data integrity
+            if (!this.validateGraphIntegrity(graph)) {
+                throw new Error('Graph data is corrupted or incomplete. Please rescan the project.');
+            }
+
+            // Check for empty graph
+            if (graph.nodes.length === 0) {
+                throw new Error('Graph contains no nodes. The project may be empty or not properly scanned.');
             }
 
             // Normalize target path and verify it exists in graph
-            const normalizedTarget = this.normalizeFilePath(input.target);
-            if (!this.nodeExistsInGraph(normalizedTarget, graph)) {
-                throw new Error(`Target file not found in dependency graph: ${input.target}`);
+            let normalizedTarget: string;
+            try {
+                normalizedTarget = this.normalizeFilePath(input.target);
+            } catch (error) {
+                throw new Error(`Failed to normalize target path: ${error instanceof Error ? error.message : String(error)}`);
             }
 
-            // Perform dependency traversal
+            if (!this.nodeExistsInGraph(normalizedTarget, graph)) {
+                // Provide helpful suggestions for missing files
+                const suggestions = this.findSimilarNodes(normalizedTarget, graph);
+                const suggestionText = suggestions.length > 0
+                    ? ` Did you mean one of: ${suggestions.slice(0, 3).join(', ')}?`
+                    : ' Make sure the file path is correct and the project has been scanned.';
+                throw new Error(`Target file not found in dependency graph: ${input.target}.${suggestionText}`);
+            }
+
+            // Perform dependency traversal with timeout and error handling
             const depth = Math.min(input.depth || DEFAULT_CONFIG.maxDepth, 5);
-            const traversalResult = this.traverseDependencies(normalizedTarget, depth);
+            let traversalResult: TraversalResult;
 
-            // Convert traversal results to impacted files
-            const impactedFiles = this.createImpactedFiles(
-                normalizedTarget,
-                traversalResult,
-                graph,
-                input.changeType
-            );
+            try {
+                // Add timeout protection for large graphs
+                const traversalPromise = this.traverseDependencies(normalizedTarget, depth);
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                    setTimeout(() => reject(new Error('Dependency traversal timed out')), 30000);
+                });
 
-            // Calculate risk score
-            const riskScore = this.calculateRiskScore(impactedFiles, input.changeType);
+                traversalResult = await Promise.race([traversalPromise, timeoutPromise]);
 
-            // Generate recommendations
-            const recommendations = this.generateRecommendations(
-                impactedFiles,
-                riskScore,
-                traversalResult.circularPaths
-            );
+                if (!traversalResult) {
+                    throw new Error('Traversal returned no results');
+                }
+            } catch (error) {
+                if (error instanceof Error && error.message.includes('timed out')) {
+                    throw new Error('Dependency traversal timed out. The graph may be too large or contain complex cycles.');
+                }
+                throw new Error(`Dependency traversal failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+
+            // Validate traversal results
+            if (!traversalResult.discoveredNodes || traversalResult.discoveredNodes.size === 0) {
+                throw new Error('Invalid traversal results: discovered nodes set is missing or empty');
+            }
+
+            // Convert traversal results to impacted files with error handling
+            let impactedFiles: ImpactedFile[];
+            try {
+                impactedFiles = this.createImpactedFiles(
+                    normalizedTarget,
+                    traversalResult,
+                    graph,
+                    input.changeType
+                );
+
+                if (!Array.isArray(impactedFiles)) {
+                    throw new Error('Failed to create impacted files array');
+                }
+            } catch (error) {
+                throw new Error(`Failed to process impacted files: ${error instanceof Error ? error.message : String(error)}`);
+            }
+
+            // Calculate risk score with validation
+            let riskScore: number;
+            try {
+                riskScore = this.calculateRiskScore(impactedFiles, input.changeType);
+
+                if (typeof riskScore !== 'number' || isNaN(riskScore)) {
+                    throw new Error('Risk score calculation returned invalid result');
+                }
+
+                // Clamp risk score to valid range
+                riskScore = Math.max(0, Math.min(10, riskScore));
+            } catch (error) {
+                console.warn('[ImpactAnalyzer] Risk score calculation failed, using fallback:', error);
+                riskScore = this.calculateFallbackRiskScore(impactedFiles);
+            }
+
+            // Generate recommendations with error handling
+            let recommendations: string[];
+            try {
+                recommendations = this.generateRecommendations(
+                    impactedFiles,
+                    riskScore,
+                    traversalResult.circularPaths
+                );
+
+                if (!Array.isArray(recommendations)) {
+                    throw new Error('Recommendations generation returned invalid result');
+                }
+            } catch (error) {
+                console.warn('[ImpactAnalyzer] Recommendations generation failed, using fallback:', error);
+                recommendations = this.generateFallbackRecommendations(riskScore);
+            }
 
             const analysisTimeMs = Date.now() - startTime;
 
-            return {
+            const result: ImpactAnalysis = {
                 target: normalizedTarget,
                 changeType: input.changeType,
                 impactedFiles,
@@ -95,6 +201,12 @@ export class ImpactAnalyzer {
                     analysisTimeMs
                 }
             };
+
+            // Cache the result for future use
+            this.cacheResult(cacheKey, result);
+
+            console.log(`[ImpactAnalyzer] Analysis completed and cached: ${impactedFiles.length} files, ${analysisTimeMs}ms`);
+            return result;
 
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -110,55 +222,165 @@ export class ImpactAnalyzer {
      * @returns Traversal results with discovered nodes and circular dependencies
      */
     private traverseDependencies(targetNode: string, maxDepth: number): TraversalResult {
+        const startTime = Date.now();
         const discoveredNodes = new Set<string>();
         const nodeDistances = new Map<string, number>();
         const circularPaths: string[][] = [];
         const visited = new Set<string>();
         const currentPath: string[] = [];
+        let operationCount = 0;
 
-        // Recursive traversal function
+        // Performance limits with adaptive scaling
+        const maxOperations = Math.min(10000, this.config.maxNodes * 10);
+        const maxCircularPaths = 50; // Limit circular path tracking
+        const performanceCheckInterval = 1000; // Check performance every N operations
+        let lastPerformanceCheck = startTime;
+
+        // Validate inputs
+        if (!targetNode || typeof targetNode !== 'string') {
+            throw new Error('Invalid target node for traversal');
+        }
+
+        if (typeof maxDepth !== 'number' || maxDepth < 0) {
+            throw new Error('Invalid max depth for traversal');
+        }
+
+        // Recursive traversal function with enhanced error handling
         const traverse = (nodeId: string, distance: number): void => {
-            // Check limits
-            if (distance > maxDepth || discoveredNodes.size >= this.config.maxNodes) {
-                return;
-            }
+            try {
+                // Increment operation counter and check limits
+                operationCount++;
 
-            // Check for circular dependency
-            if (currentPath.includes(nodeId)) {
-                const cycleStart = currentPath.indexOf(nodeId);
-                const cycle = [...currentPath.slice(cycleStart), nodeId];
-                circularPaths.push(cycle);
-                return;
-            }
+                // Periodic performance checks
+                if (operationCount % performanceCheckInterval === 0) {
+                    const currentTime = Date.now();
+                    const elapsedTime = currentTime - startTime;
+                    const timeSinceLastCheck = currentTime - lastPerformanceCheck;
 
-            // Add to discovered nodes
-            discoveredNodes.add(nodeId);
-            nodeDistances.set(nodeId, distance);
-            currentPath.push(nodeId);
+                    // Check for timeout (prevent hanging on large graphs)
+                    if (elapsedTime > 25000) { // 25 second timeout
+                        console.warn(`[ImpactAnalyzer] Traversal timeout reached after ${elapsedTime}ms, stopping early`);
+                        return;
+                    }
 
-            // Get dependents (files that import this node)
-            const dependents = this.graphService.getDependentsOf(nodeId);
+                    // Check if performance is degrading (too slow)
+                    const operationsPerSecond = performanceCheckInterval / (timeSinceLastCheck / 1000);
+                    if (operationsPerSecond < 100 && elapsedTime > 5000) { // Less than 100 ops/sec after 5 seconds
+                        console.warn(`[ImpactAnalyzer] Performance degraded (${operationsPerSecond.toFixed(1)} ops/sec), stopping early`);
+                        return;
+                    }
 
-            for (const dependent of dependents) {
-                if (!visited.has(dependent)) {
-                    traverse(dependent, distance + 1);
+                    lastPerformanceCheck = currentTime;
+                }
+
+                // Check operation limit (prevent infinite loops)
+                if (operationCount > maxOperations) {
+                    console.warn(`[ImpactAnalyzer] Maximum operations (${maxOperations}) reached, stopping traversal`);
+                    return;
+                }
+
+                // Early termination for very large impact sets
+                if (discoveredNodes.size >= this.config.maxNodes) {
+                    console.warn(`[ImpactAnalyzer] Maximum nodes (${this.config.maxNodes}) reached, stopping traversal`);
+                    return;
+                }
+
+                // Check depth and node count limits
+                if (distance > maxDepth || discoveredNodes.size >= this.config.maxNodes) {
+                    return;
+                }
+
+                // Validate node ID
+                if (!nodeId || typeof nodeId !== 'string') {
+                    console.warn('[ImpactAnalyzer] Invalid node ID encountered during traversal:', nodeId);
+                    return;
+                }
+
+                // Check for circular dependency
+                if (currentPath.includes(nodeId)) {
+                    const cycleStart = currentPath.indexOf(nodeId);
+                    const cycle = [...currentPath.slice(cycleStart), nodeId];
+
+                    // Limit circular path tracking to prevent memory issues
+                    if (circularPaths.length < maxCircularPaths) {
+                        circularPaths.push(cycle);
+                    } else if (circularPaths.length === maxCircularPaths) {
+                        console.warn(`[ImpactAnalyzer] Maximum circular paths (${maxCircularPaths}) reached, stopping circular path tracking`);
+                    }
+                    return;
+                }
+
+                // Add to discovered nodes
+                discoveredNodes.add(nodeId);
+                nodeDistances.set(nodeId, distance);
+                currentPath.push(nodeId);
+
+                // Get dependents with error handling
+                let dependents: string[] = [];
+                try {
+                    dependents = this.graphService.getDependentsOf(nodeId);
+
+                    // Validate dependents array
+                    if (!Array.isArray(dependents)) {
+                        console.warn('[ImpactAnalyzer] Invalid dependents array for node:', nodeId);
+                        dependents = [];
+                    }
+                } catch (error) {
+                    console.warn('[ImpactAnalyzer] Failed to get dependents for node:', nodeId, error);
+                    dependents = [];
+                }
+
+                // Traverse dependents with validation
+                for (const dependent of dependents) {
+                    if (dependent && typeof dependent === 'string' && !visited.has(dependent)) {
+                        traverse(dependent, distance + 1);
+                    }
+                }
+
+                // Remove from current path (backtrack)
+                currentPath.pop();
+                visited.add(nodeId);
+
+            } catch (error) {
+                console.warn('[ImpactAnalyzer] Error during node traversal:', nodeId, error);
+                // Continue traversal despite individual node errors
+                if (currentPath.length > 0) {
+                    currentPath.pop();
                 }
             }
-
-            // Remove from current path (backtrack)
-            currentPath.pop();
-            visited.add(nodeId);
         };
 
-        // Start traversal from target node
-        traverse(targetNode, 0);
+        try {
+            // Start traversal from target node
+            traverse(targetNode, 0);
 
-        return {
-            discoveredNodes,
-            nodeDistances,
-            circularPaths,
-            truncated: discoveredNodes.size >= this.config.maxNodes
-        };
+            // Validate results
+            if (discoveredNodes.size === 0) {
+                console.warn('[ImpactAnalyzer] No nodes discovered during traversal');
+            }
+
+            const result: TraversalResult = {
+                discoveredNodes,
+                nodeDistances,
+                circularPaths,
+                truncated: discoveredNodes.size >= this.config.maxNodes || operationCount >= maxOperations
+            };
+
+            console.log(`[ImpactAnalyzer] Traversal completed: ${discoveredNodes.size} nodes, ${circularPaths.length} cycles, ${Date.now() - startTime}ms`);
+
+            return result;
+
+        } catch (error) {
+            console.error('[ImpactAnalyzer] Traversal failed:', error);
+
+        // Return partial results if available
+            return {
+                discoveredNodes,
+                nodeDistances,
+                circularPaths,
+                truncated: true
+            };
+        }
     }
 
     /**
@@ -521,5 +743,268 @@ export class ImpactAnalyzer {
         }
 
         return recommendations;
+    }
+
+    /**
+     * Validate graph data integrity
+     * @param graph Graph data to validate
+     * @returns True if graph is valid, false otherwise
+     */
+    private validateGraphIntegrity(graph: IConstellationGraph): boolean {
+        try {
+            // Check basic structure
+            if (!graph || typeof graph !== 'object') {
+                return false;
+            }
+
+            // Check nodes array
+            if (!Array.isArray(graph.nodes)) {
+                return false;
+            }
+
+            // Check edges array
+            if (!Array.isArray(graph.edges)) {
+                return false;
+            }
+
+            // Validate node structure (sample check)
+            if (graph.nodes.length > 0) {
+                const sampleNode = graph.nodes[0];
+                if (!sampleNode.id || typeof sampleNode.id !== 'string') {
+                    return false;
+                }
+            }
+
+            // Validate edge structure (sample check)
+            if (graph.edges.length > 0) {
+                const sampleEdge = graph.edges[0];
+                if (!sampleEdge.source || !sampleEdge.target) {
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (error) {
+            console.warn('[ImpactAnalyzer] Graph validation failed:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Find similar node names for helpful error messages
+     * @param targetPath Target path that wasn't found
+     * @param graph Graph to search in
+     * @returns Array of similar node paths
+     */
+    private findSimilarNodes(targetPath: string, graph: IConstellationGraph): string[] {
+        try {
+            const targetBasename = path.basename(targetPath).toLowerCase();
+            const targetDir = path.dirname(targetPath).toLowerCase();
+
+            const similarities = graph.nodes
+                .map(node => {
+                    const nodeBasename = path.basename(node.id).toLowerCase();
+                    const nodeDir = path.dirname(node.id).toLowerCase();
+
+                    let score = 0;
+
+                    // Exact basename match
+                    if (nodeBasename === targetBasename) {
+                        score += 10;
+                    }
+
+                    // Partial basename match
+                    if (nodeBasename.includes(targetBasename) || targetBasename.includes(nodeBasename)) {
+                        score += 5;
+                    }
+
+                    // Directory similarity
+                    if (nodeDir === targetDir) {
+                        score += 3;
+                    }
+
+                    return { node: node.id, score };
+                })
+                .filter(item => item.score > 0)
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 5)
+                .map(item => item.node);
+
+            return similarities;
+        } catch (error) {
+            console.warn('[ImpactAnalyzer] Failed to find similar nodes:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Calculate fallback risk score when normal calculation fails
+     * @param impactedFiles List of impacted files
+     * @returns Fallback risk score
+     */
+    private calculateFallbackRiskScore(impactedFiles: ImpactedFile[]): number {
+        try {
+            if (!Array.isArray(impactedFiles) || impactedFiles.length === 0) {
+                return 0;
+            }
+
+            // Simple fallback: base score on number of impacted files
+            const fileCount = impactedFiles.length;
+
+            if (fileCount >= 50) return 9;
+            if (fileCount >= 20) return 7;
+            if (fileCount >= 10) return 5;
+            if (fileCount >= 5) return 3;
+            if (fileCount >= 1) return 1;
+
+            return 0;
+        } catch (error) {
+            console.warn('[ImpactAnalyzer] Fallback risk score calculation failed:', error);
+            return 5; // Default medium risk
+        }
+    }
+
+    /**
+     * Generate fallback recommendations when normal generation fails
+     * @param riskScore Current risk score
+     * @returns Array of fallback recommendations
+     */
+    private generateFallbackRecommendations(riskScore: number): string[] {
+        try {
+            const recommendations: string[] = [];
+
+            if (riskScore >= 7) {
+                recommendations.push('⚠️ HIGH RISK: Thoroughly test all functionality before deploying');
+                recommendations.push('🧪 Run comprehensive test suite including integration tests');
+                recommendations.push('👥 Consider peer review and additional code review');
+            } else if (riskScore >= 4) {
+                recommendations.push('⚡ MEDIUM RISK: Test related functionality carefully');
+                recommendations.push('🧪 Run unit tests for affected components');
+            } else {
+                recommendations.push('✅ LOW RISK: Standard testing should be sufficient');
+            }
+
+            recommendations.push('📋 Review change impact before committing');
+
+            return recommendations;
+        } catch (error) {
+            console.warn('[ImpactAnalyzer] Fallback recommendations generation failed:', error);
+            return ['📋 Please review your changes carefully before committing'];
+        }
+    }
+
+    /**
+     * Generate cache key for input parameters
+     * @param input Impact analysis input
+     * @returns Cache key string
+     */
+    private generateCacheKey(input: TraceImpactInput): string {
+        const graphVersion = this.graphService.getGraph()?.nodes.length || 0;
+        const inputString = JSON.stringify({
+            target: input.target,
+            changeType: input.changeType,
+            depth: input.depth,
+            graphVersion // Include graph version to invalidate cache when graph changes
+        });
+
+        // Simple hash function for cache key
+        let hash = 0;
+        for (let i = 0; i < inputString.length; i++) {
+            const char = inputString.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+
+        return `impact_${Math.abs(hash).toString(36)}`;
+    }
+
+    /**
+     * Get cached result if available and not expired
+     * @param cacheKey Cache key to lookup
+     * @returns Cached result or null
+     */
+    private getCachedResult(cacheKey: string): ImpactAnalysis | null {
+        const entry = this.cache.get(cacheKey);
+        if (!entry) {
+            return null;
+        }
+
+        // Check if cache entry is expired
+        if (Date.now() - entry.timestamp > this.CACHE_TTL) {
+            this.cache.delete(cacheKey);
+            return null;
+        }
+
+        // Return a deep copy to prevent mutation
+        return JSON.parse(JSON.stringify(entry.result));
+    }
+
+    /**
+     * Cache analysis result
+     * @param cacheKey Cache key
+     * @param result Analysis result to cache
+     */
+    private cacheResult(cacheKey: string, result: ImpactAnalysis): void {
+        try {
+            // Enforce cache size limit
+            if (this.cache.size >= this.MAX_CACHE_SIZE) {
+                // Remove oldest entries (simple LRU)
+                const oldestKey = this.cache.keys().next().value;
+                if (oldestKey) {
+                    this.cache.delete(oldestKey);
+                }
+            }
+
+            // Store cache entry
+            this.cache.set(cacheKey, {
+                result: JSON.parse(JSON.stringify(result)), // Deep copy
+                timestamp: Date.now(),
+                inputHash: cacheKey
+            });
+
+            console.log(`[ImpactAnalyzer] Cached result for key: ${cacheKey} (cache size: ${this.cache.size})`);
+        } catch (error) {
+            console.warn('[ImpactAnalyzer] Failed to cache result:', error);
+        }
+    }
+
+    /**
+     * Clean up expired cache entries
+     */
+    private cleanupCache(): void {
+        const now = Date.now();
+        let removedCount = 0;
+
+        for (const [key, entry] of this.cache.entries()) {
+            if (now - entry.timestamp > this.CACHE_TTL) {
+                this.cache.delete(key);
+                removedCount++;
+            }
+        }
+
+        if (removedCount > 0) {
+            console.log(`[ImpactAnalyzer] Cache cleanup: removed ${removedCount} expired entries`);
+        }
+    }
+
+    /**
+     * Clear all cached results (useful for testing or when graph changes significantly)
+     */
+    public clearCache(): void {
+        const size = this.cache.size;
+        this.cache.clear();
+        console.log(`[ImpactAnalyzer] Cache cleared: removed ${size} entries`);
+    }
+
+    /**
+     * Get cache statistics for monitoring
+     * @returns Cache statistics
+     */
+    public getCacheStats(): { size: number; maxSize: number; ttl: number } {
+        return {
+            size: this.cache.size,
+            maxSize: this.MAX_CACHE_SIZE,
+            ttl: this.CACHE_TTL
+        };
     }
 }
