@@ -23,6 +23,30 @@ export class WebviewManager {
   }
 
   /**
+   * Option B: Handle visual instruction events emitted by MCP server (EventEmitter bridge).
+   */
+  public handleVisualEvent(event: any): void {
+    const timestamp = new Date().toISOString();
+    this.output?.appendLine(`[${timestamp}] [EVENT] Received visual event: ${event?.type}`);
+    try {
+      if (!this.currentPanel) {
+        this.createOrShowPanel();
+      }
+      if (this.currentPanel && event?.data) {
+        this.currentPanel.webview.postMessage({
+          command: 'test:visualEvent',
+          data: event.data
+        });
+        this.output?.appendLine(`[${timestamp}] [EVENT] ✅ Forwarded to webview`);
+      } else {
+        throw new Error('Panel or event data unavailable');
+      }
+    } catch (error) {
+      this.output?.appendLine(`[${timestamp}] [EVENT] ❌ Failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
    * Initialize the WebviewManager with extension context
    */
   public initialize(context: vscode.ExtensionContext): void {

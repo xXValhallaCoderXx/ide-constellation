@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Server } from '@modelcontextprotocol/sdk/server';
+import { EventEmitter } from 'events';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio';
 import {
     CallToolRequestSchema,
@@ -33,13 +34,14 @@ try {
  * This server implements the Model Context Protocol using stdio transport
  * for communication with VS Code/Kiro IDE
  */
-export class MCPStdioServer {
+export class MCPStdioServer extends EventEmitter {
     private server: Server;
     private isRunning = false;
     private extensionContext: any = null;
     private providerInstance: any = null;
 
     constructor(extensionContext?: any) {
+        super(); // EventEmitter initialization (Option B)
         // Store extension context if provided (when running in extension mode)
         this.extensionContext = extensionContext;
         this.server = new Server(
@@ -65,6 +67,24 @@ export class MCPStdioServer {
 
         this.setupHandlers();
         this.setupProcessHandlers();
+    }
+
+    /**
+     * Emit visual instruction event (Option B)
+     */
+    private emitVisualInstruction(instruction: any, source: string): void {
+    if (!instruction) { return; }
+        try {
+            console.error('[MCP EVENT] Emitting visual instruction:', instruction.action, 'source=', source);
+            this.emit('visualInstruction', {
+                type: instruction.action || 'unknown',
+                data: instruction,
+                source,
+                timestamp: Date.now()
+            });
+        } catch (e) {
+            console.error('[MCP EVENT] Emit failed:', e instanceof Error ? e.message : String(e));
+        }
     }
 
     /**
@@ -204,12 +224,76 @@ export class MCPStdioServer {
                     throw new Error(`Workspace root does not exist: ${workspaceRoot}`);
                 }
 
-                // Execute trace impact analysis
-                return await this.executeTraceImpact(workspaceRoot, {
-                    target,
-                    changeType: changeType as ChangeType,
-                    depth
-                }, this.extensionContext);
+                // Execute trace impact analysis (Option B variant)
+                try {
+                    console.error(`[TRACE_IMPACT] Starting impact analysis`);
+                    console.error(`[TRACE_IMPACT] Workspace: ${workspaceRoot}`);
+                    console.error(`[TRACE_IMPACT] Target: ${target}, Change: ${changeType}, Depth: ${depth}`);
+
+                    const traceImpactResponse = await executeTraceImpact(workspaceRoot, {
+                        target,
+                        changeType: changeType as ChangeType,
+                        depth
+                    }, this.extensionContext);
+
+                    console.error(`[TRACE_IMPACT] Generated impact analysis with ${traceImpactResponse.dataForAI.impactedFiles.length} impacted files`);
+                    console.error(`[TRACE_IMPACT] Risk score: ${traceImpactResponse.dataForAI.riskScore}/10`);
+                    console.error(`[TRACE_IMPACT] Visual instruction generated for animation`);
+
+                    const responseData = {
+                        summary: traceImpactResponse.dataForAI.summary,
+                        impactData: {
+                            riskScore: traceImpactResponse.dataForAI.riskScore,
+                            impactedFiles: traceImpactResponse.dataForAI.impactedFiles,
+                            recommendations: traceImpactResponse.dataForAI.recommendations,
+                            metadata: traceImpactResponse.dataForAI.metadata
+                        },
+                        visualInstruction: traceImpactResponse.visualInstruction
+                    };
+
+                    // Emit event (Option B)
+                    if (traceImpactResponse.visualInstruction) {
+                        this.emitVisualInstruction(traceImpactResponse.visualInstruction, 'traceImpact');
+                    }
+
+                    // Maintain existing provider routing behavior (still supports dual payload consumers)
+                    if (this.providerInstance && traceImpactResponse.visualInstruction) {
+                        console.log(`[TRACE_IMPACT] Routing visual instruction: ${traceImpactResponse.visualInstruction.action}`);
+                        try {
+                            const dualResponse = JSON.stringify({
+                                dataForAI: traceImpactResponse.dataForAI,
+                                visualInstruction: traceImpactResponse.visualInstruction
+                            });
+                            console.log(`[TRACE_IMPACT] Calling handleToolResult with dual response`);
+                            this.providerInstance.handleToolResult(dualResponse);
+                        } catch (routingError) {
+                            console.error(`[TRACE_IMPACT] Visual instruction routing failed: ${routingError instanceof Error ? routingError.message : String(routingError)}`);
+                        }
+                    } else {
+                        console.log(`[TRACE_IMPACT] Not routing visual instruction - providerInstance: ${!!this.providerInstance}, visualInstruction: ${!!traceImpactResponse.visualInstruction}`);
+                    }
+
+                    return {
+                        content: [{
+                            type: 'text' as const,
+                            text: JSON.stringify(responseData)
+                        }]
+                    };
+                } catch (error) {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    console.error('[TRACE_IMPACT ERROR]', errorMessage);
+                    let userFriendlyMessage = errorMessage;
+                    if (errorMessage.includes('No workspace folder open')) {
+                        userFriendlyMessage = 'Please open a workspace folder in VS Code to analyze impact.';
+                    } else if (errorMessage.includes('Failed to load graph data')) {
+                        userFriendlyMessage = 'Unable to analyze project structure. Please scan the project first using the "Scan Project" command.';
+                    } else if (errorMessage.includes('Target file not found')) {
+                        userFriendlyMessage = 'The specified file was not found in the project dependency graph.';
+                    } else if (errorMessage.includes('Permission denied') || errorMessage.includes('EACCES')) {
+                        userFriendlyMessage = 'Permission denied accessing project files. Please check file permissions.';
+                    }
+                    throw new Error(`Impact analysis failed: ${userFriendlyMessage}`);
+                }
             }
 
             if (name !== CONSTELLATION_EXAMPLE_TOOL.name) {
@@ -696,6 +780,7 @@ export class MCPStdioServer {
     setProviderInstance(provider: any): void {
         this.providerInstance = provider;
     }
+
 
     /**
      * Public method to scan project (called directly from extension)

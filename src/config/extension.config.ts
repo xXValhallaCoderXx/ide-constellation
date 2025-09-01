@@ -5,6 +5,8 @@
 // In production (NODE_ENV=production) POC logs should be suppressed by callers guarding on this flag.
 export const CONFIG = {
   USE_STANDARD_PROVIDER_POC: process.env.NODE_ENV === "development",
+  // Hardcoded embed mode: always use in-process server (Option A) – toggle to false to re-enable external provider.
+  EMBED_MCP_SERVER: false,
   // Timeout (ms) for MCP server operations – safe to adjust if server latency characteristics change.
   MCP_SERVER_TIMEOUT: 30_000,
   // Visual instruction payload size ceiling (bytes) – mirrors webview manager guard.

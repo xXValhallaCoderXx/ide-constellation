@@ -37,32 +37,41 @@ export async function activate(context: vscode.ExtensionContext) {
   // --- Always attempt MCP provider registration (previously only in POC branch) ---
   try {
     mcpProvider = new KiroConstellationMCPProvider(context, output);
-    const registered = await mcpProvider.registerProvider();
-    if (registered) {
-      log("[MCP] Provider registration successful");
-      if (CONFIG.USE_STANDARD_PROVIDER_POC) {
-        log("[POC] Running provider self-test");
-        await mcpProvider.testProvider();
+    if (!CONFIG.EMBED_MCP_SERVER) {
+      const registered = await mcpProvider.registerProvider();
+      if (registered) {
+        log("[MCP] Provider registration successful");
+        if (CONFIG.USE_STANDARD_PROVIDER_POC) {
+          log("[POC] Running provider self-test");
+          await mcpProvider.testProvider();
+        }
+      } else {
+        log("[MCP] Provider registration did not complete (API unavailable). Fallback config logic executed if possible.");
       }
     } else {
-      log(
-        "[MCP] Provider registration did not complete (API unavailable). Fallback config logic executed if possible."
-      );
+      log('[MCP EMBED] Skipping standard provider registration (EMBED_MCP_SERVER=1). Using in-process server only.');
     }
   } catch (err) {
-    log(
-      `[MCP] Error during provider setup: ${
-        err instanceof Error ? err.message : String(err)
-      }`
-    );
+    log(`[MCP] Error during provider setup: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // Inject webview manager for visualInstruction routing if supported
-  if (
-    mcpProvider &&
-    typeof (mcpProvider as any).setWebviewManager === "function"
-  ) {
-    (mcpProvider as any).setWebviewManager(webviewManager);
+  // Option B: Event listener wiring
+  try {
+    const serverInstance = mcpProvider?.getServerInstance() as any;
+    if (serverInstance && typeof serverInstance.on === 'function') {
+      log('[EVENT TEST] Setting up visual instruction listener...');
+      serverInstance.on('visualInstruction', (event: any) => {
+        log(`[EVENT TEST] Received visual instruction event: ${event?.type}`);
+        if (webviewManager && typeof (webviewManager as any).handleVisualEvent === 'function') {
+          (webviewManager as any).handleVisualEvent(event);
+        }
+      });
+      log('[EVENT TEST] Event listener registered');
+    } else {
+      log('[EVENT TEST] Server instance missing or not EventEmitter');
+    }
+  } catch (e) {
+    log(`[EVENT TEST] Failed to register event listener: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   // Register the sidebar provider
@@ -116,13 +125,31 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // Dev-only: direct impact test command to validate Option A wiring without external MCP client
+  const impactTestDisposable = vscode.commands.registerCommand(
+    'constellation.dev.traceImpactDirect',
+    async () => {
+  log('[DEV] Direct trace impact test command disabled (Option A removed).');
+    }
+  );
+
+  // Option B-lite: run impact tool through in-process server, parse dual payload, dispatch visualInstruction manually
+  const impactInProcessDisposable = vscode.commands.registerCommand(
+    'constellation.dev.traceImpactEmbedded',
+    async () => {
+  log('[DEV] Embedded impact command disabled (Option A artifacts removed).');
+    }
+  );
+
   // Removed deprecated/legacy commands: healthReport, healthReportGraph, clearHeatmap, analyzeHealth, debugLaunchMcp
 
   context.subscriptions.push(
     sidebarDisposable,
     showGraphDisposable,
     scanProjectDisposable,
-    healthDashboardDisposable
+  healthDashboardDisposable,
+  impactTestDisposable
+  ,impactInProcessDisposable
   );
 
   // (FR4/FR5/FR6) Active editor tracking -> highlight graph node (debounced per FR5)
