@@ -2,35 +2,49 @@
 
 The webview layer is consolidated under a single `ui/` directory housing each application (graph constellation, health dashboard, sidebar) plus shared utilities. Legacy `panels/` & `sidebar/` folders were removed (FR2 / structural cleanup).
 
-There is also a top-level `components/` directory (`src/webview/components`) that holds shared, framework-agnostic UI building blocks (primitives, layout patterns, feedback, theming). Individual app-specific components still live under their respective `ui/<app>/components/` folders; promote only broadly reusable pieces to the shared `components/` root to avoid churn.
+## Shared Components Directory
+
+The top-level `components/` directory (`src/webview/components/`) holds shared, framework-agnostic UI building blocks used across all webview applications:
+
+- **Primitives**: Basic UI elements (buttons, inputs, etc.)
+- **Layout Patterns**: Common layout structures
+- **Feedback Components**: Loading states, error messages, notifications
+- **Theming**: Shared theme utilities and VS Code theme integration
+
+Individual app-specific components still live under their respective `ui/<app>/components/` folders. Only promote broadly reusable pieces to the shared `components/` root to avoid churn.
 
 ## Current Directory Structure
 
 ```
 src/webview/
-├── providers/                 # Webview (panel/view) provider classes
+├── components/                # Shared UI components across all webview apps
+│   ├── primitives/           # Basic UI elements
+│   ├── layout/               # Layout patterns
+│   ├── feedback/             # Loading, error states
+│   └── theme/                # Theme utilities
+├── providers/                # Webview (panel/view) provider classes
 │   ├── health-dashboard.provider.ts
 │   └── sidebar.provider.ts
-├── styles/                    # Global aggregated styles (entry: main.css)
+├── styles/                   # Global aggregated styles (entry: main.css)
 ├── ui/
-│   ├── graph-constellation/   # Dependency graph webview app
-│   │   ├── index.tsx          # Entry point (bundled -> dist/webview.js)
-│   │   ├── components/
+│   ├── graph-constellation/  # Dependency graph webview app
+│   │   ├── index.tsx         # Entry point (bundled -> dist/webview.js)
+│   │   ├── components/       # App-specific components
 │   │   └── styles/
-│   ├── dashboard-health/      # Health analytics dashboard
-│   │   ├── index.tsx          # Bundled -> dist/health-webview.js
-│   │   ├── components/
+│   ├── dashboard-health/     # Health analytics dashboard
+│   │   ├── index.tsx         # Bundled -> dist/health-webview.js
+│   │   ├── components/       # App-specific components
 │   │   ├── hooks/
 │   │   ├── styles/
 │   │   └── health.postMessage.ts
-│   ├── extension-sidebar/     # Activity bar sidebar view
-│   │   ├── index.tsx          # Bundled -> dist/sidebar.js
-│   │   ├── components/
+│   ├── extension-sidebar/    # Activity bar sidebar view
+│   │   ├── index.tsx         # Bundled -> dist/sidebar.js
+│   │   ├── components/       # App-specific components
 │   │   ├── router/
 │   │   ├── views/
 │   │   └── styles/
-│   └── shared/                # Cross-app utilities (messaging, etc.)
-├── webview.service.ts         # Central webview lifecycle/orchestration
+│   └── shared/               # Cross-app utilities (messaging, etc.)
+├── webview.service.ts        # Central webview lifecycle/orchestration
 └── README.md
 ```
 
@@ -100,3 +114,10 @@ The previous `panels/` and `sidebar/` directories were consolidated. All referen
 ---
 
 Last updated: Project Cleanup & Structure Optimization (FR2, FR19, FR20).
+
+## Component Organization Guidelines
+
+- **Shared Components** (`components/`): Place here only when used by 2+ webview apps
+- **App Components** (`ui/<app>/components/`): Keep app-specific components co-located
+- **Promotion Criteria**: Move to shared only after proven reuse across multiple apps
+- **Import Pattern**: Use aliases like `@webview/components/` for shared components

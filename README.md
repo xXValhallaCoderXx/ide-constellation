@@ -6,7 +6,7 @@ Refactored VS Code extension with unified webview architecture (graph constellat
 
 Current pillars:
 1. **Extension Core & Panel Registry** – Stable activation and centralized panel opens.
-2. **Unified Webview Layer** – Three Preact apps under `src/webview/ui/*` with shared messaging & styles, plus a `src/webview/components/` directory containing cross-app UI primitives (layout, feedback, theme). Promote only broadly reusable pieces there; app‑specific components remain co-located under each app's `components/` folder.
+2. **Unified Webview Layer** – Three Preact apps under `src/webview/ui/*` with shared messaging & styles. Shared UI components live in `src/webview/components/` containing cross-app UI primitives (layout, feedback, theme). Promote only broadly reusable pieces there; app‑specific components remain co-located under each app's `components/` folder.
 3. **MCP Provider & Server** – Standard MCP provider with bundled stdio server (`out/mcp-server.js`). Provider registration is always attempted on activation; dev (`NODE_ENV=development`) emits `[POC]` diagnostic logs while production keeps output minimal.
 4. **Worker-Based Graph Scan** – Worker thread computes dependency graph (`dist/workers/scanWorker.mjs`).
 5. **Health Analysis Dashboard** – Risk scoring & recommendations panel.
@@ -146,6 +146,7 @@ src/
 │   └── ...
 ├── webview/
 │   ├── webview.service.ts
+│   ├── components/           # Shared UI components (primitives, layout, feedback, theming)
 │   ├── providers/
 │   └── ui/
 │       ├── graph-constellation/
