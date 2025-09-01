@@ -52,6 +52,10 @@
       {
         "command": "constellation.healthDashboard",
         "title": "Constellation: Open Health Dashboard"
+      },
+      {
+        "command": "constellation.pingBridgeTest",
+        "title": "Constellation: Bridge Ping Test"
       }
     ],
     "mcpServerDefinitionProviders": [

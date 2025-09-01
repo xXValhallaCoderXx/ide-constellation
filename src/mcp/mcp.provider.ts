@@ -3,6 +3,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { MCPStdioServer } from './mcp-stdio.server';
 import { ParsedToolEnvelope, DualToolResponse } from '../types/visual-instruction.types';
+import { BridgeService } from '../services/bridge/bridge.service';
+import { BridgeEnvelope } from '../types/bridge.types';
 
 /**
  * VS Code MCP Provider for registering the Kiro Constellation MCP Server
@@ -19,7 +21,7 @@ export class KiroConstellationMCPProvider {
     private viDebounceTimer: NodeJS.Timeout | null = null;
     private pendingInstruction: import('../types/visual-instruction.types').VisualInstruction | null = null;
 
-    constructor(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel) {
+    constructor(context: vscode.ExtensionContext, outputChannel: vscode.OutputChannel, bridgeEnv?: { socketPath: string; authToken: string }) {
         this.extensionContext = context;
         this.outputChannel = outputChannel;
         // Create a server instance for direct method calls with extension context
@@ -27,6 +29,10 @@ export class KiroConstellationMCPProvider {
         // Set this provider instance for visual instruction routing
         if (this.serverInstance) {
             this.serverInstance.setProviderInstance(this);
+        }
+        // Persist bridge env for server definitions
+        if (bridgeEnv) {
+            (this as any)._bridgeEnv = bridgeEnv;
         }
     }
 
@@ -182,6 +188,7 @@ export class KiroConstellationMCPProvider {
             const label = 'Constellation MCP';
             const finalLabel = typeof label === 'string' && label.trim().length > 0 ? label.trim() : 'Constellation MCP (default)';
 
+            const bridgeEnv = (this as any)._bridgeEnv as { socketPath: string; authToken: string } | undefined;
             const serverDefinition: any = {
                 id: 'constellation-poc',
                 transport: 'stdio',
@@ -189,7 +196,7 @@ export class KiroConstellationMCPProvider {
                 args: [serverScriptPath],
                 label: finalLabel,
                 cwd: this.extensionContext.extensionPath,
-                env: {}
+                env: bridgeEnv ? { BRIDGE_SOCKET_PATH: bridgeEnv.socketPath, BRIDGE_AUTH_TOKEN: bridgeEnv.authToken } : {}
             };
 
             // Validate the server definition before returning
@@ -352,6 +359,13 @@ export class KiroConstellationMCPProvider {
             this.dispatchVisualInstruction(envelope.dual.visualInstruction);
         } else {
             this.logVI('DEBUG', 'Handle tool result no visualInstruction present');
+        }
+        // Bridge envelope parsing
+        const bridge = BridgeService.getInstance();
+        const maybeBridge = bridge.tryParseEnvelope(rawText) as BridgeEnvelope | null;
+        if (maybeBridge?.bridgeMessage) {
+            this.logVI('INFO', `Bridge message detected type=${maybeBridge.bridgeMessage.type}`);
+            bridge.send({ ...maybeBridge.bridgeMessage }).catch(err => this.logVI('WARN', 'Bridge send error', { error: String(err) }));
         }
     }
 

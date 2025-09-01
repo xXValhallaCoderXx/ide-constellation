@@ -13,6 +13,8 @@ import { SummaryGenerator } from '../services/summary-generator.service';
 import { DualToolResponse } from '../types/visual-instruction.types';
 import { executeHealthReport, generateHealthSummary } from './tools/health-report.tool';
 import * as path from 'path';
+import * as net from 'net';
+import { BridgeMessage } from '../types/bridge.types';
 
 // Conditional vscode import - only available in extension context
 let vscode: any = null;
@@ -36,6 +38,10 @@ export class MCPStdioServer {
     private isRunning = false;
     private extensionContext: any = null;
     private providerInstance: any = null;
+    private bridgeSocket: net.Socket | null = null;
+    private bridgeReady = false;
+    private bridgeAuthToken: string | null = null;
+    private bridgeConnectTimer: NodeJS.Timeout | null = null;
 
     constructor(extensionContext?: any) {
         // Store extension context if provided (when running in extension mode)
@@ -62,6 +68,7 @@ export class MCPStdioServer {
 
         this.setupHandlers();
         this.setupProcessHandlers();
+    this.initBridgeClient();
     }
 
     /**
@@ -83,11 +90,10 @@ export class MCPStdioServer {
 
             if (name === CONSTELLATION_PING_TOOL.name) {
                 console.error('[MCP DEBUG] PING tool executed');
-                return {
-                    content: [
-                        { type: 'text' as const, text: 'pong' }
-                    ]
-                };
+                const envelope = { dataForAI: 'pong', bridgeMessage: { type: 'ui:showPanel', payload: { panel: 'dependencyGraph' }, metadata: { correlationId: `ping-${Date.now()}`, timestamp: Date.now(), priority: 'high' } } };
+                // Also attempt out-of-band send
+                this.sendBridgeMessage(envelope.bridgeMessage as BridgeMessage);
+                return { content: [{ type: 'text' as const, text: JSON.stringify(envelope) }] };
             }
 
             if (name === CONSTELLATION_GET_GRAPH_SUMMARY_TOOL.name) {
@@ -177,6 +183,58 @@ export class MCPStdioServer {
                 ]
             };
         });
+    }
+
+    /** Execute ping logic directly (used by test command) */
+    public async executePing(): Promise<{ envelope: any }> {
+        const envelope = { dataForAI: 'pong', bridgeMessage: { type: 'ui:showPanel', payload: { panel: 'dependencyGraph' }, metadata: { correlationId: `ping-${Date.now()}`, timestamp: Date.now(), priority: 'high' } } };
+        this.sendBridgeMessage(envelope.bridgeMessage as BridgeMessage);
+        return { envelope };
+    }
+
+    /** Initialize bridge client (IPC) */
+    private initBridgeClient() {
+        const socketPath = process.env.BRIDGE_SOCKET_PATH;
+        const authToken = process.env.BRIDGE_AUTH_TOKEN;
+        if (!socketPath || !authToken) {
+            console.error('[Bridge][Client] Missing socket path or auth token; bridge disabled');
+            return;
+        }
+        this.bridgeAuthToken = authToken;
+        const connect = () => {
+            try {
+                this.bridgeSocket = net.createConnection(socketPath, () => {
+                    console.error('[Bridge][Client] Connected');
+                    // auth
+                    this.bridgeSocket?.write(JSON.stringify({ type: 'auth', token: authToken }) + '\n');
+                    this.bridgeReady = true;
+                });
+                this.bridgeSocket.on('error', (e) => {
+                    console.error('[Bridge][Client] Error', e.message);
+                    this.bridgeReady = false;
+                    this.scheduleReconnect();
+                });
+                this.bridgeSocket.on('close', () => {
+                    console.error('[Bridge][Client] Closed');
+                    this.bridgeReady = false;
+                    this.scheduleReconnect();
+                });
+            } catch (e: any) {
+                console.error('[Bridge][Client] Connect exception', e.message);
+                this.scheduleReconnect();
+            }
+        };
+        connect();
+    }
+
+    private scheduleReconnect() {
+        if (this.bridgeConnectTimer) return;
+        this.bridgeConnectTimer = setTimeout(() => { this.bridgeConnectTimer = null; this.initBridgeClient(); }, 1500);
+    }
+
+    private sendBridgeMessage(msg: BridgeMessage | null | undefined) {
+        if (!msg || !this.bridgeReady || !this.bridgeSocket) return;
+        try { this.bridgeSocket.write(JSON.stringify(msg) + '\n'); } catch {/* ignore */}
     }
 
     /**
