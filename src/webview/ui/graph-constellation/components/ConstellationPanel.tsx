@@ -18,6 +18,7 @@ export function ConstellationPanel() {
     error: null
   });
   const [activeHighlight, setActiveHighlight] = useState<{ fileId: string | null; reason?: string }>({ fileId: null });
+  const [pocLogCount, setPocLogCount] = useState(0);
 
   useEffect(() => {
     // Listen for messages from the extension
@@ -51,7 +52,7 @@ export function ConstellationPanel() {
       }
     };
 
-    window.addEventListener('message', handleMessage);
+  window.addEventListener('message', handleMessage);
     
     // Send initial status check and graph request on component mount
     setTimeout(() => {
@@ -63,6 +64,38 @@ export function ConstellationPanel() {
     }, 50);
 
     return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // POC handler: listen for visualInstruction and apply trace animation as sequential highlights
+  useEffect(() => {
+    const messageHandler = (event: MessageEvent) => {
+      const message = event.data;
+      if (message?.command === 'visualInstruction') {
+        console.log('🎯 [POC] Visual instruction received:', message.data);
+        const instruction = message.data;
+        if (instruction?.action === 'applyTraceAnimation') {
+          const { tracePath, animationConfig } = instruction.payload || {};
+          if (Array.isArray(tracePath) && tracePath.length) {
+            console.log('🚀 [POC] Starting trace animation:', {
+              path: tracePath,
+              duration: animationConfig?.duration,
+            });
+            // Sequentially highlight nodes using activeHighlight prop
+            tracePath.forEach((nodeId: string, index: number) => {
+              setTimeout(() => {
+                console.log(`[POC] Highlighting node ${index + 1}/${tracePath.length}: ${nodeId}`);
+                setActiveHighlight({ fileId: nodeId, reason: 'poc-trace' });
+                // Clear highlight shortly after to allow pulse effect via GraphCanvas styles
+                setTimeout(() => setActiveHighlight({ fileId: null }), Math.max(200, animationConfig?.stepDelay || 200) - 50);
+              }, index * Math.max(100, animationConfig?.stepDelay || 200));
+            });
+            setPocLogCount((c) => c + 1);
+          }
+        }
+      }
+    };
+    window.addEventListener('message', messageHandler);
+    return () => window.removeEventListener('message', messageHandler);
   }, []);
 
   // Removed handleCheckStatus (status UI removed)

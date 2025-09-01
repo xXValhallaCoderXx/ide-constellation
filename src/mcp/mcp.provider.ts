@@ -245,18 +245,26 @@ export class KiroConstellationMCPProvider {
      */
     private logVI(level: 'INFO'|'WARN'|'DEBUG', msg: string, meta?: any) {
         const base = `[VI][${level}] ${msg}`;
-        if (meta) {
-            try {
-                let metaString = JSON.stringify(meta);
-                if (metaString.length > 2000) { // safeguard for meta verbosity
-                    metaString = metaString.slice(0, 2000) + '...<truncated-meta>';
+        try {
+            if (meta) {
+                try {
+                    let metaString = JSON.stringify(meta);
+                    if (metaString.length > 2000) { // safeguard for meta verbosity
+                        metaString = metaString.slice(0, 2000) + '...<truncated-meta>';
+                    }
+                    this.outputChannel.appendLine(base + ' meta=' + metaString);
+                    // Mirror to console for POC visibility
+                    console.log(base + ' meta=' + metaString);
+                } catch {
+                    this.outputChannel.appendLine(base + ' meta=[unserializable]');
+                    console.log(base + ' meta=[unserializable]');
                 }
-                this.outputChannel.appendLine(base + ' meta=' + metaString);
-            } catch {
-                this.outputChannel.appendLine(base + ' meta=[unserializable]');
+            } else {
+                this.outputChannel.appendLine(base);
+                console.log(base);
             }
-        } else {
-            this.outputChannel.appendLine(base);
+        } catch {
+            // Swallow any secondary logging errors (never throw from logger)
         }
     }
 
@@ -352,6 +360,36 @@ export class KiroConstellationMCPProvider {
             this.dispatchVisualInstruction(envelope.dual.visualInstruction);
         } else {
             this.logVI('DEBUG', 'Handle tool result no visualInstruction present');
+            // NEW: fallback scan for embedded marker in plain text (POC robustness)
+            if (rawText && rawText.includes('<!--VISUAL_INSTRUCTION:')) {
+                this.logVI('DEBUG', 'Attempting embedded marker parse in plain tool result');
+                this.handleEmbeddedInstructionText(rawText);
+            }
+        }
+    }
+
+    /**
+     * Handle a tool response that may embed a visual instruction inside an HTML comment marker.
+     * Pattern: <!--VISUAL_INSTRUCTION:{...}-->
+     */
+    public handleEmbeddedInstructionText(text: string) {
+        const raw = text || '';
+        const match = raw.match(/<!--VISUAL_INSTRUCTION:(.*?)-->/s);
+        if (!match) {
+            this.logVI('DEBUG', 'No embedded visual instruction marker found');
+            return;
+        }
+        try {
+            const json = match[1];
+            const instruction = JSON.parse(json);
+            if (instruction && instruction.action) {
+                this.logVI('INFO', `Embedded visualInstruction detected action=${instruction.action}`);
+                this.dispatchVisualInstruction(instruction);
+            } else {
+                this.logVI('WARN', 'Embedded visualInstruction missing action');
+            }
+        } catch (e) {
+            this.logVI('WARN', 'Failed to parse embedded visualInstruction JSON', { error: e instanceof Error ? e.message : String(e) });
         }
     }
 

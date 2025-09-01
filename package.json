@@ -52,6 +52,10 @@
       {
         "command": "constellation.healthDashboard",
         "title": "Constellation: Open Health Dashboard"
+      },
+      {
+        "command": "constellation.pocPing",
+        "title": "Constellation: POC Ping (MCP-Webview Bridge)"
       }
     ],
     "mcpServerDefinitionProviders": [

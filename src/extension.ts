@@ -10,6 +10,7 @@ import { STATUS_BAR_TIMEOUT_MS } from './constants/sync.constants';
 import { debounce } from './utils/debounce';
 import { PanelRegistry } from './services/panel-registry.service';
 import { CONFIG } from './config/extension.config';
+import { buildPingResponseText } from './mcp/tools/ping.tool';
 
 // Global instances
 let webviewManager: WebviewManager | null = null;
@@ -116,6 +117,27 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // POC: Trigger MCP Ping bridge end-to-end from extension (fallback if chat isn't available)
+  const pocPingDisposable = vscode.commands.registerCommand(
+    "constellation.pocPing",
+    async () => {
+      log("POC Ping command executed");
+      try {
+        const text = await buildPingResponseText();
+        if (mcpProvider && typeof (mcpProvider as any).handleEmbeddedInstructionText === 'function') {
+          (mcpProvider as any).handleEmbeddedInstructionText(text);
+          vscode.window.showInformationMessage('POC ping dispatched to graph');
+        } else {
+          vscode.window.showWarningMessage('MCP Provider not ready to handle embedded instructions');
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log(`[POC] Ping command failed: ${msg}`);
+        vscode.window.showErrorMessage(`POC ping failed: ${msg}`);
+      }
+    }
+  );
+
   // Removed deprecated/legacy commands: healthReport, healthReportGraph, clearHeatmap, analyzeHealth, debugLaunchMcp
 
   context.subscriptions.push(
@@ -123,6 +145,7 @@ export async function activate(context: vscode.ExtensionContext) {
     showGraphDisposable,
     scanProjectDisposable,
     healthDashboardDisposable
+  ,pocPingDisposable
   );
 
   // (FR4/FR5/FR6) Active editor tracking -> highlight graph node (debounced per FR5)

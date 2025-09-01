@@ -13,6 +13,7 @@ import { SummaryGenerator } from '../services/summary-generator.service';
 import { DualToolResponse } from '../types/visual-instruction.types';
 import { executeHealthReport, generateHealthSummary } from './tools/health-report.tool';
 import * as path from 'path';
+import { buildPingResponseText } from './tools/ping.tool';
 
 // Conditional vscode import - only available in extension context
 let vscode: any = null;
@@ -83,9 +84,21 @@ export class MCPStdioServer {
 
             if (name === CONSTELLATION_PING_TOOL.name) {
                 console.error('[MCP DEBUG] PING tool executed');
+                const text = await buildPingResponseText();
+                try { console.error(`[MCP DEBUG] PING tool embedded instruction bytes=${Buffer.byteLength(text, 'utf8')}`); } catch {}
+
+                // Opportunistically route embedded instruction to provider instance too
+                try {
+                    if (this.providerInstance && typeof this.providerInstance.handleEmbeddedInstructionText === 'function') {
+                        this.providerInstance.handleEmbeddedInstructionText(text);
+                    }
+                } catch (e) {
+                    console.error('[MCP DEBUG] Failed to route embedded instruction from PING:', e instanceof Error ? e.message : String(e));
+                }
+
                 return {
                     content: [
-                        { type: 'text' as const, text: 'pong' }
+                        { type: 'text' as const, text }
                     ]
                 };
             }
