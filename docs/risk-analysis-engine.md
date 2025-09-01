@@ -16,15 +16,17 @@ The Risk Analysis Engine provides comprehensive codebase health assessment by an
 
 ### Basic Health Analysis
 
-1. Run `Constellation: Scan Project` to generate the dependency graph
-2. Run `Constellation: Analyze Codebase Health` to perform health analysis
-3. View results in the interactive webview panel
+1. Run `Constellation: Scan Project` to generate the dependency graph (required once per code change window).
+2. Open `Constellation: Open Health Dashboard` (panel command) – the dashboard can request or refresh analysis.
+3. If no analysis is present yet, click the dashboard's request button (or it may auto‑request) to perform health analysis.
+4. Use dashboard actions to project heatmap overlays onto the dependency graph panel.
 
 ### Command Integration
 
-The engine integrates with VS Code through the command palette:
+Primary interactions occur via commands + in-panel buttons:
 
-- `Constellation: Analyze Codebase Health` - Performs complete codebase analysis
+- `Constellation: Open Health Dashboard` – Opens or focuses the health panel (analysis can be initiated from inside the panel).
+- `Constellation: Scan Project` – Populates/refreshes underlying graph data consumed by the analysis.
 
 ## Architecture
 

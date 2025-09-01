@@ -36,8 +36,9 @@ interface ParsedToolEnvelope<T=any> { kind: 'dual' | 'plain'; rawText: string; d
 - Dispatch exceptions are caught; core tool flow unaffected.
 
 ## Debounce & Latest-Only Policy
-- 50ms debounce merges bursts; last instruction wins.
-- Prevents UI thrash from rapid sequential tool actions.
+- Provider layer: 50ms debounce merges bursts; last instruction wins.
+- Webview manager layer: an additional 100ms debounce/aggregation occurs before applying certain visual instructions (e.g., health analysis overlays) to further reduce UI thrash.
+- Combined effect: rapid sequential tool actions produce at most one routed instruction to the UI within ~150ms.
 
 ## Logging Conventions
 - All pattern logs prefixed with `[VI]`.

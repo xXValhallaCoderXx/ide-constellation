@@ -29,14 +29,14 @@ Kiro Constellation is a VS Code extension that provides constellation-based func
 ## Quick Start
 1. Install the Kiro Constellation extension
 2. Open a workspace with code files
-3. Run `Constellation: Scan Project` to generate dependency graph
-4. Run `Constellation: Analyze Codebase Health` for health assessment
-5. Use `Constellation: Show Codebase Map` for interactive visualization
+3. Run `Constellation: Scan Project` to generate dependency graph (required before health metrics)
+4. Open `Constellation: Open Health Dashboard` and request analysis (panel button) for health assessment
+5. Use `Constellation: Show Codebase Map` for interactive visualization (heatmap overlays when triggered from dashboard)
 
 ## Architecture
 - **Extension Entry Point**: `src/extension.ts`
 - **Services**: Core business logic in `src/services/`
-- **Webview Components**: Preact-based UI in `src/webview/`
+- **Webview Components**: Preact-based UI in `src/webview/` (shared primitives in `src/webview/components/`, app-specific under `src/webview/ui/<app>/components/`)
 - **MCP Integration**: Model Context Protocol in `src/mcp/`
 - **Worker Threads**: Background processing in `src/workers/`
 
