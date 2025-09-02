@@ -436,4 +436,25 @@ export class KiroConstellationMCPProvider {
             this.logVI('WARN', 'Dispatch error outer', { error: err instanceof Error ? err.message : String(err) });
         }
     }
+
+    /**
+     * Trigger opening (or focusing) of the main dependency graph panel.
+     * Used by impact analysis MVP to create instant visual feedback.
+     */
+    public triggerGraphPanelOpen() {
+        try {
+            if (!this.webviewManager) {
+                this.logVI('WARN', 'triggerGraphPanelOpen skipped – webviewManager unavailable');
+                return;
+            }
+            if (!this.extensionContext) {
+                this.logVI('WARN', 'triggerGraphPanelOpen skipped – missing extension context');
+                return;
+            }
+            this.logVI('INFO', 'Triggering graph panel open');
+            this.webviewManager.createOrShowPanel(this.extensionContext);
+        } catch (err) {
+            this.logVI('WARN', 'triggerGraphPanelOpen error', { error: err instanceof Error ? err.message : String(err) });
+        }
+    }
 }

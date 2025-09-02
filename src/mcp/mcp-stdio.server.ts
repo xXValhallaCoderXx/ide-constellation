@@ -271,13 +271,24 @@ export class MCPStdioServer {
     }
 
     private scheduleReconnect() {
-        if (this.bridgeConnectTimer) return;
-        this.bridgeConnectTimer = setTimeout(() => { this.bridgeConnectTimer = null; this.initBridgeClient(); }, 1500);
+        if (this.bridgeConnectTimer) {
+            return;
+        }
+        this.bridgeConnectTimer = setTimeout(() => {
+            this.bridgeConnectTimer = null;
+            this.initBridgeClient();
+        }, 1500);
     }
 
     private sendBridgeMessage(msg: BridgeMessage | null | undefined) {
-        if (!msg || !this.bridgeReady || !this.bridgeSocket) return;
-        try { this.bridgeSocket.write(JSON.stringify(msg) + '\n'); } catch {/* ignore */}
+        if (!msg || !this.bridgeReady || !this.bridgeSocket) {
+            return;
+        }
+        try {
+            this.bridgeSocket.write(JSON.stringify(msg) + '\n');
+        } catch {
+            /* ignore */
+        }
     }
 
     /**
@@ -698,12 +709,34 @@ export class MCPStdioServer {
             console.error(`[IMPACT_ANALYSIS] Analysis completed successfully`);
             console.error(`[IMPACT_ANALYSIS] Found ${result.dependents.length} dependents and ${result.dependencies.length} dependencies`);
             console.error(`[IMPACT_ANALYSIS] Path resolution: ${result.pathResolution.fuzzyMatched ? 'fuzzy matched' : 'exact match'}`);
+            // Trigger graph panel open via provider (MVP visual reaction) BEFORE responding
+            try {
+                if (this.providerInstance && typeof this.providerInstance.triggerGraphPanelOpen === 'function') {
+                    console.error('[IMPACT_ANALYSIS] Triggering graph panel open via provider');
+                    this.providerInstance.triggerGraphPanelOpen();
+                } else {
+                    console.error('[IMPACT_ANALYSIS] Provider instance missing or trigger method unavailable');
+                }
+            } catch (triggerErr) {
+                console.error('[IMPACT_ANALYSIS] Failed to trigger graph panel open', triggerErr instanceof Error ? triggerErr.message : String(triggerErr));
+            }
 
-            // Return the analysis result
+            // Simplified response per PRD: only key summary fields
+            const simplified = {
+                impactSummary: result.impactSummary,
+                dependentCount: result.dependents.length,
+                dependencyCount: result.dependencies.length,
+                dependents: result.dependents,
+                dependencies: result.dependencies
+            };
+            // Bridge message for UI auto-open (parity with ping tool) to ensure panel opens even if provider trigger failed
+            const bridgeEnvelope = { bridgeMessage: { type: 'ui:showPanel', payload: { panel: 'dependencyGraph' }, metadata: { correlationId: `impact-${Date.now()}`, timestamp: Date.now(), priority: 'high' } }, dataForAI: simplified };
+            // Attempt out-of-band send via bridge socket
+            this.sendBridgeMessage(bridgeEnvelope.bridgeMessage as BridgeMessage);
             return {
                 content: [{
                     type: 'text' as const,
-                    text: JSON.stringify(result)
+                    text: JSON.stringify(bridgeEnvelope)
                 }]
             };
 
