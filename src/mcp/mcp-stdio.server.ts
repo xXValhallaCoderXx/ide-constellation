@@ -6,10 +6,11 @@ import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types';
-import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL } from '../types/mcp.types';
+import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL, CONSTELLATION_IMPACT_ANALYSIS_TOOL } from '../types/mcp.types';
 import { GraphService } from '../services/graph.service';
 import { GraphCache } from '../services/graph-cache.service';
 import { SummaryGenerator } from '../services/summary-generator.service';
+import { ImpactAnalyzerService } from '../services/impact-analyzer.service';
 import { DualToolResponse } from '../types/visual-instruction.types';
 import { executeHealthReport, generateHealthSummary } from './tools/health-report.tool';
 import * as path from 'path';
@@ -61,7 +62,8 @@ export class MCPStdioServer {
                     '- constellation_example_tool: echoes an optional "message" string.',
                     '- constellation_get_graph_summary: provides intelligent codebase analysis with architectural insights.',
                     '- constellation_health_report: generates comprehensive health analysis with dual-view dashboard and heatmap visualization.',
-                    'Prefer using tools when asked to validate MCP connectivity, echo a message, analyze the codebase, or generate health reports.'
+                    '- constellation_impact_analysis: analyzes the impact of changes to a specific file by identifying dependencies and dependents.',
+                    'Prefer using tools when asked to validate MCP connectivity, echo a message, analyze the codebase, generate health reports, or assess change impact.'
                 ].join('\n')
             }
         );
@@ -79,7 +81,7 @@ export class MCPStdioServer {
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
             console.error('[MCP DEBUG] Received tools/list request');
             return {
-                tools: [CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL],
+                tools: [CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL, CONSTELLATION_IMPACT_ANALYSIS_TOOL],
             };
         });
 
@@ -164,6 +166,47 @@ export class MCPStdioServer {
                 
                 // Execute health report with dual-view response
                 return await this.executeHealthReport(workspaceRoot, forceRefresh, this.extensionContext);
+            }
+
+            if (name === CONSTELLATION_IMPACT_ANALYSIS_TOOL.name) {
+                console.error('[MCP DEBUG] IMPACT ANALYSIS tool executed');
+                const filePath = args?.filePath as string;
+                const changeType = args?.changeType as string;
+                const providedWorkspaceRoot = (args?.workspaceRoot as string) || '';
+
+                // Validate required parameters
+                if (!filePath || typeof filePath !== 'string') {
+                    throw new Error('filePath parameter is required and must be a string');
+                }
+
+                // Determine the workspace root to analyze
+                let workspaceRoot: string;
+
+                if (providedWorkspaceRoot && providedWorkspaceRoot.trim()) {
+                    // Use provided workspace root (most reliable when called from external tools like Kiro)
+                    workspaceRoot = path.resolve(providedWorkspaceRoot.trim());
+                    console.error(`[IMPACT_ANALYSIS] Using provided workspace root: ${workspaceRoot}`);
+                } else if (vscode && vscode.workspace && vscode.workspace.workspaceFolders) {
+                    // Extension mode - use VS Code workspace API
+                    workspaceRoot = vscode.workspace.workspaceFolders[0]?.uri.fsPath;
+                    if (!workspaceRoot) {
+                        throw new Error('No workspace folder open - cannot perform impact analysis');
+                    }
+                    console.error(`[IMPACT_ANALYSIS] Using VS Code workspace root: ${workspaceRoot}`);
+                } else {
+                    // Standalone mode fallback - use current working directory as workspace root
+                    workspaceRoot = process.cwd();
+                    console.error(`[IMPACT_ANALYSIS] Using current working directory as workspace root: ${workspaceRoot}`);
+                }
+
+                // Validate workspace root exists
+                const fs = require('fs');
+                if (!fs.existsSync(workspaceRoot)) {
+                    throw new Error(`Workspace root does not exist: ${workspaceRoot}`);
+                }
+
+                // Execute impact analysis
+                return await this.executeImpactAnalysis(filePath, workspaceRoot, changeType, this.extensionContext);
             }
 
             if (name !== CONSTELLATION_EXAMPLE_TOOL.name) {
@@ -609,6 +652,80 @@ export class MCPStdioServer {
             }
 
             throw new Error(`Health report failed: ${userFriendlyMessage}`);
+        }
+    }
+
+    /**
+     * Execute impact analysis for a specific file
+     * Works in both extension and standalone modes
+     */
+    private async executeImpactAnalysis(
+        filePath: string,
+        workspaceRoot: string,
+        changeType: string | undefined,
+        extensionContext: any
+    ): Promise<any> {
+        try {
+            console.error(`[IMPACT_ANALYSIS] Starting impact analysis`);
+            console.error(`[IMPACT_ANALYSIS] File path: ${filePath}`);
+            console.error(`[IMPACT_ANALYSIS] Workspace: ${workspaceRoot}`);
+            console.error(`[IMPACT_ANALYSIS] Change type: ${changeType || 'not specified'}`);
+
+            // Ensure we have graph data available
+            const graphService = GraphService.getInstance();
+            let graph = graphService.getGraph();
+
+            if (!graph) {
+                console.error('[IMPACT_ANALYSIS] No graph data available, loading graph');
+                graph = await graphService.loadGraph(workspaceRoot, '.', extensionContext);
+            }
+
+            if (!graph) {
+                throw new Error('Failed to load graph data for impact analysis');
+            }
+
+            console.error(`[IMPACT_ANALYSIS] Using graph with ${graph.nodes.length} nodes and ${graph.edges.length} edges`);
+
+            // Perform impact analysis
+            const result = await ImpactAnalyzerService.analyze(graph, filePath, workspaceRoot, changeType);
+
+            // Check if result is an error response
+            if ('errorCode' in result) {
+                console.error(`[IMPACT_ANALYSIS] Analysis failed: ${result.error}`);
+                throw new Error(result.error);
+            }
+
+            console.error(`[IMPACT_ANALYSIS] Analysis completed successfully`);
+            console.error(`[IMPACT_ANALYSIS] Found ${result.dependents.length} dependents and ${result.dependencies.length} dependencies`);
+            console.error(`[IMPACT_ANALYSIS] Path resolution: ${result.pathResolution.fuzzyMatched ? 'fuzzy matched' : 'exact match'}`);
+
+            // Return the analysis result
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify(result)
+                }]
+            };
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error('[IMPACT_ANALYSIS ERROR]', errorMessage);
+
+            // Provide user-friendly error messages
+            let userFriendlyMessage = errorMessage;
+            if (errorMessage.includes('No workspace folder open')) {
+                userFriendlyMessage = 'Please open a workspace folder in VS Code to perform impact analysis.';
+            } else if (errorMessage.includes('Failed to load graph data')) {
+                userFriendlyMessage = 'Unable to analyze project structure. Please scan the project first using the "Scan Project" command.';
+            } else if (errorMessage.includes('filePath parameter is required')) {
+                userFriendlyMessage = 'A file path is required to perform impact analysis.';
+            } else if (errorMessage.includes('File not found')) {
+                userFriendlyMessage = 'The specified file was not found in the project. Please check the file path.';
+            } else if (errorMessage.includes('Permission denied') || errorMessage.includes('EACCES')) {
+                userFriendlyMessage = 'Permission denied accessing project files. Please check file permissions.';
+            }
+
+            throw new Error(`Impact analysis failed: ${userFriendlyMessage}`);
         }
     }
 

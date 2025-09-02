@@ -93,3 +93,89 @@ export interface ISummaryResponse {
   /** Metadata about the summary generation process */
   metadata: ISummaryMetadata;
 }
+
+/**
+ * Impact analysis types for constellation_impact_analysis MCP tool
+ */
+
+export interface IPathSuggestion {
+  /** Suggested file path */
+  path: string;
+  /** Confidence score from 0-100 indicating match quality */
+  confidence: number;
+  /** Reason for the suggestion */
+  reason: 'similar_name' | 'partial_path' | 'same_extension';
+}
+
+export interface IPathResolution {
+  /** Original path provided by the user */
+  originalPath: string;
+  /** Resolved workspace-relative path */
+  resolvedPath: string;
+  /** Whether fuzzy matching was used to find the file */
+  fuzzyMatched: boolean;
+  /** Confidence score for fuzzy matches (0-100) */
+  matchConfidence?: number;
+  /** Alternative path suggestions if exact match not found */
+  suggestions?: IPathSuggestion[];
+}
+
+export interface IAnalysisMetadata {
+  /** ISO timestamp when the analysis was performed */
+  timestamp: string;
+  /** Time taken to complete the analysis in milliseconds */
+  analysisTimeMs: number;
+  /** Total number of nodes in the graph used for analysis */
+  graphNodeCount: number;
+  /** Whether cached graph data was used */
+  cacheUsed: boolean;
+  /** Optional change type provided in the analysis request */
+  changeType?: string;
+}
+
+export interface ImpactAnalysisResult {
+  /** Human-readable summary of the impact analysis */
+  impactSummary: string;
+  /** Array of files that depend on the target file */
+  dependents: string[];
+  /** Array of files that the target file depends on */
+  dependencies: string[];
+  /** Filtered graph containing only the target file and its direct connections */
+  impactGraph: IConstellationGraph;
+  /** Path resolution metadata and suggestions */
+  pathResolution: IPathResolution;
+  /** Analysis execution metadata */
+  metadata: IAnalysisMetadata;
+}
+
+/**
+ * Error response types for robust error handling
+ */
+
+export type ImpactAnalysisErrorCode =
+  | 'FILE_NOT_FOUND'
+  | 'PATH_SECURITY'
+  | 'GRAPH_UNAVAILABLE'
+  | 'ANALYSIS_TIMEOUT'
+  | 'INVALID_PATH'
+  | 'WORKSPACE_BOUNDARY_VIOLATION';
+
+export interface ImpactAnalysisErrorResponse {
+  /** Error message describing what went wrong */
+  error: string;
+  /** Specific error code for programmatic handling */
+  errorCode: ImpactAnalysisErrorCode;
+  /** Suggested file paths if available (for FILE_NOT_FOUND errors) */
+  suggestions?: string[];
+  /** Recommended actions the user can take to resolve the error */
+  recoveryActions?: string[];
+  /** Additional context about the error */
+  context?: {
+    /** Original path that caused the error */
+    originalPath?: string;
+    /** Workspace root for reference */
+    workspaceRoot?: string;
+    /** Whether graph data was available */
+    graphAvailable?: boolean;
+  };
+}

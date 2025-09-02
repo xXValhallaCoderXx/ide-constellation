@@ -95,3 +95,28 @@ export const CONSTELLATION_HEALTH_REPORT_TOOL: ToolDefinition = {
         required: []
     }
 };
+
+// Impact analysis tool for dependency change assessment
+export const CONSTELLATION_IMPACT_ANALYSIS_TOOL: ToolDefinition = {
+    name: 'constellation_impact_analysis',
+    description: 'Analyze the impact of changes to a specific file by identifying dependencies and dependents. Supports fuzzy path matching and provides detailed impact assessment. Trigger terms: impact, analysis, dependencies, dependents, change, affect, modify.',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            filePath: {
+                type: 'string',
+                description: 'Path to the file to analyze (supports fuzzy matching if exact path not found)',
+            },
+            changeType: {
+                type: 'string',
+                description: 'Optional description of the type of change being made (e.g., "refactor", "delete", "modify interface")',
+            },
+            workspaceRoot: {
+                type: 'string',
+                description: 'Path to the workspace root directory (defaults to current working directory)',
+                default: ''
+            }
+        },
+        required: ['filePath']
+    }
+};
