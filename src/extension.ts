@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { WebviewManager } from './webview/webview.service';
 import { KiroConstellationMCPProvider } from './mcp/mcp.provider';
+import { BridgeService } from './services/bridge/bridge.service';
+import { BRIDGE_MESSAGE_TYPES } from './types/bridge.types';
+import * as os from 'os';
+import * as crypto from 'crypto';
 import { ConstellationSidebarProvider } from './webview/providers/sidebar.provider';
 import * as path from 'path';
 import { spawn } from 'child_process';
@@ -28,6 +32,25 @@ export async function activate(context: vscode.ExtensionContext) {
 
   log("Extension activating...");
 
+  // --- Bridge initialization (must precede MCP provider so env vars available) ---
+  const socketPath = path.join(os.tmpdir(), `kiro-bridge-${process.pid}.sock`);
+  const fileBridgeDir = path.join(context.globalStorageUri.fsPath, 'bridge');
+  const authToken = context.globalState.get<string>('bridge.authToken') || crypto.randomUUID();
+  await context.globalState.update('bridge.authToken', authToken);
+  // Expose to in-process MCP server instance (scan & ping helper)
+  process.env.BRIDGE_SOCKET_PATH = socketPath;
+  process.env.BRIDGE_AUTH_TOKEN = authToken;
+  const bridge = BridgeService.getInstance();
+  await bridge.init({ socketPath, fileBridgeDir, authToken, output });
+
+  // Register POC handler: ui:showPanel -> open dependency graph panel
+  bridge.register(BRIDGE_MESSAGE_TYPES.UI_SHOW_PANEL, async (msg) => {
+    const desired = (msg.payload?.panel ?? 'dependencyGraph') as string;
+    if (desired === 'dependencyGraph') {
+      panelRegistry?.open('dependencyGraph', 'bridge:ui:showPanel');
+    }
+  });
+
   // --- Always create webview + panel infrastructure first ---
   webviewManager = new WebviewManager(null, output);
   webviewManager.initialize(context);
@@ -36,7 +59,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // --- Always attempt MCP provider registration (previously only in POC branch) ---
   try {
-    mcpProvider = new KiroConstellationMCPProvider(context, output);
+  mcpProvider = new KiroConstellationMCPProvider(context, output, { socketPath, authToken });
     const registered = await mcpProvider.registerProvider();
     if (registered) {
       log("[MCP] Provider registration successful");
@@ -116,13 +139,30 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // Minimal bridge ping test command
+  const pingBridgeDisposable = vscode.commands.registerCommand(
+    'constellation.pingBridgeTest',
+    async () => {
+      try {
+        log('[BridgeTest] Executing ping tool');
+        const server = mcpProvider?.getServerInstance();
+        if (!server) { vscode.window.showErrorMessage('MCP server unavailable'); return; }
+        await server.executePing();
+        vscode.window.showInformationMessage('Bridge ping sent (should open graph panel)');
+      } catch (e) {
+        vscode.window.showErrorMessage('Bridge ping failed: ' + (e instanceof Error ? e.message : String(e)));
+      }
+    }
+  );
+
   // Removed deprecated/legacy commands: healthReport, healthReportGraph, clearHeatmap, analyzeHealth, debugLaunchMcp
 
   context.subscriptions.push(
     sidebarDisposable,
     showGraphDisposable,
     scanProjectDisposable,
-    healthDashboardDisposable
+  healthDashboardDisposable,
+  pingBridgeDisposable
   );
 
   // (FR4/FR5/FR6) Active editor tracking -> highlight graph node (debounced per FR5)

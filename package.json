@@ -13,7 +13,9 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "repository": {
     "type": "git",
@@ -32,12 +34,12 @@
     },
     "views": {
       "kiro-constellation": [
-  {
-    "id": "kiro-constellation.sidebar",
-    "name": "Constellation",
-    "type": "webview",
-    "icon": "$(graph)"
-  }
+        {
+          "id": "kiro-constellation.sidebar",
+          "name": "Constellation",
+          "type": "webview",
+          "icon": "$(graph)"
+        }
       ]
     },
     "commands": [
@@ -52,6 +54,10 @@
       {
         "command": "constellation.healthDashboard",
         "title": "Constellation: Open Health Dashboard"
+      },
+      {
+        "command": "constellation.pingBridgeTest",
+        "title": "Constellation: Bridge Ping Test"
       }
     ],
     "mcpServerDefinitionProviders": [
