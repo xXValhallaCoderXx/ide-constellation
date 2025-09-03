@@ -19,15 +19,41 @@ export type SidebarRouteKey = typeof ROUTE.SIDEBAR[keyof typeof ROUTE.SIDEBAR];
 export type PanelKey = typeof ROUTE.PANEL[keyof typeof ROUTE.PANEL];
 
 // Add typed origins for consistent logging/context
+/**
+ * Standardized origin identifiers for panel opens / actions.
+ * Pattern: <namespace>:<action>
+ * Namespaces in use:
+ *  - sidebar (user clicking in sidebar UI)
+ *  - mcp (Machine Control Protocol automated actions)
+ *  - command (invoked via VS Code command palette)
+ *  - system (internal automated flows / fallbacks)
+ */
 export const ORIGIN = {
     SIDEBAR: {
         HOME: 'sidebar:home',
         HEALTH: 'sidebar:health',
         ACTIONS: 'sidebar:actions',
     },
+    MCP: {
+        VISUAL_INSTRUCTION: 'mcp:visualInstruction',
+        TRIGGER: 'mcp:trigger',
+        SET_FOCUS: 'mcp:setFocus',
+        IMPACT_ANALYSIS: 'mcp:impactAnalysis', // referenced in docs / comments
+    },
+    COMMAND: {
+        OPEN_GRAPH: 'command:openGraph',
+        OPEN_HEALTH: 'command:openHealth',
+    },
+    SYSTEM: {
+        FALLBACK: 'system:fallback',
+    }
 } as const;
 
 export type SidebarOrigin = typeof ORIGIN.SIDEBAR[keyof typeof ORIGIN.SIDEBAR];
+export type McpOrigin = typeof ORIGIN.MCP[keyof typeof ORIGIN.MCP];
+export type CommandOrigin = typeof ORIGIN.COMMAND[keyof typeof ORIGIN.COMMAND];
+export type SystemOrigin = typeof ORIGIN.SYSTEM[keyof typeof ORIGIN.SYSTEM];
+export type AnyOrigin = SidebarOrigin | McpOrigin | CommandOrigin | SystemOrigin | string; // open to future custom origins
 
 // Typed sidebar → extension messages
 export type PanelOpenMessage = {

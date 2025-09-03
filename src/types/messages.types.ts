@@ -188,6 +188,40 @@ export interface GraphSetFocusMessage extends WebviewMessage {
   };
 }
 
+/**
+ * Overlay apply message (Milestone 1 contract only - rendering not implemented).
+ * Provides a flexible payload for future layering / visualization.
+ * UI handlers intentionally deferred; consumers MAY ignore unknown fields.
+ */
+export interface GraphOverlayApplyMessage extends WebviewMessage {
+  command: 'graph:overlay:apply';
+  data: {
+    overlay: {
+      type: string; // e.g. 'risk', 'impact', 'custom'
+      correlationId?: string; // optional correlation for logging & tracing
+      description?: string; // human-readable summary
+      source?: string; // origin system identifier
+      createdAt: string; // ISO timestamp
+      meta?: Record<string, any>; // arbitrary metadata for future use
+      nodes: Array<{
+        nodeId: string;
+        color?: string; // fallback hex / theme token
+        intensity?: number; // 0..1 or domain-specific scaling
+        label?: string; // optional overlay label per node
+        metrics?: any; // domain metrics (risk score, impact vector, etc.)
+      }>;
+    };
+  };
+}
+
+/** Clears an active overlay. Rendering logic is future scope. */
+export interface GraphOverlayClearMessage extends WebviewMessage {
+  command: 'graph:overlay:clear';
+  data?: {
+    correlationId?: string; // optional for targeted clearing / logging symmetry
+  };
+}
+
 // Augmented routing-related messages
 import type { PanelKey, SidebarRouteKey } from './routing.types';
 
@@ -266,6 +300,14 @@ export function isGraphSetFocusMessage(msg: WebviewMessage): msg is GraphSetFocu
   return msg.command === 'graph:setFocus' && !!(msg as any).data && typeof (msg as any).data.targetNodeId === 'string';
 }
 
+export function isGraphOverlayApplyMessage(msg: WebviewMessage): msg is GraphOverlayApplyMessage {
+  return msg.command === 'graph:overlay:apply' && !!(msg as any).data && !!(msg as any).data.overlay;
+}
+
+export function isGraphOverlayClearMessage(msg: WebviewMessage): msg is GraphOverlayClearMessage {
+  return msg.command === 'graph:overlay:clear';
+}
+
 export type WebviewToExtensionMessage = CheckStatusMessage | GraphRequestMessage | EditorOpenMessage | HealthRequestMessage | HealthShowHeatmapMessage | HealthFocusNodeMessage | HealthRefreshMessage | VisualInstructionMessage | PanelOpenMessage | ProjectScanMessage | RouteNavigateMessage | HealthExportMessage;
 
-export type ExtensionToWebviewMessage = StatusUpdateMessage | ServerInfoMessage | GraphResponseMessage | GraphErrorMessage | GraphHighlightNodeMessage | GraphSetFocusMessage | HealthResponseMessage | HealthErrorMessage | HealthLoadingMessage | DashboardHighlightRiskMessage | GraphApplyHeatmapMessage | GraphClearHeatmapMessage | DashboardNotificationMessage | HealthExportResultMessage;
+export type ExtensionToWebviewMessage = StatusUpdateMessage | ServerInfoMessage | GraphResponseMessage | GraphErrorMessage | GraphHighlightNodeMessage | GraphSetFocusMessage | HealthResponseMessage | HealthErrorMessage | HealthLoadingMessage | DashboardHighlightRiskMessage | GraphApplyHeatmapMessage | GraphClearHeatmapMessage | DashboardNotificationMessage | HealthExportResultMessage | GraphOverlayApplyMessage | GraphOverlayClearMessage;
