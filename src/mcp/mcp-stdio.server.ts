@@ -677,17 +677,15 @@ export class MCPStdioServer {
         extensionContext: any
     ): Promise<any> {
         try {
-            console.error(`[IMPACT_ANALYSIS] Starting impact analysis`);
-            console.error(`[IMPACT_ANALYSIS] File path: ${filePath}`);
-            console.error(`[IMPACT_ANALYSIS] Workspace: ${workspaceRoot}`);
-            console.error(`[IMPACT_ANALYSIS] Change type: ${changeType || 'not specified'}`);
+            console.error(`[IMPACT_ANALYSIS] action=start file=${filePath}`);
+            console.error(`[IMPACT_ANALYSIS] action=context workspace=${workspaceRoot} changeType=${changeType || 'not_specified'}`);
 
             // Ensure we have graph data available
             const graphService = GraphService.getInstance();
             let graph = graphService.getGraph();
 
             if (!graph) {
-                console.error('[IMPACT_ANALYSIS] No graph data available, loading graph');
+                console.error('[IMPACT_ANALYSIS] action=loadGraph reason=notCached');
                 graph = await graphService.loadGraph(workspaceRoot, '.', extensionContext);
             }
 
@@ -695,7 +693,7 @@ export class MCPStdioServer {
                 throw new Error('Failed to load graph data for impact analysis');
             }
 
-            console.error(`[IMPACT_ANALYSIS] Using graph with ${graph.nodes.length} nodes and ${graph.edges.length} edges`);
+            console.error(`[IMPACT_ANALYSIS] action=graphReady nodes=${graph.nodes.length} edges=${graph.edges.length}`);
 
             // Perform impact analysis
             const result = await ImpactAnalyzerService.analyze(graph, filePath, workspaceRoot, changeType);
@@ -706,19 +704,21 @@ export class MCPStdioServer {
                 throw new Error(result.error);
             }
 
-            console.error(`[IMPACT_ANALYSIS] Analysis completed successfully`);
-            console.error(`[IMPACT_ANALYSIS] Found ${result.dependents.length} dependents and ${result.dependencies.length} dependencies`);
-            console.error(`[IMPACT_ANALYSIS] Path resolution: ${result.pathResolution.fuzzyMatched ? 'fuzzy matched' : 'exact match'}`);
+            console.error(`[IMPACT_ANALYSIS] action=analysisComplete`);
+            console.error(`[IMPACT_ANALYSIS] action=counts dependents=${result.dependents.length} dependencies=${result.dependencies.length}`);
+            console.error(`[IMPACT_ANALYSIS] action=pathResolution type=${result.pathResolution.fuzzyMatched ? 'fuzzy' : 'exact'}`);
+            const correlationId = `impact-${Date.now()}`;
+            console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} summary dependents=${result.dependents.length} dependencies=${result.dependencies.length}`);
             // Trigger graph panel open via provider (MVP visual reaction) BEFORE responding
             try {
                 if (this.providerInstance && typeof this.providerInstance.triggerGraphPanelOpen === 'function') {
-                    console.error('[IMPACT_ANALYSIS] Triggering graph panel open via provider');
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=triggerPanelOpen`);
                     this.providerInstance.triggerGraphPanelOpen();
                 } else {
-                    console.error('[IMPACT_ANALYSIS] Provider instance missing or trigger method unavailable');
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=triggerPanelOpen status=providerUnavailable`);
                 }
             } catch (triggerErr) {
-                console.error('[IMPACT_ANALYSIS] Failed to trigger graph panel open', triggerErr instanceof Error ? triggerErr.message : String(triggerErr));
+                console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=triggerPanelOpen status=error error=${triggerErr instanceof Error ? triggerErr.message : String(triggerErr)}`);
             }
 
             // Simplified response per PRD: only key summary fields
@@ -727,12 +727,27 @@ export class MCPStdioServer {
                 dependentCount: result.dependents.length,
                 dependencyCount: result.dependencies.length,
                 dependents: result.dependents,
-                dependencies: result.dependencies
+                dependencies: result.dependencies,
+                pathResolution: result.pathResolution
             };
             // Bridge message for UI auto-open (parity with ping tool) to ensure panel opens even if provider trigger failed
-            const bridgeEnvelope = { bridgeMessage: { type: 'ui:showPanel', payload: { panel: 'dependencyGraph' }, metadata: { correlationId: `impact-${Date.now()}`, timestamp: Date.now(), priority: 'high' } }, dataForAI: simplified };
+            const bridgeEnvelope = { bridgeMessage: { type: 'ui:showPanel', payload: { panel: 'dependencyGraph' }, metadata: { correlationId, timestamp: Date.now(), priority: 'high' } }, dataForAI: simplified };
             // Attempt out-of-band send via bridge socket
             this.sendBridgeMessage(bridgeEnvelope.bridgeMessage as BridgeMessage);
+            // Dispatch focus message via provider helper (non-blocking)
+            try {
+                const resolvedTarget = result.pathResolution.resolvedPath;
+                if (resolvedTarget && this.providerInstance && typeof this.providerInstance.sendGraphSetFocus === 'function') {
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchFocus target=${resolvedTarget}`);
+                    this.providerInstance.sendGraphSetFocus(resolvedTarget, correlationId);
+                } else if (!resolvedTarget) {
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchFocus status=skip reason=unresolvedPath`);
+                } else {
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchFocus status=skip reason=providerUnavailable`);
+                }
+            } catch (focusErr) {
+                console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchFocus status=error error=${focusErr instanceof Error ? focusErr.message : String(focusErr)}`);
+            }
             return {
                 content: [{
                     type: 'text' as const,

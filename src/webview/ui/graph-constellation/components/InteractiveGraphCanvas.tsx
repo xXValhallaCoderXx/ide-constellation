@@ -138,6 +138,63 @@ export function InteractiveGraphCanvas({
     },
   });
 
+  // Pending focus (race: focus command before graph load)
+  const pendingFocusRef = useRef<{ nodeId: string | null; correlationId?: string | null }>({ nodeId: null, correlationId: null });
+
+  // Handle focus application
+  const applyFocus = useCallback((targetNodeId: string, correlationId?: string) => {
+    if (!graph) {
+      // Defer
+      pendingFocusRef.current = { nodeId: targetNodeId, correlationId };
+      console.log(`[graph:setFocus] correlationId=${correlationId} status=pending target=${targetNodeId}`);
+      return;
+    }
+    const exists = graph.nodes.some(n => n.id === targetNodeId);
+    if (!exists) {
+      console.warn(`[graph:setFocus] correlationId=${correlationId} status=not_found target=${targetNodeId}`);
+      return;
+    }
+    setFocusState(prev => ({
+      ...prev,
+      enabled: true,
+      selectedNode: targetNodeId,
+      depth: 1,
+      showDependencies: true,
+      showDependents: true
+    }));
+    console.log(`[graph:setFocus] correlationId=${correlationId} status=applied target=${targetNodeId}`);
+  }, [graph]);
+
+  // Listener for graph:setFocus messages
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const msg = event.data;
+      if (!msg || msg.command !== 'graph:setFocus' || !msg.data) return;
+      const { targetNodeId, correlationId } = msg.data;
+      if (!targetNodeId || typeof targetNodeId !== 'string') return;
+      // Overwrite semantics: replace any pending
+      if (!graph) {
+        const prevPending = pendingFocusRef.current.nodeId;
+        pendingFocusRef.current = { nodeId: targetNodeId, correlationId };
+        if (prevPending && prevPending !== targetNodeId) {
+          console.log(`[graph:setFocus] correlationId=${correlationId} status=overwritten previous=${prevPending} target=${targetNodeId}`);
+        }
+      }
+      applyFocus(targetNodeId, correlationId);
+    };
+    window.addEventListener('message', handler as EventListener);
+    return () => window.removeEventListener('message', handler as EventListener);
+  }, [applyFocus, graph]);
+
+  // Apply pending once graph loads
+  useEffect(() => {
+    if (graph && pendingFocusRef.current.nodeId) {
+      const { nodeId, correlationId } = pendingFocusRef.current;
+      applyFocus(nodeId!, correlationId || undefined);
+      pendingFocusRef.current = { nodeId: null, correlationId: null };
+    }
+  }, [graph, applyFocus]);
+
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
     // Reset focus index when search query changes

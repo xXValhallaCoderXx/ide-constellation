@@ -457,4 +457,28 @@ export class KiroConstellationMCPProvider {
             this.logVI('WARN', 'triggerGraphPanelOpen error', { error: err instanceof Error ? err.message : String(err) });
         }
     }
+
+    /**
+     * Dispatch graph:setFocus message to webview (Impact Analysis auto-focus)
+     */
+    public sendGraphSetFocus(targetNodeId: string, correlationId: string) {
+        try {
+            if (!this.webviewManager || !this.extensionContext) {
+                this.logVI('WARN', 'sendGraphSetFocus skipped – webviewManager or context unavailable', { targetNodeId, correlationId });
+                return;
+            }
+            // Ensure panel is open (idempotent)
+            this.webviewManager.createOrShowPanel(this.extensionContext);
+            const panel = (this.webviewManager as any).currentPanel as vscode.WebviewPanel | undefined;
+            if (!panel) {
+                this.logVI('WARN', 'sendGraphSetFocus skipped – panel missing', { targetNodeId, correlationId });
+                return;
+            }
+            const msg = { command: 'graph:setFocus', data: { targetNodeId, correlationId } };
+            panel.webview.postMessage(msg);
+            this.logVI('INFO', 'Dispatched graph:setFocus', { targetNodeId, correlationId });
+        } catch (err) {
+            this.logVI('WARN', 'sendGraphSetFocus error', { error: err instanceof Error ? err.message : String(err), targetNodeId, correlationId });
+        }
+    }
 }

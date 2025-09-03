@@ -179,6 +179,15 @@ export interface DashboardNotificationMessage extends WebviewMessage {
   };
 }
 
+/** Graph set focus message (impact analysis auto-focus) */
+export interface GraphSetFocusMessage extends WebviewMessage {
+  command: 'graph:setFocus';
+  data: {
+    targetNodeId: string;
+    correlationId?: string; // optional for log correlation
+  };
+}
+
 // Augmented routing-related messages
 import type { PanelKey, SidebarRouteKey } from './routing.types';
 
@@ -253,6 +262,10 @@ export function isHealthExportResultMessage(msg: WebviewMessage): msg is HealthE
   return msg.command === 'health:export:result' && !!(msg as any).data && typeof (msg as any).data.success === 'boolean';
 }
 
+export function isGraphSetFocusMessage(msg: WebviewMessage): msg is GraphSetFocusMessage {
+  return msg.command === 'graph:setFocus' && !!(msg as any).data && typeof (msg as any).data.targetNodeId === 'string';
+}
+
 export type WebviewToExtensionMessage = CheckStatusMessage | GraphRequestMessage | EditorOpenMessage | HealthRequestMessage | HealthShowHeatmapMessage | HealthFocusNodeMessage | HealthRefreshMessage | VisualInstructionMessage | PanelOpenMessage | ProjectScanMessage | RouteNavigateMessage | HealthExportMessage;
 
-export type ExtensionToWebviewMessage = StatusUpdateMessage | ServerInfoMessage | GraphResponseMessage | GraphErrorMessage | GraphHighlightNodeMessage | HealthResponseMessage | HealthErrorMessage | HealthLoadingMessage | DashboardHighlightRiskMessage | GraphApplyHeatmapMessage | GraphClearHeatmapMessage | DashboardNotificationMessage | HealthExportResultMessage;
+export type ExtensionToWebviewMessage = StatusUpdateMessage | ServerInfoMessage | GraphResponseMessage | GraphErrorMessage | GraphHighlightNodeMessage | GraphSetFocusMessage | HealthResponseMessage | HealthErrorMessage | HealthLoadingMessage | DashboardHighlightRiskMessage | GraphApplyHeatmapMessage | GraphClearHeatmapMessage | DashboardNotificationMessage | HealthExportResultMessage;
