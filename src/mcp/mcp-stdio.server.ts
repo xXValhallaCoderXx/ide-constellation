@@ -742,19 +742,35 @@ export class MCPStdioServer {
             const bridgeEnvelope = { bridgeMessage: { type: 'ui:showPanel', payload: { panel: 'dependencyGraph' }, metadata: { correlationId, timestamp: Date.now(), priority: 'high' } }, dataForAI: simplified };
             // Attempt out-of-band send via bridge socket
             this.sendBridgeMessage(bridgeEnvelope.bridgeMessage as BridgeMessage);
-            // Dispatch focus message via provider helper (non-blocking)
+            // Dispatch impact overlay apply via provider helper (non-blocking) or bridge fallback
             try {
                 const resolvedTarget = result.pathResolution.resolvedPath;
-                if (resolvedTarget && this.providerInstance && typeof this.providerInstance.sendGraphSetFocus === 'function') {
-                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchFocus target=${resolvedTarget}`);
-                    this.providerInstance.sendGraphSetFocus(resolvedTarget, correlationId);
+                const overlayPayload = {
+                    id: 'impact',
+                    kind: 'impact',
+                    targetNodeId: resolvedTarget,
+                    dependencies: result.dependencies || [],
+                    dependents: result.dependents || [],
+                    correlationId
+                };
+                if (resolvedTarget && this.providerInstance && typeof this.providerInstance.sendImpactOverlayApply === 'function') {
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchImpactOverlay target=${resolvedTarget} channel=provider`);
+                    this.providerInstance.sendImpactOverlayApply(overlayPayload);
+                } else if (resolvedTarget && this.bridgeReady) {
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchImpactOverlay target=${resolvedTarget} channel=bridgeFallback`);
+                    // Send bridge message for extension bridge handler
+                    this.sendBridgeMessage({
+                        type: 'ui:applyOverlay',
+                        payload: { overlay: overlayPayload },
+                        metadata: { correlationId, timestamp: Date.now(), priority: 'high' }
+                    } as any);
                 } else if (!resolvedTarget) {
-                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchFocus status=skip reason=unresolvedPath`);
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchImpactOverlay status=skip reason=unresolvedPath`);
                 } else {
-                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchFocus status=skip reason=providerUnavailable`);
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchImpactOverlay status=skip reason=providerUnavailableAndBridgeNotReady`);
                 }
-            } catch (focusErr) {
-                console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchFocus status=error error=${focusErr instanceof Error ? focusErr.message : String(focusErr)}`);
+            } catch (impactErr) {
+                console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchImpactOverlay status=error error=${impactErr instanceof Error ? impactErr.message : String(impactErr)}`);
             }
             return {
                 content: [{

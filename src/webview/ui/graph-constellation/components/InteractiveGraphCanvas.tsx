@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "preact/hooks";
 import { useRef } from "preact/hooks";
 import { IConstellationGraph } from "@/types/graph.types";
 import { createOverlayState, applyOverlay, clearOverlay, getOverlay } from './overlays/overlay.state';
-import { createOverlay, FocusOverlay, HeatmapOverlay, HeatmapValue, OverlayData } from './overlays/overlay.types';
+import { createOverlay, FocusOverlay, HeatmapOverlay, HeatmapValue, OverlayData, ImpactOverlay } from './overlays/overlay.types';
 import { logOverlay } from './overlays/overlay.logging';
 import { composeRenderable } from './overlays/compose';
 import {
@@ -139,9 +139,34 @@ export function InteractiveGraphCanvas({
   // Overlay State (Milestone 2 experimental wiring – focus only at this stage)
   const [overlays, setOverlays] = useState(() => createOverlayState());
   const baseGraphRef = useRef<IConstellationGraph | null>(null);
+  const initialGraphLoadedRef = useRef(false); // guard to avoid clearing overlays on first load
   useEffect(() => {
     if (graph) {
-      baseGraphRef.current = graph; // immutable reference after load (simplified for now)
+      const isFirst = !initialGraphLoadedRef.current;
+      baseGraphRef.current = graph; // update reference
+      if (!isFirst) {
+        // Clear ephemeral filter overlays (impact + focus) ONLY on subsequent refreshes (FR11)
+        setOverlays(prev => {
+          let next = prev;
+          if (prev.has('impact')) {
+            const cleared = clearOverlay(next, 'impact');
+            if (cleared !== next) {
+              logOverlay('clear', { id: 'impact', kind: 'impact', reason: 'graphRefresh', remaining: cleared.size });
+              next = cleared;
+            }
+          }
+          if (prev.has('focus')) {
+            const clearedFocus = clearOverlay(next, 'focus');
+            if (clearedFocus !== next) {
+              logOverlay('clear', { id: 'focus', kind: 'focus', reason: 'graphRefresh', remaining: clearedFocus.size });
+              next = clearedFocus;
+            }
+          }
+          return next;
+        });
+      } else {
+        initialGraphLoadedRef.current = true; // mark after first assignment
+      }
     }
   }, [graph]);
 
@@ -162,7 +187,10 @@ export function InteractiveGraphCanvas({
       logOverlay('compose', { nodes: composed.nodes.length, edges: composed.edges.length, overlaysSize: overlays.size });
     }
     return composed;
-  }, [overlays]);
+  }, [overlays, graph]);
+
+  // Derived flags
+  const isImpactActive = useMemo(() => overlays.has('impact'), [overlays]);
 
   // TEMP dev helper: mirror legacy applyFocus into overlay system (will replace usage later)
   const applyFocusOverlay = useCallback((targetNodeId: string, correlationId?: string) => {
@@ -327,33 +355,65 @@ export function InteractiveGraphCanvas({
           clearHeatmapOverlay();
           break;
         }
-        case 'graph:overlay:apply': { // Task 5.4 generic ingestion
+        case 'graph:overlay:apply': { // Task 5.x updated for impact + heatmap legacy
           const payload = msg.data?.overlay;
           if (!payload) return;
-          // Defensive guards (Task 5.6 / 9.3 malformed overlay)
-          if (!payload.nodes || !Array.isArray(payload.nodes)) {
-            console.warn('[graph:overlay:apply] invalid overlay payload: missing nodes[] (ignored)');
-            return;
-          }
-          if (payload.id && typeof payload.id !== 'string') {
-            console.warn('[graph:overlay:apply] invalid overlay payload: id not string (ignored)');
-            return;
-          }
-          // Map generic overlay to heatmap overlay structure (future: branch by payload.type)
-          const mappedValues: HeatmapValue[] = payload.nodes.map((n: any) => ({
+          // Branch by kind (new impact path)
+          if (payload.kind === 'impact') {
+            const { id = 'impact', targetNodeId, dependencies = [], dependents = [], correlationId } = payload;
+            if (!targetNodeId || typeof targetNodeId !== 'string') {
+              console.warn('[graph:overlay:apply] impact payload missing targetNodeId');
+              return;
+            }
+            const impactOv: ImpactOverlay = createOverlay({
+              id,
+              kind: 'impact',
+              targetNodeId,
+              dependencies: Array.isArray(dependencies) ? dependencies.filter(Boolean) : [],
+              dependents: Array.isArray(dependents) ? dependents.filter(Boolean) : [],
+              correlationId
+            }) as ImpactOverlay;
+            setOverlays(prev => {
+              const next = applyOverlay(prev, impactOv);
+              logOverlay('apply', { id: impactOv.id, kind: impactOv.kind, correlationId, deps: impactOv.dependencies.length, dependents: impactOv.dependents.length, visible: 1 + impactOv.dependencies.length + impactOv.dependents.length });
+              return next;
+            });
+          } else if (payload.nodes && Array.isArray(payload.nodes)) {
+            // Legacy heatmap style overlay ingestion (placeholder until removed)
+            const mappedValues: HeatmapValue[] = payload.nodes.map((n: any) => ({
               nodeId: n.nodeId,
               score: typeof n.intensity === 'number' ? n.intensity : (typeof n.score === 'number' ? n.score : 0),
               color: n.color || '#ff8800',
               metrics: n.metrics
             }));
-          applyHeatmapOverlay(mappedValues, undefined, undefined, payload.correlationId);
-          break;
-        }
-        case 'graph:overlay:clear': { // Task 5.4 generic clear
-          // For milestone scope: clear heatmap only; future may use id param
-          clearHeatmapOverlay(msg.data?.correlationId);
-          break;
-        }
+            applyHeatmapOverlay(mappedValues, undefined, undefined, payload.correlationId);
+          } else {
+            console.warn('[graph:overlay:apply] unrecognized overlay payload shape');
+          }
+          break; }
+        case 'graph:overlay:clear': { // Task 5.x clear by id
+          const overlayId = msg.data?.overlayId || 'heatmap';
+            if (overlayId === 'impact') {
+              setOverlays(prev => {
+                const next = clearOverlay(prev, 'impact');
+                if (next !== prev) {
+                  logOverlay('clear', { id: 'impact', kind: 'impact', correlationId: msg.data?.correlationId, remaining: next.size, reason: 'user' });
+                }
+                return next;
+              });
+            } else if (overlayId === 'heatmap') {
+              clearHeatmapOverlay(msg.data?.correlationId);
+            } else {
+              // Fallback: attempt generic clear
+              setOverlays(prev => {
+                const next = clearOverlay(prev, overlayId);
+                if (next !== prev) {
+                  logOverlay('clear', { id: overlayId, kind: 'unknown', correlationId: msg.data?.correlationId, remaining: next.size, reason: 'user' });
+                }
+                return next;
+              });
+            }
+          break; }
         default:
           break;
       }
@@ -1333,6 +1393,29 @@ export function InteractiveGraphCanvas({
             <option value="default">Same Tab</option>
             <option value="split">Split</option>
           </select>
+            {isImpactActive && (
+              <button
+                style={{ marginLeft: '8px' }}
+                className="btn-impact-clear"
+                aria-label="Show Full Graph"
+                onClick={() => {
+                  if (window?.vscode) {
+                    window.vscode.postMessage({ command: 'graph:overlay:clear', data: { overlayId: 'impact' } });
+                  } else {
+                    // Fallback: direct state clear if vscode bridge unavailable
+                    setOverlays(prev => {
+                      const next = clearOverlay(prev, 'impact');
+                      if (next !== prev) {
+                        logOverlay('clear', { id: 'impact', kind: 'impact', reason: 'user', remaining: next.size });
+                      }
+                      return next;
+                    });
+                  }
+                }}
+              >
+                Show Full Graph
+              </button>
+            )}
         </div>
       </div>
 

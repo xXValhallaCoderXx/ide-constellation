@@ -498,4 +498,47 @@ export class KiroConstellationMCPProvider {
             this.logVI('WARN', 'sendGraphSetFocus error', { error: err instanceof Error ? err.message : String(err), targetNodeId, correlationId });
         }
     }
+
+    /**
+     * Dispatch graph:overlay:apply for impact overlay.
+     */
+    public sendImpactOverlayApply(params: { targetNodeId: string; dependencies: string[]; dependents: string[]; correlationId: string }) {
+        const { targetNodeId, dependencies, dependents, correlationId } = params;
+        try {
+            if (!this.webviewManager || !this.extensionContext) {
+                this.logVI('WARN', 'sendImpactOverlayApply skipped – webviewManager or context unavailable', { targetNodeId, correlationId });
+                return;
+            }
+            // Ensure panel visible
+            if (this.webviewManager.panelRegistry) {
+                this.webviewManager.panelRegistry.open('dependencyGraph', 'mcp:impactOverlay');
+            } else {
+                this.webviewManager.createOrShowPanel(this.extensionContext);
+            }
+            const panel = (this.webviewManager as any).currentPanel as vscode.WebviewPanel | undefined;
+            if (!panel) {
+                this.logVI('WARN', 'sendImpactOverlayApply skipped – panel missing', { targetNodeId, correlationId });
+                return;
+            }
+            // Prefer messenger if available
+            const overlayPayload = {
+                id: 'impact',
+                kind: 'impact',
+                targetNodeId,
+                dependencies,
+                dependents,
+                correlationId
+            };
+            if ((this.webviewManager as any).messenger?.sendGraphOverlayApply) {
+                (this.webviewManager as any).messenger.sendGraphOverlayApply(overlayPayload);
+                this.logVI('INFO', 'Dispatched impact overlay (messenger)', { targetNodeId, deps: dependencies.length, dependents: dependents.length, correlationId });
+            } else {
+                const msg = { command: 'graph:overlay:apply', data: { overlay: overlayPayload } };
+                panel.webview.postMessage(msg);
+                this.logVI('INFO', 'Dispatched impact overlay (legacy)', { targetNodeId, deps: dependencies.length, dependents: dependents.length, correlationId });
+            }
+        } catch (err) {
+            this.logVI('WARN', 'sendImpactOverlayApply error', { error: err instanceof Error ? err.message : String(err), targetNodeId, correlationId });
+        }
+    }
 }

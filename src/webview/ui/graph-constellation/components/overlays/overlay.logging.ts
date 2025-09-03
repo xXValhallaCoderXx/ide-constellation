@@ -17,6 +17,10 @@ interface OverlayLogMeta {
   edges?: number; // composed edge count
   overlaysSize?: number; // overlay map size
   note?: string; // freeform
+  deps?: number; // impact dependencies count
+  dependents?: number; // impact dependents count
+  visible?: number; // impact total visible count
+  reason?: string; // reason for clear (user, graphRefresh)
 }
 
 export function logOverlay(event: OverlayLogEvent, meta: OverlayLogMeta = {}): void {
@@ -36,6 +40,10 @@ export function logOverlay(event: OverlayLogEvent, meta: OverlayLogMeta = {}): v
   if (typeof meta.nodes === 'number') { parts.push(`nodes=${meta.nodes}`); }
   if (typeof meta.edges === 'number') { parts.push(`edges=${meta.edges}`); }
   if (typeof meta.overlaysSize === 'number') { parts.push(`overlays=${meta.overlaysSize}`); }
+  if (typeof meta.deps === 'number') { parts.push(`deps=${meta.deps}`); }
+  if (typeof meta.dependents === 'number') { parts.push(`dependents=${meta.dependents}`); }
+  if (typeof meta.visible === 'number') { parts.push(`visible=${meta.visible}`); }
+  if (meta.reason) { parts.push(`reason=${meta.reason}`); }
   if (meta.note) { parts.push(`note=${meta.note}`); }
   console.log(parts.join(' '));
 }

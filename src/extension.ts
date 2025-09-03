@@ -51,6 +51,26 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // Bridge fallback handler: ui:applyOverlay -> forward to webview (impact overlay or others)
+  bridge.register(BRIDGE_MESSAGE_TYPES.UI_APPLY_OVERLAY, async (msg) => {
+    try {
+      const overlay = msg.payload?.overlay;
+      if (!overlay || !overlay.kind) { return; }
+      log(`Bridge received ui:applyOverlay kind=${overlay.kind} id=${overlay.id || 'impact'} corr=${msg.metadata?.correlationId || 'n/a'}`);
+      // Ensure panel open first for visual feedback
+      panelRegistry?.open('dependencyGraph', 'bridge:ui:applyOverlay');
+      const messenger = (webviewManager as any)?.messenger;
+      if (messenger?.sendGraphOverlayApply) {
+        messenger.sendGraphOverlayApply(overlay);
+      } else {
+        const panel = (webviewManager as any)?.currentPanel as vscode.WebviewPanel | undefined;
+        panel?.webview.postMessage({ command: 'graph:overlay:apply', data: { overlay } });
+      }
+    } catch (e) {
+      log(`Bridge ui:applyOverlay handler error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  });
+
   // --- Always create webview + panel infrastructure first ---
   webviewManager = new WebviewManager(null, output);
   webviewManager.initialize(context);

@@ -54,7 +54,18 @@ export interface HeatmapOverlay extends BaseOverlay {
   totalFiles?: number;
 }
 
-export type OverlayData = FocusOverlay | HeatmapOverlay; // Future overlays extend this union
+/** Impact overlay filters graph to a blast-radius set (target + direct neighbors) */
+export interface ImpactOverlay extends BaseOverlay {
+  kind: 'impact';
+  /** The central node for the impact analysis */
+  targetNodeId: string;
+  /** Direct dependencies (nodes the target imports / depends on) */
+  dependencies: string[];
+  /** Direct dependents (nodes that import / depend on the target) */
+  dependents: string[];
+}
+
+export type OverlayData = FocusOverlay | HeatmapOverlay | ImpactOverlay; // Future overlays extend this union
 
 /** Render model returned by composition function */
 export interface ComposedRenderModel {
@@ -87,5 +98,9 @@ export function isFocusOverlay(o: OverlayData): o is FocusOverlay {
 
 export function isHeatmapOverlay(o: OverlayData): o is HeatmapOverlay {
   return o.kind === 'heatmap';
+}
+
+export function isImpactOverlay(o: OverlayData): o is ImpactOverlay {
+  return o.kind === 'impact';
 }
 
