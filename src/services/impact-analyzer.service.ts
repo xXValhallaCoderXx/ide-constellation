@@ -6,6 +6,7 @@ import {
     ImpactAnalysisErrorResponse,
     ImpactAnalysisErrorCode
 } from '../types/graph.types';
+import * as path from 'path';
 import { GraphService } from './graph.service';
 import { resolveFuzzyPath, normalizePath, isPathWithinWorkspace } from '../utils/path.utils';
 import { ErrorHandler, PerformanceMonitor, GracefulDegradation } from '../utils/error-handling.utils';
@@ -16,6 +17,57 @@ import { ErrorHandler, PerformanceMonitor, GracefulDegradation } from '../utils/
  * comprehensive error handling and graceful degradation.
  */
 export class ImpactAnalyzerService {
+    /**
+     * Result object for fuzzy node resolution.
+     */
+    static findNodeFuzzy(
+        graph: IConstellationGraph,
+        inputPath: string,
+        workspaceRoot: string
+    ): { node: { id: string; path: string; label: string } | null; reason: string } {
+        if (!graph || !graph.nodes) {
+            return { node: null, reason: 'Graph unavailable' };
+        }
+        if (!inputPath || typeof inputPath !== 'string') {
+            return { node: null, reason: 'No path provided' };
+        }
+
+        const raw = inputPath.trim();
+        const normalizedInput = normalizePath(raw.replace(/\\/g, '/'));
+
+        // Strategy 1: Exact match on workspace-relative id
+        const exact = graph.nodes.find(n => n.id === normalizedInput);
+        if (exact) {
+            return { node: exact, reason: 'Exact ID match' };
+        }
+
+        // Strategy 2: Absolute path match (normalize both sides)
+        const absInput = normalizePath(path.isAbsolute(raw) ? raw : path.join(workspaceRoot, raw));
+        const absolute = graph.nodes.find(n => normalizePath(n.path) === absInput);
+        if (absolute) {
+            return { node: absolute, reason: 'Exact absolute path match' };
+        }
+
+        // Prepare collections for suffix/filename strategies
+        const bySuffix = graph.nodes.filter(n => n.id.endsWith(normalizedInput));
+        if (bySuffix.length === 1) {
+            return { node: bySuffix[0], reason: 'Unique suffix match' };
+        }
+        if (bySuffix.length > 1) {
+            return { node: null, reason: `Ambiguous suffix: matched ${bySuffix.length} files` };
+        }
+
+        const filename = normalizedInput.split('/').pop() || normalizedInput;
+        const byFilename = graph.nodes.filter(n => n.label === filename);
+        if (byFilename.length === 1) {
+            return { node: byFilename[0], reason: 'Unique filename match' };
+        }
+        if (byFilename.length > 1) {
+            return { node: null, reason: `Ambiguous filename: found ${byFilename.length} files named '${filename}'` };
+        }
+
+        return { node: null, reason: 'File not found' };
+    }
 
     /**
      * Analyze the impact of changes to a specific file with enhanced error handling.

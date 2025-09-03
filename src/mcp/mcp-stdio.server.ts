@@ -696,7 +696,15 @@ export class MCPStdioServer {
             console.error(`[IMPACT_ANALYSIS] action=graphReady nodes=${graph.nodes.length} edges=${graph.edges.length}`);
 
             // Perform impact analysis
-            const result = await ImpactAnalyzerService.analyze(graph, filePath, workspaceRoot, changeType);
+            // Fuzzy node resolution (resilient path handling)
+            const fuzzy = ImpactAnalyzerService.findNodeFuzzy(graph, filePath, workspaceRoot);
+            if (!fuzzy.node) {
+                console.error(`[IMPACT_ANALYSIS] action=resolve status=failure input='${filePath}' reason='${fuzzy.reason}'`);
+                throw new Error(fuzzy.reason.startsWith('Ambiguous') ? `Ambiguous path: ${fuzzy.reason}` : fuzzy.reason);
+            }
+            console.error(`[IMPACT_ANALYSIS] action=resolve status=success input='${filePath}' resolved='${fuzzy.node.id}' strategy='${fuzzy.reason}'`);
+
+            const result = await ImpactAnalyzerService.analyze(graph, fuzzy.node.id, workspaceRoot, changeType);
 
             // Check if result is an error response
             if ('errorCode' in result) {
@@ -706,7 +714,7 @@ export class MCPStdioServer {
 
             console.error(`[IMPACT_ANALYSIS] action=analysisComplete`);
             console.error(`[IMPACT_ANALYSIS] action=counts dependents=${result.dependents.length} dependencies=${result.dependencies.length}`);
-            console.error(`[IMPACT_ANALYSIS] action=pathResolution type=${result.pathResolution.fuzzyMatched ? 'fuzzy' : 'exact'}`);
+            console.error(`[IMPACT_ANALYSIS] action=pathResolution type=${result.pathResolution.fuzzyMatched ? 'fuzzy' : 'exact'} original='${filePath}' resolved='${fuzzy.node.id}' strategy='${fuzzy.reason}'`);
             const correlationId = `impact-${Date.now()}`;
             console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} summary dependents=${result.dependents.length} dependencies=${result.dependencies.length}`);
             // Trigger graph panel open via provider (MVP visual reaction) BEFORE responding
