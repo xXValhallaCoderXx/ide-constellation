@@ -66,6 +66,13 @@ export function resolveWorkspacePath(workspaceRoot: string, fileId: string): { a
         // This is a relative path, resolve it normally
         abs = pathUtils.resolve(workspaceRoot, normalized);
     }
+    // BUGFIX(M2 overlay enablement): pathUtils.resolve strips leading slash from absolute base
+    // because the split/join removes the empty first segment. This caused security guard to
+    // misclassify valid workspace-relative paths (e.g. 'src/ui/App.jsx') as outside the workspace.
+    // Reinstate leading slash when workspaceRoot is absolute and result lost it.
+    if (workspaceRoot.startsWith('/') && !abs.startsWith('/')) {
+        abs = '/' + abs;
+    }
     
     const rootWithSep = workspaceRoot.endsWith(pathUtils.sep) ? workspaceRoot : workspaceRoot + pathUtils.sep;
     const within = abs.startsWith(rootWithSep);
@@ -228,7 +235,9 @@ function calculatePathConfidence(
         case 'similar_name': {
             const distance = levenshteinDistance(originalFilename, candidateFilename);
             const maxLength = Math.max(originalFilename.length, candidateFilename.length);
-            if (maxLength === 0) return 0;
+            if (maxLength === 0) {
+                return 0;
+            }
 
             const similarity = 1 - (distance / maxLength);
             return Math.round(similarity * 100);
@@ -254,7 +263,9 @@ function calculatePathConfidence(
             const originalExt = pathUtils.extname(originalPath);
             const candidateExt = pathUtils.extname(candidatePath);
 
-            if (originalExt !== candidateExt) return 0;
+            if (originalExt !== candidateExt) {
+                return 0;
+            }
 
             // Base score for same extension, boost if filenames are similar
             let score = 30;

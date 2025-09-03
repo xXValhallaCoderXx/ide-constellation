@@ -1315,6 +1315,8 @@ export function GraphCanvas({
    * Apply heatmap overlay using optimized processor with batching and viewport culling
    * @param heatmapNodes Array of heatmap node data
    */
+  // Overlay Migration NOTE (Milestone 2): applyHeatmapOverlay will be replaced by
+  // a HeatmapOverlay + composition pipeline (Task 2.1 reviewed).
   const applyHeatmapOverlay = async (heatmapNodes: HeatmapNode[]) => {
     try {
       if (!cyRef.current) {

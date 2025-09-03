@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from "preact/hooks";
 import { useRef } from "preact/hooks";
 import { IConstellationGraph } from "@/types/graph.types";
+import { createOverlayState, applyOverlay } from './overlays/overlay.state';
+import { createOverlay, FocusOverlay } from './overlays/overlay.types';
+import { composeRenderable } from './overlays/compose';
 import {
   LayoutType,
   DEFAULT_LAYOUT_TYPE,
@@ -62,6 +65,10 @@ export function InteractiveGraphCanvas({
   onError,
   activeHighlight,
 }: InteractiveGraphCanvasProps) {
+  // Overlay Migration NOTE (Milestone 2): Existing focusState logic below
+  // will be superseded by FocusOverlay (see overlays/focus.adapter.ts) and
+  // composition pipeline. Do not extend this legacy structure—only read
+  // for adapter extraction reference (Task 1.1 complete).
   const [searchQuery, setSearchQuery] = useState("");
   // Track whether focus mode was auto-enabled due to a single search result so we can safely auto-disable only that case
   const autoFocusEnabledRef = useRef(false);
@@ -114,6 +121,51 @@ export function InteractiveGraphCanvas({
     totalFiles: 0,
   });
 
+  // Overlay State (Milestone 2 experimental wiring – focus only at this stage)
+  const [overlays, setOverlays] = useState(() => createOverlayState());
+  const baseGraphRef = useRef<IConstellationGraph | null>(null);
+  useEffect(() => {
+    if (graph) {
+      baseGraphRef.current = graph; // immutable reference after load (simplified for now)
+    }
+  }, [graph]);
+
+  // Composition derived model
+  const renderModel = useMemo(() => composeRenderable(baseGraphRef.current, overlays), [overlays]);
+
+  // TEMP dev helper: mirror legacy applyFocus into overlay system (will replace usage later)
+  const applyFocusOverlay = useCallback((targetNodeId: string, correlationId?: string) => {
+    if (!baseGraphRef.current) return;
+    const ov: FocusOverlay = createOverlay({
+      id: 'focus',
+      kind: 'focus',
+      targetNodeId,
+      depth: focusState.depth || 1,
+      includeIncoming: focusState.showDependents,
+      includeOutgoing: focusState.showDependencies,
+      correlationId
+    }) as FocusOverlay;
+    setOverlays(prev => applyOverlay(prev, ov));
+  }, [focusState.depth, focusState.showDependents, focusState.showDependencies]);
+
+  // Bridge legacy focus application to overlay system (non-invasive)
+  useEffect(() => {
+    if (focusState.enabled && focusState.selectedNode) {
+      applyFocusOverlay(focusState.selectedNode);
+    }
+  }, [focusState.enabled, focusState.selectedNode, applyFocusOverlay]);
+
+  // Derived graph prop with overlay-filtered nodes for initial testing (Task 4.4)
+  const graphForCanvas = useMemo(() => {
+    if (!graph) return graph;
+    if (renderModel.nodes.length === 0) return graph; // fallback until base + overlays ready
+    return {
+      ...graph,
+      nodes: renderModel.nodes,
+      // edges can remain original until we integrate full filtered edges path
+    } as IConstellationGraph;
+  }, [graph, renderModel.nodes]);
+
   // Statistics state
   const [statsVisible, setStatsVisible] = useState(false);
   const [graphStats, setGraphStats] = useState<GraphStats>({
@@ -165,7 +217,7 @@ export function InteractiveGraphCanvas({
     console.log(`[graph:setFocus] correlationId=${correlationId} status=applied target=${targetNodeId}`);
   }, [graph]);
 
-  // Listener for graph:setFocus messages
+  // Listener for graph:setFocus messages (routes into overlay system - Task 5.1)
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       const msg = event.data;
@@ -180,11 +232,13 @@ export function InteractiveGraphCanvas({
           console.log(`[graph:setFocus] correlationId=${correlationId} status=overwritten previous=${prevPending} target=${targetNodeId}`);
         }
       }
+      // Maintain legacy state + overlay sync for transitional period
       applyFocus(targetNodeId, correlationId);
+      applyFocusOverlay(targetNodeId, correlationId);
     };
     window.addEventListener('message', handler as EventListener);
     return () => window.removeEventListener('message', handler as EventListener);
-  }, [applyFocus, graph]);
+  }, [applyFocus, applyFocusOverlay, graph]);
 
   // Apply pending once graph loads
   useEffect(() => {
@@ -1164,7 +1218,7 @@ export function InteractiveGraphCanvas({
         maxRetries={3}
       >
         <GraphCanvas
-          graph={graph}
+          graph={graphForCanvas}
           searchQuery={searchQuery}
           searchFocusIndex={currentFocusIndex}
           onNodeClick={handleNodeClick}
