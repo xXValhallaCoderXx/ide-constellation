@@ -1930,6 +1930,13 @@ export function GraphCanvas({
   useEffect(() => {
     if (!cyRef.current) return;
 
+    // Task 8.4: Search operates over currently mounted Cytoscape nodes which originate from
+    // the composed renderModel (InteractiveGraphCanvas.graphForCanvas). Thus search indexing
+    // implicitly respects focus filtering overlays. No separate index rebuild is required here;
+    // when overlays change the parent re-renders with a new node set, Cytoscape instance updates,
+    // and this effect will reflect the narrowed node universe. Highlight logic therefore uses
+    // filtered nodes only (FR8 non-regression).
+
     // Task 8.1: Performance monitoring for search operations
     const searchStartTime = performance.now();
     const nodeCount = cyRef.current.nodes().length;

@@ -50,6 +50,8 @@ export interface HeatmapOverlay extends BaseOverlay {
   centerNode?: string;
   /** Optional distribution metadata (shape depends on producer) */
   distribution?: any;
+  /** Optional total file count for legend parity (Task 7.1) */
+  totalFiles?: number;
 }
 
 export type OverlayData = FocusOverlay | HeatmapOverlay; // Future overlays extend this union

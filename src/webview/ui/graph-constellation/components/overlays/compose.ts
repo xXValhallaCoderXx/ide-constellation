@@ -5,8 +5,11 @@ import { computeFocusSubgraph } from './focus.adapter';
 import { decorateHeatmap } from './heatmap.adapter';
 
 /**
- * Pure composition function combining baseGraph + overlays into a renderable model.
- * Currently minimal for focus + heatmap support.
+ * Compose an immutable base graph with active overlays into a render model.
+ * Deterministic: given identical baseGraph + overlay map state, returns identical
+ * structure (Task 13.3 requirement). No side effects or logging inside.
+ * Future (Task 11.3): overlay priority layering can be introduced without
+ * violating existing order-agnostic assumptions for focus->decorate phases.
  */
 export function composeRenderable(baseGraph: IConstellationGraph | null, overlays: OverlayState): ComposedRenderModel {
   if (!baseGraph) {
@@ -47,3 +50,5 @@ export function composeRenderable(baseGraph: IConstellationGraph | null, overlay
 }
 
 // TODO(Task 3.8): Add deterministic fixture-based tests validating combined focus + heatmap output.
+// NOTE(Task 11.3): Future priority layering or overlay precedence could be implemented by
+// introducing an ordered category list here without altering individual overlay adapters.

@@ -147,9 +147,9 @@ export class ConstellationSidebarProvider implements vscode.WebviewViewProvider 
                 
                 const button = document.getElementById('showMapButton');
                 if (button) {
-                    button.addEventListener('click', () => {
-                        window.vscode.postMessage({ command: 'showGraph' });
-                    });
+          button.addEventListener('click', () => {
+            window.vscode.postMessage({ command: 'showGraph' }); // TODO(remove-legacy-postMessage) migrate to WebviewMessenger abstraction
+          });
                 }
             }
         }, 2000);
