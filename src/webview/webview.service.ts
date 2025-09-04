@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 // Removed MCPServer dependency; webview status is synthesized
 import { WebviewToExtensionMessage, ExtensionToWebviewMessage, GraphResponseMessage, GraphErrorMessage, EditorOpenMessage, HealthRequestMessage, HealthResponseMessage, HealthErrorMessage, HealthLoadingMessage, HealthShowHeatmapMessage, HealthFocusNodeMessage, HealthRefreshMessage, PanelOpenMessage, ProjectScanMessage } from '../types/messages.types';
+import { WebviewMessenger } from './webview.messenger';
 import { GraphService } from '../services/graph.service';
 import { HealthAnalyzer } from '../services/health-analyzer.service';
 import { HealthDashboardProvider } from './providers/health-dashboard.provider';
@@ -13,6 +14,7 @@ export class WebviewManager {
   private output?: vscode.OutputChannel;
   private context: vscode.ExtensionContext | undefined = undefined;
   private panelRegistry: PanelRegistry | undefined = undefined;
+  private messenger: WebviewMessenger | undefined = undefined; // Central outbound messaging abstraction
   private visualInstructionDebounceTimer: NodeJS.Timeout | null = null;
   private pendingVisualInstruction: any | null = null;
   private static readonly VISUAL_INSTRUCTION_SIZE_LIMIT = 1_048_576; // 1MB
@@ -38,6 +40,10 @@ export class WebviewManager {
     this.panelRegistry = registry;
   }
 
+  /**
+   * DEPRECATED external usage: use PanelRegistry.open('dependencyGraph').
+   * Retained internally until full migration completes.
+   */
   createOrShowPanel(): void {
     if (!this.context) {
       this.output?.appendLine(`[${new Date().toISOString()}] [ERROR] WebviewManager not initialized with context`);
@@ -72,6 +78,9 @@ export class WebviewManager {
       }
     );
 
+    // Instantiate messenger AFTER panel created
+    this.messenger = new WebviewMessenger(() => this.currentPanel, this.output);
+
     // Set the webview's initial html content
     this.currentPanel.webview.html = this.getWebviewContent();
     this.output?.appendLine(`[${new Date().toISOString()}] Webview HTML set.`);
@@ -90,6 +99,7 @@ export class WebviewManager {
     this.currentPanel.onDidDispose(
       () => {
         this.output?.appendLine(`[${new Date().toISOString()}] Webview panel disposed.`);
+        this.messenger = undefined;
         this.currentPanel = undefined;
       },
       null,
@@ -214,9 +224,7 @@ export class WebviewManager {
       }
     };
     // Task 10.1: Guard postMessage
-    if (this.currentPanel) {
-      this.currentPanel.webview.postMessage(statusMessage);
-    }
+    this.messenger?.sendStatusUpdate(statusMessage.data);
     this.output?.appendLine(`[${new Date().toISOString()}] Sent statusUpdate to webview: ${JSON.stringify(statusMessage.data)}`);
 
     const serverInfoMessage: ExtensionToWebviewMessage = {
@@ -225,9 +233,7 @@ export class WebviewManager {
         isRunning: true
       }
     };
-    if (this.currentPanel) {
-      this.currentPanel.webview.postMessage(serverInfoMessage);
-    }
+    this.messenger?.sendServerInfo(serverInfoMessage.data);
     this.output?.appendLine(`[${new Date().toISOString()}] Sent serverInfo to webview: ${JSON.stringify(serverInfoMessage.data)}`);
   }
 
@@ -258,9 +264,7 @@ export class WebviewManager {
         }
       };
 
-      if (this.currentPanel) {
-        this.currentPanel.webview.postMessage(response);
-      }
+      this.messenger?.sendGraphResponse(response.data.graph, response.data.timestamp);
       this.output?.appendLine(`[${new Date().toISOString()}] Sent graph data to webview: ${graph.nodes.length} nodes, ${graph.edges.length} edges`);
 
     } catch (error) {
@@ -275,9 +279,7 @@ export class WebviewManager {
         }
       };
 
-      if (this.currentPanel) {
-        this.currentPanel.webview.postMessage(errorResponse);
-      }
+      this.messenger?.sendGraphError(errorResponse.data.error, errorResponse.data.timestamp);
     }
   }
 
@@ -456,9 +458,7 @@ export class WebviewManager {
     const loadingMessage: HealthLoadingMessage = {
       command: 'health:loading'
     };
-    if (this.currentPanel) {
-      this.currentPanel.webview.postMessage(loadingMessage);
-    }
+    this.messenger?.sendHealthLoading();
 
     try {
       const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -487,9 +487,7 @@ export class WebviewManager {
         }
       };
 
-      if (this.currentPanel) {
-        this.currentPanel.webview.postMessage(response);
-      }
+      this.messenger?.sendHealthResponse(response.data.analysis, response.data.timestamp);
       this.output?.appendLine(`[${timestamp}] Health analysis completed: ${analysis.totalFiles} files, score ${analysis.healthScore}`);
 
     } catch (error) {
@@ -504,9 +502,7 @@ export class WebviewManager {
         }
       };
 
-      if (this.currentPanel) {
-        this.currentPanel.webview.postMessage(errorResponse);
-      }
+      this.messenger?.sendHealthError(errorResponse.data.error, errorResponse.data.timestamp);
     }
   }
 
@@ -549,9 +545,7 @@ export class WebviewManager {
         }
       };
 
-      if (this.currentPanel) {
-        this.currentPanel.webview.postMessage(highlightMessage);
-      }
+      this.messenger?.sendGraphHighlightNode(highlightMessage.data.fileId);
 
       this.output?.appendLine(`[${timestamp}] Node focused: ${nodeId}`);
 
@@ -694,10 +688,10 @@ export class WebviewManager {
           if (dashboard.focusFile && this.healthDashboardProvider) {
             const panel = this.healthDashboardProvider.getPanel();
             if (panel) {
-              panel.webview.postMessage({
+              panel.webview.postMessage({ // TODO(remove-legacy-postMessage)
                 command: 'dashboard:highlightRisk',
                 data: { nodeId: dashboard.focusFile }
-              });
+              }); // TODO(remove-legacy-postMessage)
             }
           }
         }
@@ -724,14 +718,16 @@ export class WebviewManager {
                 }
               };
 
-              this.currentPanel.webview.postMessage(heatmapMessage);
+              this.messenger?.sendGraphApplyHeatmap({
+                heatmapData: heatmapMessage.data.heatmapData,
+                centerNode: heatmapMessage.data.centerNode,
+                distribution: heatmapMessage.data.distribution,
+                totalFiles: heatmapMessage.data.totalFiles
+              });
 
               // Focus on center node if provided
               if (graph.centerNode) {
-                this.currentPanel.webview.postMessage({
-                  command: 'graph:highlightNode',
-                  data: { fileId: graph.centerNode }
-                });
+                this.messenger?.sendGraphHighlightNode(graph.centerNode);
               }
             } else {
               throw new Error('Graph panel not available');
@@ -748,13 +744,13 @@ export class WebviewManager {
               if (this.healthDashboardProvider) {
                 const panel = this.healthDashboardProvider.getPanel();
                 if (panel) {
-                  panel.webview.postMessage({
+                  panel.webview.postMessage({ // TODO(remove-legacy-postMessage)
                     command: 'dashboard:notification',
                     data: {
                       type: 'warning',
                       message: 'Graph visualization failed. Showing dashboard-only view.'
                     }
-                  });
+                  }); // TODO(remove-legacy-postMessage)
                 }
               }
             }
@@ -877,27 +873,21 @@ export class WebviewManager {
 
       // Send heatmap data to graph
       if (this.currentPanel) {
-        this.currentPanel.webview.postMessage({
-          command: 'graph:applyHeatmap',
-          data: {
-            heatmapData,
-            centerNode: focusNodeId,
-            distribution: {
-              low: riskScores.filter(r => r.category === 'low').length,
-              medium: riskScores.filter(r => r.category === 'medium').length,
-              high: riskScores.filter(r => r.category === 'high').length,
-              critical: riskScores.filter(r => r.category === 'critical').length
-            },
-            totalFiles: riskScores.length
-          }
+        this.messenger?.sendGraphApplyHeatmap({
+          heatmapData,
+          centerNode: focusNodeId,
+          distribution: {
+            low: riskScores.filter(r => r.category === 'low').length,
+            medium: riskScores.filter(r => r.category === 'medium').length,
+            high: riskScores.filter(r => r.category === 'high').length,
+            critical: riskScores.filter(r => r.category === 'critical').length
+          },
+          totalFiles: riskScores.length
         });
 
         // Focus on specific node if provided
         if (focusNodeId) {
-          this.currentPanel.webview.postMessage({
-            command: 'graph:highlightNode',
-            data: { fileId: focusNodeId }
-          });
+          this.messenger?.sendGraphHighlightNode(focusNodeId);
         }
       }
 
@@ -924,7 +914,8 @@ export class WebviewManager {
       if (this.healthDashboardProvider) {
         const panel = this.healthDashboardProvider.getPanel();
         if (panel) {
-          panel.webview.postMessage({
+          // TODO(remove-legacy-postMessage) dashboard highlight should migrate to messenger when inbound consumption unified
+          panel.webview.postMessage({ // TODO(remove-legacy-postMessage)
             command: 'dashboard:highlightRisk',
             data: { nodeId }
           });

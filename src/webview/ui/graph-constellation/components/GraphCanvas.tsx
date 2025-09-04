@@ -1315,6 +1315,8 @@ export function GraphCanvas({
    * Apply heatmap overlay using optimized processor with batching and viewport culling
    * @param heatmapNodes Array of heatmap node data
    */
+  // Overlay Migration NOTE (Milestone 2): applyHeatmapOverlay will be replaced by
+  // a HeatmapOverlay + composition pipeline (Task 2.1 reviewed).
   const applyHeatmapOverlay = async (heatmapNodes: HeatmapNode[]) => {
     try {
       if (!cyRef.current) {
@@ -1927,6 +1929,13 @@ export function GraphCanvas({
   // Handle search highlighting when searchQuery prop changes
   useEffect(() => {
     if (!cyRef.current) return;
+
+    // Task 8.4: Search operates over currently mounted Cytoscape nodes which originate from
+    // the composed renderModel (InteractiveGraphCanvas.graphForCanvas). Thus search indexing
+    // implicitly respects focus filtering overlays. No separate index rebuild is required here;
+    // when overlays change the parent re-renders with a new node set, Cytoscape instance updates,
+    // and this effect will reflect the narrowed node universe. Highlight logic therefore uses
+    // filtered nodes only (FR8 non-regression).
 
     // Task 8.1: Performance monitoring for search operations
     const searchStartTime = performance.now();

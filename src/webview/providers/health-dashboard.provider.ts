@@ -35,7 +35,7 @@ export class HealthDashboardProvider {
    */
   public createOrShowPanel(): void {
     const timestamp = new Date().toISOString();
-    this.output?.appendLine(`[${timestamp}] Creating or showing health dashboard panel...`);
+    this.output?.appendLine(`[${timestamp}] [INFO] healthPanel:open action=createOrShow`);
 
     const columnToShowIn = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
@@ -86,12 +86,12 @@ export class HealthDashboardProvider {
 
     // Set the webview's initial HTML content
     this.panel.webview.html = this.getWebviewContent();
-    this.output?.appendLine(`[${timestamp}] Health dashboard HTML set.`);
+    this.output?.appendLine(`[${timestamp}] [INFO] healthPanel:init status=htmlSet`);
 
     // Handle messages from the webview
     this.panel.webview.onDidReceiveMessage(
       async (message) => {
-        this.output?.appendLine(`[${timestamp}] Health dashboard message received: ${JSON.stringify(message)}`);
+        this.output?.appendLine(`[${timestamp}] [INFO] healthPanel:inbound command=${message?.command}`);
         await this.handleWebviewMessage(message);
       },
       undefined,
@@ -101,7 +101,7 @@ export class HealthDashboardProvider {
     // Reset when the current panel is closed
     this.panel.onDidDispose(
       () => {
-        this.output?.appendLine(`[${timestamp}] Health dashboard panel disposed.`);
+        this.output?.appendLine(`[${timestamp}] [INFO] healthPanel:dispose`);
         this.panel = undefined;
       },
       null,
@@ -136,17 +136,21 @@ export class HealthDashboardProvider {
     if (!this.panel) {
       return;
     }
-
-    const message = {
-      command: 'health:response',
-      data: {
-        analysis,
-        timestamp: new Date().toISOString()
-      }
-    };
-
-    this.panel.webview.postMessage(message);
-    this.output?.appendLine(`[${new Date().toISOString()}] Sent health analysis to dashboard: ${analysis.totalFiles} files, score ${analysis.healthScore}`);
+    if (this.webviewManager?.messenger) {
+      const tsSend = new Date().toISOString();
+      this.webviewManager.messenger.sendHealthResponse(analysis, tsSend);
+      this.output?.appendLine(`[${tsSend}] [INFO] healthPanel:sendAnalysis transport=messenger files=${analysis.totalFiles} score=${analysis.healthScore}`);
+    } else {
+      const message = {
+        command: 'health:response',
+        data: {
+          analysis,
+          timestamp: new Date().toISOString()
+        }
+      };
+      this.panel.webview.postMessage(message); // TODO(remove-legacy-postMessage)
+      this.output?.appendLine(`[${new Date().toISOString()}] [INFO] healthPanel:sendAnalysis transport=legacy files=${analysis.totalFiles} score=${analysis.healthScore}`);
+    }
   }
 
   /**
@@ -175,7 +179,7 @@ export class HealthDashboardProvider {
         await this.handleEditorOpen(message.data);
         break;
       default:
-        this.output?.appendLine(`[${timestamp}] Unknown health dashboard message: ${message.command}`);
+        this.output?.appendLine(`[${timestamp}] [WARN] healthPanel:unknown command=${message.command}`);
     }
   }
 
@@ -185,12 +189,9 @@ export class HealthDashboardProvider {
   private async handleHealthExport(format: 'json' | 'csv'): Promise<void> {
     const timestamp = new Date().toISOString();
     if (!this.currentAnalysis) {
-      this.output?.appendLine(`[${timestamp}] [WARN] Export requested with no analysis available`);
+      this.output?.appendLine(`[${timestamp}] [WARN] healthPanel:export status=noAnalysis format=${format}`);
       if (this.panel) {
-        this.panel.webview.postMessage({
-          command: 'health:export:result',
-          data: { success: false, format, error: 'No analysis available to export' }
-        });
+        this.panel.webview.postMessage({ command: 'health:export:result', data: { success: false, format, error: 'No analysis available to export' } }); // TODO(remove-legacy-postMessage)
       }
       return;
     }
@@ -209,22 +210,16 @@ export class HealthDashboardProvider {
       const content = format === 'csv' ? exportToCSV(this.currentAnalysis) : exportToJSON(this.currentAnalysis);
       const enc = new TextEncoder();
       await vscode.workspace.fs.writeFile(target, enc.encode(content));
-      this.output?.appendLine(`[${timestamp}] Exported health analysis to ${target.toString()}`);
+      this.output?.appendLine(`[${timestamp}] [INFO] healthPanel:export status=success format=${format} uri=${target.toString()}`);
       if (this.panel) {
-        this.panel.webview.postMessage({
-          command: 'health:export:result',
-          data: { success: true, format, uri: target.toString() }
-        });
+        this.panel.webview.postMessage({ command: 'health:export:result', data: { success: true, format, uri: target.toString() } }); // TODO(remove-legacy-postMessage)
       }
       vscode.window.showInformationMessage(`Health analysis exported: ${target.fsPath}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.output?.appendLine(`[${timestamp}] [ERROR] Export failed: ${msg}`);
+      this.output?.appendLine(`[${timestamp}] [ERROR] healthPanel:export status=failed format=${format} error=${msg}`);
       if (this.panel) {
-        this.panel.webview.postMessage({
-          command: 'health:export:result',
-          data: { success: false, format, error: msg }
-        });
+        this.panel.webview.postMessage({ command: 'health:export:result', data: { success: false, format, error: msg } }); // TODO(remove-legacy-postMessage)
       }
       vscode.window.showErrorMessage(`Export failed: ${msg}`);
     }
@@ -235,12 +230,14 @@ export class HealthDashboardProvider {
    */
   private async handleHealthRequest(forceRefresh: boolean): Promise<void> {
     const timestamp = new Date().toISOString();
-    this.output?.appendLine(`[${timestamp}] Health analysis request (forceRefresh: ${forceRefresh})`);
+    this.output?.appendLine(`[${timestamp}] [INFO] healthPanel:request forceRefresh=${forceRefresh}`);
 
     try {
       // Send loading message
-      if (this.panel) {
-        this.panel.webview.postMessage({ command: 'health:loading' });
+      if (this.webviewManager?.messenger) {
+        this.webviewManager.messenger.sendHealthLoading();
+      } else if (this.panel) {
+        this.panel.webview.postMessage({ command: 'health:loading' }); // TODO(remove-legacy-postMessage)
       }
 
       const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -253,7 +250,7 @@ export class HealthDashboardProvider {
       let graph = graphService.getGraph();
 
       if (!graph || forceRefresh) {
-        this.output?.appendLine(`[${timestamp}] Loading fresh graph data for health analysis`);
+        this.output?.appendLine(`[${timestamp}] [INFO] healthPanel:graphLoad status=fresh`);
         graph = await graphService.loadGraph(workspaceRoot, '.');
       }
 
@@ -267,16 +264,12 @@ export class HealthDashboardProvider {
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      this.output?.appendLine(`[${timestamp}] Health analysis error: ${errorMessage}`);
+      this.output?.appendLine(`[${timestamp}] [ERROR] healthPanel:request status=failed error=${errorMessage}`);
 
-      if (this.panel) {
-        this.panel.webview.postMessage({
-          command: 'health:error',
-          data: {
-            error: errorMessage,
-            timestamp
-          }
-        });
+      if (this.webviewManager?.messenger) {
+        this.webviewManager.messenger.sendHealthError(errorMessage, timestamp);
+      } else if (this.panel) {
+        this.panel.webview.postMessage({ command: 'health:error', data: { error: errorMessage, timestamp } }); // TODO(remove-legacy-postMessage)
       }
     }
   }
@@ -286,7 +279,7 @@ export class HealthDashboardProvider {
    */
   private async handleShowHeatmap(data: any): Promise<void> {
     const timestamp = new Date().toISOString();
-    this.output?.appendLine(`[${timestamp}] Show heatmap request from dashboard`);
+    this.output?.appendLine(`[${timestamp}] [INFO] healthPanel:showHeatmap centerNode=${data?.centerNode ?? 'none'}`);
 
     if (this.webviewManager && this.currentAnalysis) {
       // Use the webview manager's cross-panel navigation
@@ -306,7 +299,7 @@ export class HealthDashboardProvider {
   private async handleFocusNode(data: any): Promise<void> {
     const timestamp = new Date().toISOString();
     const { nodeId } = data;
-    this.output?.appendLine(`[${timestamp}] Focus node request from dashboard: ${nodeId}`);
+    this.output?.appendLine(`[${timestamp}] [INFO] healthPanel:focusNode nodeId=${nodeId}`);
 
     if (this.webviewManager && this.currentAnalysis) {
       // Use the webview manager's cross-panel navigation
@@ -323,7 +316,7 @@ export class HealthDashboardProvider {
           const uri = vscode.Uri.file(abs);
           if (!within) {
             const msg = `Security: Cannot open outside workspace: ${nodeId}`;
-            this.output?.appendLine(`[${timestamp}] ${msg}`);
+            this.output?.appendLine(`[${timestamp}] [WARN] healthPanel:focusNode status=outsideWorkspace nodeId=${nodeId}`);
             vscode.window.showWarningMessage(msg);
             return;
           }
@@ -331,7 +324,7 @@ export class HealthDashboardProvider {
             await vscode.workspace.fs.stat(uri);
           } catch {
             const friendly = `Cannot open "${nodeId}" — not found in workspace. It may be a module specifier or external dependency.`;
-            this.output?.appendLine(`[${timestamp}] Focus open failed (ENOENT): ${nodeId} -> ${abs}`);
+            this.output?.appendLine(`[${timestamp}] [WARN] healthPanel:focusNode status=notFound nodeId=${nodeId}`);
             vscode.window.showWarningMessage(friendly);
             return;
           }
@@ -339,7 +332,7 @@ export class HealthDashboardProvider {
           await vscode.window.showTextDocument(doc, { preview: true });
         } catch (error) {
           const emsg = error instanceof Error ? error.message : String(error);
-          this.output?.appendLine(`[${timestamp}] Failed to open file for focus: ${nodeId} (${emsg})`);
+          this.output?.appendLine(`[${timestamp}] [ERROR] healthPanel:focusNode status=openFailed nodeId=${nodeId} error=${emsg}`);
           vscode.window.showErrorMessage(`Failed to open file: ${nodeId}`);
         }
       }
@@ -352,7 +345,7 @@ export class HealthDashboardProvider {
   private async handleEditorOpen(data: any): Promise<void> {
     const timestamp = new Date().toISOString();
     const { fileId, openMode } = data;
-    this.output?.appendLine(`[${timestamp}] Editor open request from dashboard: ${fileId} (${openMode})`);
+    this.output?.appendLine(`[${timestamp}] [INFO] healthPanel:editorOpen fileId=${fileId} mode=${openMode}`);
 
     try {
       const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -365,7 +358,7 @@ export class HealthDashboardProvider {
       const fileUri = vscode.Uri.file(abs);
       if (!within) {
         vscode.window.showErrorMessage(`Security: Cannot open file outside workspace: ${fileId}`);
-        this.output?.appendLine(`[${timestamp}] Security: rejected path outside workspace: ${fileId} -> ${abs}`);
+        this.output?.appendLine(`[${timestamp}] [WARN] healthPanel:editorOpen status=outsideWorkspace fileId=${fileId}`);
         return;
       }
       try {
@@ -374,7 +367,7 @@ export class HealthDashboardProvider {
         // Provide helpful guidance for module-like identifiers (e.g., "react-dom/client")
         const friendly = `File not found in workspace: ${fileId}. It may refer to a module specifier or a generated/ignored file.`;
         vscode.window.showWarningMessage(friendly);
-        this.output?.appendLine(`[${timestamp}] editor:open ENOENT ${fileId} -> ${abs}`);
+        this.output?.appendLine(`[${timestamp}] [WARN] healthPanel:editorOpen status=notFound fileId=${fileId}`);
         return;
       }
 
@@ -383,11 +376,11 @@ export class HealthDashboardProvider {
       const viewColumn = openMode === 'split' ? vscode.ViewColumn.Beside : undefined;
       await vscode.window.showTextDocument(doc, { preview: true, viewColumn });
 
-      this.output?.appendLine(`[${timestamp}] File opened successfully: ${fileId}`);
+      this.output?.appendLine(`[${timestamp}] [INFO] healthPanel:editorOpen status=success fileId=${fileId}`);
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.output?.appendLine(`[${timestamp}] Failed to open file ${fileId}: ${errorMessage}`);
+      this.output?.appendLine(`[${timestamp}] [ERROR] healthPanel:editorOpen status=failed fileId=${fileId} error=${errorMessage}`);
       vscode.window.showErrorMessage(`Failed to open file: ${fileId}`);
     }
   }

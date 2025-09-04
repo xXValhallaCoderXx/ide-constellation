@@ -417,7 +417,11 @@ export class KiroConstellationMCPProvider {
                 try {
                     // createOrShowPanel will reveal existing panel (fulfills focus requirement)
                     if (this.extensionContext) {
-                        this.webviewManager.createOrShowPanel(this.extensionContext);
+                        if (this.webviewManager.panelRegistry) {
+                            this.webviewManager.panelRegistry.open('dependencyGraph', 'mcp:visualInstruction');
+                        } else {
+                            this.webviewManager.createOrShowPanel(this.extensionContext);
+                        }
                     }
                     const panel = (this.webviewManager as any).currentPanel as vscode.WebviewPanel | undefined;
                     if (!panel) {
@@ -425,7 +429,7 @@ export class KiroConstellationMCPProvider {
                         return;
                     }
                     const message = { command: 'visualInstruction', data: { ...toSend } };
-                    panel.webview.postMessage(message);
+                    panel.webview.postMessage(message); // TODO(remove-legacy-postMessage)
                     const corr = toSend.correlationId ? `[${toSend.correlationId}] ` : '';
                     this.logVI('INFO', `${corr}Routed action=${toSend.action}`, { ts: toSend.ts });
                 } catch (err) {
@@ -434,6 +438,107 @@ export class KiroConstellationMCPProvider {
             }, 50); // 50ms debounce
         } catch (err) {
             this.logVI('WARN', 'Dispatch error outer', { error: err instanceof Error ? err.message : String(err) });
+        }
+    }
+
+    /**
+     * Trigger opening (or focusing) of the main dependency graph panel.
+     * Used by impact analysis MVP to create instant visual feedback.
+     */
+    public triggerGraphPanelOpen() {
+        try {
+            if (!this.webviewManager) {
+                this.logVI('WARN', 'triggerGraphPanelOpen skipped – webviewManager unavailable');
+                return;
+            }
+            if (!this.extensionContext) {
+                this.logVI('WARN', 'triggerGraphPanelOpen skipped – missing extension context');
+                return;
+            }
+            this.logVI('INFO', 'Triggering graph panel open');
+            if (this.webviewManager.panelRegistry) {
+                this.webviewManager.panelRegistry.open('dependencyGraph', 'mcp:trigger');
+            } else {
+                this.webviewManager.createOrShowPanel(this.extensionContext);
+            }
+        } catch (err) {
+            this.logVI('WARN', 'triggerGraphPanelOpen error', { error: err instanceof Error ? err.message : String(err) });
+        }
+    }
+
+    /**
+     * Dispatch graph:setFocus message to webview (Impact Analysis auto-focus)
+     */
+    public sendGraphSetFocus(targetNodeId: string, correlationId: string) {
+        try {
+            if (!this.webviewManager || !this.extensionContext) {
+                this.logVI('WARN', 'sendGraphSetFocus skipped – webviewManager or context unavailable', { targetNodeId, correlationId });
+                return;
+            }
+            // Ensure panel is open (idempotent)
+            if (this.webviewManager.panelRegistry) {
+                this.webviewManager.panelRegistry.open('dependencyGraph', 'mcp:setFocus');
+            } else {
+                this.webviewManager.createOrShowPanel(this.extensionContext);
+            }
+            const panel = (this.webviewManager as any).currentPanel as vscode.WebviewPanel | undefined;
+            if (!panel) {
+                this.logVI('WARN', 'sendGraphSetFocus skipped – panel missing', { targetNodeId, correlationId });
+                return;
+            }
+            if ((this.webviewManager as any).messenger) {
+                (this.webviewManager as any).messenger.sendGraphSetFocus(targetNodeId, correlationId);
+                this.logVI('INFO', 'Dispatched graph:setFocus', { targetNodeId, correlationId });
+            } else {
+                const msg = { command: 'graph:setFocus', data: { targetNodeId, correlationId } };
+                panel.webview.postMessage(msg); // TODO(remove-legacy-postMessage)
+                this.logVI('INFO', 'Dispatched graph:setFocus (legacy)', { targetNodeId, correlationId });
+            }
+        } catch (err) {
+            this.logVI('WARN', 'sendGraphSetFocus error', { error: err instanceof Error ? err.message : String(err), targetNodeId, correlationId });
+        }
+    }
+
+    /**
+     * Dispatch graph:overlay:apply for impact overlay.
+     */
+    public sendImpactOverlayApply(params: { targetNodeId: string; dependencies: string[]; dependents: string[]; correlationId: string }) {
+        const { targetNodeId, dependencies, dependents, correlationId } = params;
+        try {
+            if (!this.webviewManager || !this.extensionContext) {
+                this.logVI('WARN', 'sendImpactOverlayApply skipped – webviewManager or context unavailable', { targetNodeId, correlationId });
+                return;
+            }
+            // Ensure panel visible
+            if (this.webviewManager.panelRegistry) {
+                this.webviewManager.panelRegistry.open('dependencyGraph', 'mcp:impactOverlay');
+            } else {
+                this.webviewManager.createOrShowPanel(this.extensionContext);
+            }
+            const panel = (this.webviewManager as any).currentPanel as vscode.WebviewPanel | undefined;
+            if (!panel) {
+                this.logVI('WARN', 'sendImpactOverlayApply skipped – panel missing', { targetNodeId, correlationId });
+                return;
+            }
+            // Prefer messenger if available
+            const overlayPayload = {
+                id: 'impact',
+                kind: 'impact',
+                targetNodeId,
+                dependencies,
+                dependents,
+                correlationId
+            };
+            if ((this.webviewManager as any).messenger?.sendGraphOverlayApply) {
+                (this.webviewManager as any).messenger.sendGraphOverlayApply(overlayPayload);
+                this.logVI('INFO', 'Dispatched impact overlay (messenger)', { targetNodeId, deps: dependencies.length, dependents: dependents.length, correlationId });
+            } else {
+                const msg = { command: 'graph:overlay:apply', data: { overlay: overlayPayload } };
+                panel.webview.postMessage(msg);
+                this.logVI('INFO', 'Dispatched impact overlay (legacy)', { targetNodeId, deps: dependencies.length, dependents: dependents.length, correlationId });
+            }
+        } catch (err) {
+            this.logVI('WARN', 'sendImpactOverlayApply error', { error: err instanceof Error ? err.message : String(err), targetNodeId, correlationId });
         }
     }
 }

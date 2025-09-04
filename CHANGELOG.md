@@ -7,6 +7,12 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ## [Unreleased]
 
 ### Added
+- Resilient path resolution for `constellation_impact_analysis` tool:
+	- Introduced `findNodeFuzzy` with ordered strategies (exact id, absolute path, unique suffix, unique filename)
+	- Clear ambiguity detection (suffix/filename) returns actionable error reasons
+	- Standardized logging: `[IMPACT_ANALYSIS] action=resolve status=<success|failure> input='<raw>' resolved='<id>' strategy='<reason>'`
+	- Integrated into MCP server prior to analysis; prevents brittle "File not found" outcomes
+	- Non-invasive change: no new dependencies, preserves existing pathResolution metadata downstream
 - Two-way editor synchronization feature (FR1–FR20):
 	- Open file from graph node (with split view via modifier key)
 	- Active editor -> graph node highlight with auto-pan & zoom heuristic

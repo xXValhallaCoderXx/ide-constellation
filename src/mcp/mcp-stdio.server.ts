@@ -6,10 +6,11 @@ import {
     CallToolRequestSchema,
     ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types';
-import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL } from '../types/mcp.types';
+import { CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL, CONSTELLATION_IMPACT_ANALYSIS_TOOL } from '../types/mcp.types';
 import { GraphService } from '../services/graph.service';
 import { GraphCache } from '../services/graph-cache.service';
 import { SummaryGenerator } from '../services/summary-generator.service';
+import { ImpactAnalyzerService } from '../services/impact-analyzer.service';
 import { DualToolResponse } from '../types/visual-instruction.types';
 import { executeHealthReport, generateHealthSummary } from './tools/health-report.tool';
 import * as path from 'path';
@@ -61,7 +62,8 @@ export class MCPStdioServer {
                     '- constellation_example_tool: echoes an optional "message" string.',
                     '- constellation_get_graph_summary: provides intelligent codebase analysis with architectural insights.',
                     '- constellation_health_report: generates comprehensive health analysis with dual-view dashboard and heatmap visualization.',
-                    'Prefer using tools when asked to validate MCP connectivity, echo a message, analyze the codebase, or generate health reports.'
+                    '- constellation_impact_analysis: analyzes the impact of changes to a specific file by identifying dependencies and dependents.',
+                    'Prefer using tools when asked to validate MCP connectivity, echo a message, analyze the codebase, generate health reports, or assess change impact.'
                 ].join('\n')
             }
         );
@@ -79,7 +81,7 @@ export class MCPStdioServer {
         this.server.setRequestHandler(ListToolsRequestSchema, async () => {
             console.error('[MCP DEBUG] Received tools/list request');
             return {
-                tools: [CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL],
+                tools: [CONSTELLATION_EXAMPLE_TOOL, CONSTELLATION_PING_TOOL, CONSTELLATION_GET_GRAPH_SUMMARY_TOOL, CONSTELLATION_HEALTH_REPORT_TOOL, CONSTELLATION_IMPACT_ANALYSIS_TOOL],
             };
         });
 
@@ -166,6 +168,47 @@ export class MCPStdioServer {
                 return await this.executeHealthReport(workspaceRoot, forceRefresh, this.extensionContext);
             }
 
+            if (name === CONSTELLATION_IMPACT_ANALYSIS_TOOL.name) {
+                console.error('[MCP DEBUG] IMPACT ANALYSIS tool executed');
+                const filePath = args?.filePath as string;
+                const changeType = args?.changeType as string;
+                const providedWorkspaceRoot = (args?.workspaceRoot as string) || '';
+
+                // Validate required parameters
+                if (!filePath || typeof filePath !== 'string') {
+                    throw new Error('filePath parameter is required and must be a string');
+                }
+
+                // Determine the workspace root to analyze
+                let workspaceRoot: string;
+
+                if (providedWorkspaceRoot && providedWorkspaceRoot.trim()) {
+                    // Use provided workspace root (most reliable when called from external tools like Kiro)
+                    workspaceRoot = path.resolve(providedWorkspaceRoot.trim());
+                    console.error(`[IMPACT_ANALYSIS] Using provided workspace root: ${workspaceRoot}`);
+                } else if (vscode && vscode.workspace && vscode.workspace.workspaceFolders) {
+                    // Extension mode - use VS Code workspace API
+                    workspaceRoot = vscode.workspace.workspaceFolders[0]?.uri.fsPath;
+                    if (!workspaceRoot) {
+                        throw new Error('No workspace folder open - cannot perform impact analysis');
+                    }
+                    console.error(`[IMPACT_ANALYSIS] Using VS Code workspace root: ${workspaceRoot}`);
+                } else {
+                    // Standalone mode fallback - use current working directory as workspace root
+                    workspaceRoot = process.cwd();
+                    console.error(`[IMPACT_ANALYSIS] Using current working directory as workspace root: ${workspaceRoot}`);
+                }
+
+                // Validate workspace root exists
+                const fs = require('fs');
+                if (!fs.existsSync(workspaceRoot)) {
+                    throw new Error(`Workspace root does not exist: ${workspaceRoot}`);
+                }
+
+                // Execute impact analysis
+                return await this.executeImpactAnalysis(filePath, workspaceRoot, changeType, this.extensionContext);
+            }
+
             if (name !== CONSTELLATION_EXAMPLE_TOOL.name) {
                 throw new Error(`Unknown tool: ${name}`);
             }
@@ -228,13 +271,24 @@ export class MCPStdioServer {
     }
 
     private scheduleReconnect() {
-        if (this.bridgeConnectTimer) return;
-        this.bridgeConnectTimer = setTimeout(() => { this.bridgeConnectTimer = null; this.initBridgeClient(); }, 1500);
+        if (this.bridgeConnectTimer) {
+            return;
+        }
+        this.bridgeConnectTimer = setTimeout(() => {
+            this.bridgeConnectTimer = null;
+            this.initBridgeClient();
+        }, 1500);
     }
 
     private sendBridgeMessage(msg: BridgeMessage | null | undefined) {
-        if (!msg || !this.bridgeReady || !this.bridgeSocket) return;
-        try { this.bridgeSocket.write(JSON.stringify(msg) + '\n'); } catch {/* ignore */}
+        if (!msg || !this.bridgeReady || !this.bridgeSocket) {
+            return;
+        }
+        try {
+            this.bridgeSocket.write(JSON.stringify(msg) + '\n');
+        } catch {
+            /* ignore */
+        }
     }
 
     /**
@@ -609,6 +663,141 @@ export class MCPStdioServer {
             }
 
             throw new Error(`Health report failed: ${userFriendlyMessage}`);
+        }
+    }
+
+    /**
+     * Execute impact analysis for a specific file
+     * Works in both extension and standalone modes
+     */
+    private async executeImpactAnalysis(
+        filePath: string,
+        workspaceRoot: string,
+        changeType: string | undefined,
+        extensionContext: any
+    ): Promise<any> {
+        try {
+            console.error(`[IMPACT_ANALYSIS] action=start file=${filePath}`);
+            console.error(`[IMPACT_ANALYSIS] action=context workspace=${workspaceRoot} changeType=${changeType || 'not_specified'}`);
+
+            // Ensure we have graph data available
+            const graphService = GraphService.getInstance();
+            let graph = graphService.getGraph();
+
+            if (!graph) {
+                console.error('[IMPACT_ANALYSIS] action=loadGraph reason=notCached');
+                graph = await graphService.loadGraph(workspaceRoot, '.', extensionContext);
+            }
+
+            if (!graph) {
+                throw new Error('Failed to load graph data for impact analysis');
+            }
+
+            console.error(`[IMPACT_ANALYSIS] action=graphReady nodes=${graph.nodes.length} edges=${graph.edges.length}`);
+
+            // Perform impact analysis
+            // Fuzzy node resolution (resilient path handling)
+            const fuzzy = ImpactAnalyzerService.findNodeFuzzy(graph, filePath, workspaceRoot);
+            if (!fuzzy.node) {
+                console.error(`[IMPACT_ANALYSIS] action=resolve status=failure input='${filePath}' reason='${fuzzy.reason}'`);
+                throw new Error(fuzzy.reason.startsWith('Ambiguous') ? `Ambiguous path: ${fuzzy.reason}` : fuzzy.reason);
+            }
+            console.error(`[IMPACT_ANALYSIS] action=resolve status=success input='${filePath}' resolved='${fuzzy.node.id}' strategy='${fuzzy.reason}'`);
+
+            const result = await ImpactAnalyzerService.analyze(graph, fuzzy.node.id, workspaceRoot, changeType);
+
+            // Check if result is an error response
+            if ('errorCode' in result) {
+                console.error(`[IMPACT_ANALYSIS] Analysis failed: ${result.error}`);
+                throw new Error(result.error);
+            }
+
+            console.error(`[IMPACT_ANALYSIS] action=analysisComplete`);
+            console.error(`[IMPACT_ANALYSIS] action=counts dependents=${result.dependents.length} dependencies=${result.dependencies.length}`);
+            console.error(`[IMPACT_ANALYSIS] action=pathResolution type=${result.pathResolution.fuzzyMatched ? 'fuzzy' : 'exact'} original='${filePath}' resolved='${fuzzy.node.id}' strategy='${fuzzy.reason}'`);
+            const correlationId = `impact-${Date.now()}`;
+            console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} summary dependents=${result.dependents.length} dependencies=${result.dependencies.length}`);
+            // Trigger graph panel open via provider (MVP visual reaction) BEFORE responding
+            try {
+                if (this.providerInstance && typeof this.providerInstance.triggerGraphPanelOpen === 'function') {
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=triggerPanelOpen`);
+                    this.providerInstance.triggerGraphPanelOpen();
+                } else {
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=triggerPanelOpen status=providerUnavailable`);
+                }
+            } catch (triggerErr) {
+                console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=triggerPanelOpen status=error error=${triggerErr instanceof Error ? triggerErr.message : String(triggerErr)}`);
+            }
+
+            // Simplified response per PRD: only key summary fields
+            const simplified = {
+                impactSummary: result.impactSummary,
+                dependentCount: result.dependents.length,
+                dependencyCount: result.dependencies.length,
+                dependents: result.dependents,
+                dependencies: result.dependencies,
+                pathResolution: result.pathResolution
+            };
+            // Bridge message for UI auto-open (parity with ping tool) to ensure panel opens even if provider trigger failed
+            const bridgeEnvelope = { bridgeMessage: { type: 'ui:showPanel', payload: { panel: 'dependencyGraph' }, metadata: { correlationId, timestamp: Date.now(), priority: 'high' } }, dataForAI: simplified };
+            // Attempt out-of-band send via bridge socket
+            this.sendBridgeMessage(bridgeEnvelope.bridgeMessage as BridgeMessage);
+            // Dispatch impact overlay apply via provider helper (non-blocking) or bridge fallback
+            try {
+                const resolvedTarget = result.pathResolution.resolvedPath;
+                const overlayPayload = {
+                    id: 'impact',
+                    kind: 'impact',
+                    targetNodeId: resolvedTarget,
+                    dependencies: result.dependencies || [],
+                    dependents: result.dependents || [],
+                    correlationId
+                };
+                if (resolvedTarget && this.providerInstance && typeof this.providerInstance.sendImpactOverlayApply === 'function') {
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchImpactOverlay target=${resolvedTarget} channel=provider`);
+                    this.providerInstance.sendImpactOverlayApply(overlayPayload);
+                } else if (resolvedTarget && this.bridgeReady) {
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchImpactOverlay target=${resolvedTarget} channel=bridgeFallback`);
+                    // Send bridge message for extension bridge handler
+                    this.sendBridgeMessage({
+                        type: 'ui:applyOverlay',
+                        payload: { overlay: overlayPayload },
+                        metadata: { correlationId, timestamp: Date.now(), priority: 'high' }
+                    } as any);
+                } else if (!resolvedTarget) {
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchImpactOverlay status=skip reason=unresolvedPath`);
+                } else {
+                    console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchImpactOverlay status=skip reason=providerUnavailableAndBridgeNotReady`);
+                }
+            } catch (impactErr) {
+                console.error(`[IMPACT_ANALYSIS] correlationId=${correlationId} action=dispatchImpactOverlay status=error error=${impactErr instanceof Error ? impactErr.message : String(impactErr)}`);
+            }
+            return {
+                content: [{
+                    type: 'text' as const,
+                    text: JSON.stringify(bridgeEnvelope)
+                }]
+            };
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error('[IMPACT_ANALYSIS ERROR]', errorMessage);
+
+            // Provide user-friendly error messages
+            let userFriendlyMessage = errorMessage;
+            if (errorMessage.includes('No workspace folder open')) {
+                userFriendlyMessage = 'Please open a workspace folder in VS Code to perform impact analysis.';
+            } else if (errorMessage.includes('Failed to load graph data')) {
+                userFriendlyMessage = 'Unable to analyze project structure. Please scan the project first using the "Scan Project" command.';
+            } else if (errorMessage.includes('filePath parameter is required')) {
+                userFriendlyMessage = 'A file path is required to perform impact analysis.';
+            } else if (errorMessage.includes('File not found')) {
+                userFriendlyMessage = 'The specified file was not found in the project. Please check the file path.';
+            } else if (errorMessage.includes('Permission denied') || errorMessage.includes('EACCES')) {
+                userFriendlyMessage = 'Permission denied accessing project files. Please check file permissions.';
+            }
+
+            throw new Error(`Impact analysis failed: ${userFriendlyMessage}`);
         }
     }
 

@@ -66,6 +66,13 @@ export function resolveWorkspacePath(workspaceRoot: string, fileId: string): { a
         // This is a relative path, resolve it normally
         abs = pathUtils.resolve(workspaceRoot, normalized);
     }
+    // BUGFIX(M2 overlay enablement): pathUtils.resolve strips leading slash from absolute base
+    // because the split/join removes the empty first segment. This caused security guard to
+    // misclassify valid workspace-relative paths (e.g. 'src/ui/App.jsx') as outside the workspace.
+    // Reinstate leading slash when workspaceRoot is absolute and result lost it.
+    if (workspaceRoot.startsWith('/') && !abs.startsWith('/')) {
+        abs = '/' + abs;
+    }
     
     const rootWithSep = workspaceRoot.endsWith(pathUtils.sep) ? workspaceRoot : workspaceRoot + pathUtils.sep;
     const within = abs.startsWith(rootWithSep);
@@ -165,6 +172,259 @@ export function formatFileSize(bytes: number, decimals: number = 1): string {
     const formattedValue = decimals === 0 ? Math.round(value) : value.toFixed(decimals);
     
     return `${formattedValue} ${sizes[i]}`;
+}
+
+/**
+ * Calculate Levenshtein distance between two strings for fuzzy matching.
+ * Used to determine similarity between file paths for suggestions.
+ * 
+ * @param str1 - First string to compare
+ * @param str2 - Second string to compare
+ * @returns Number representing edit distance (lower = more similar)
+ */
+function levenshteinDistance(str1: string, str2: string): number {
+    const matrix: number[][] = [];
+
+    // Initialize matrix
+    for (let i = 0; i <= str2.length; i++) {
+        matrix[i] = [i];
+    }
+    for (let j = 0; j <= str1.length; j++) {
+        matrix[0][j] = j;
+    }
+
+    // Fill matrix
+    for (let i = 1; i <= str2.length; i++) {
+        for (let j = 1; j <= str1.length; j++) {
+            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1, // substitution
+                    matrix[i][j - 1] + 1,     // insertion
+                    matrix[i - 1][j] + 1      // deletion
+                );
+            }
+        }
+    }
+
+    return matrix[str2.length][str1.length];
+}
+
+/**
+ * Calculate confidence score for fuzzy path matching.
+ * 
+ * @param originalPath - The path being searched for
+ * @param candidatePath - The potential match
+ * @param matchType - Type of match found
+ * @returns Confidence score from 0-100
+ */
+function calculatePathConfidence(
+    originalPath: string,
+    candidatePath: string,
+    matchType: 'similar_name' | 'partial_path' | 'same_extension'
+): number {
+    const normalizedOriginal = originalPath.toLowerCase().replace(/\\/g, '/');
+    const normalizedCandidate = candidatePath.toLowerCase().replace(/\\/g, '/');
+
+    // Extract filenames for comparison
+    const originalFilename = normalizedOriginal.split('/').pop() || '';
+    const candidateFilename = normalizedCandidate.split('/').pop() || '';
+
+    switch (matchType) {
+        case 'similar_name': {
+            const distance = levenshteinDistance(originalFilename, candidateFilename);
+            const maxLength = Math.max(originalFilename.length, candidateFilename.length);
+            if (maxLength === 0) {
+                return 0;
+            }
+
+            const similarity = 1 - (distance / maxLength);
+            return Math.round(similarity * 100);
+        }
+
+        case 'partial_path': {
+            // Check how much of the original path is contained in the candidate
+            const originalParts = normalizedOriginal.split('/').filter(p => p);
+            const candidateParts = normalizedCandidate.split('/').filter(p => p);
+
+            let matchingParts = 0;
+            for (const part of originalParts) {
+                if (candidateParts.some(cp => cp.includes(part) || part.includes(cp))) {
+                    matchingParts++;
+                }
+            }
+
+            const pathSimilarity = matchingParts / originalParts.length;
+            return Math.round(pathSimilarity * 85); // Max 85 for partial matches
+        }
+
+        case 'same_extension': {
+            const originalExt = pathUtils.extname(originalPath);
+            const candidateExt = pathUtils.extname(candidatePath);
+
+            if (originalExt !== candidateExt) {
+                return 0;
+            }
+
+            // Base score for same extension, boost if filenames are similar
+            let score = 30;
+            const nameDistance = levenshteinDistance(originalFilename, candidateFilename);
+            const maxLength = Math.max(originalFilename.length, candidateFilename.length);
+
+            if (maxLength > 0) {
+                const nameSimilarity = 1 - (nameDistance / maxLength);
+                score += Math.round(nameSimilarity * 40); // Up to 70 total
+            }
+
+            return score;
+        }
+
+        default:
+            return 0;
+    }
+}
+
+/**
+ * Normalize path for consistent comparison across platforms.
+ * 
+ * @param path - Path to normalize
+ * @returns Normalized path with forward slashes and no trailing slash
+ */
+export function normalizePath(path: string): string {
+    return path
+        .replace(/\\/g, '/') // Convert backslashes to forward slashes
+        .replace(/\/+/g, '/') // Remove duplicate slashes
+        .replace(/\/$/, '') // Remove trailing slash
+        .toLowerCase(); // Case insensitive comparison
+}
+
+/**
+ * Find fuzzy matches for a given path among available file paths.
+ * 
+ * @param targetPath - The path to find matches for
+ * @param availablePaths - Array of available file paths to search
+ * @param maxSuggestions - Maximum number of suggestions to return (default: 5)
+ * @param minConfidence - Minimum confidence score to include (default: 20)
+ * @returns Array of path suggestions sorted by confidence
+ */
+export function findFuzzyPathMatches(
+    targetPath: string,
+    availablePaths: string[],
+    maxSuggestions: number = 5,
+    minConfidence: number = 20
+): Array<{ path: string; confidence: number; reason: 'similar_name' | 'partial_path' | 'same_extension' }> {
+    const normalizedTarget = normalizePath(targetPath);
+    const targetFilename = normalizedTarget.split('/').pop() || '';
+    const targetExtension = pathUtils.extname(targetPath);
+
+    const suggestions: Array<{ path: string; confidence: number; reason: 'similar_name' | 'partial_path' | 'same_extension' }> = [];
+
+    for (const candidatePath of availablePaths) {
+        const normalizedCandidate = normalizePath(candidatePath);
+        const candidateFilename = normalizedCandidate.split('/').pop() || '';
+        const candidateExtension = pathUtils.extname(candidatePath);
+
+        // Skip exact matches (should be handled separately)
+        if (normalizedTarget === normalizedCandidate) {
+            continue;
+        }
+
+        // Check for similar filename
+        if (targetFilename && candidateFilename) {
+            const confidence = calculatePathConfidence(targetPath, candidatePath, 'similar_name');
+            if (confidence >= minConfidence) {
+                suggestions.push({ path: candidatePath, confidence, reason: 'similar_name' });
+                continue;
+            }
+        }
+
+        // Check for partial path match
+        if (normalizedCandidate.includes(targetFilename) ||
+            targetFilename.includes(candidateFilename) ||
+            normalizedTarget.split('/').some(part => part && normalizedCandidate.includes(part))) {
+            const confidence = calculatePathConfidence(targetPath, candidatePath, 'partial_path');
+            if (confidence >= minConfidence) {
+                suggestions.push({ path: candidatePath, confidence, reason: 'partial_path' });
+                continue;
+            }
+        }
+
+        // Check for same extension
+        if (targetExtension && candidateExtension === targetExtension) {
+            const confidence = calculatePathConfidence(targetPath, candidatePath, 'same_extension');
+            if (confidence >= minConfidence) {
+                suggestions.push({ path: candidatePath, confidence, reason: 'same_extension' });
+            }
+        }
+    }
+
+    // Sort by confidence (highest first) and limit results
+    return suggestions
+        .sort((a, b) => b.confidence - a.confidence)
+        .slice(0, maxSuggestions);
+}
+
+/**
+ * Resolve a potentially fuzzy file path to an exact match or suggestions.
+ * 
+ * @param targetPath - The path to resolve
+ * @param availablePaths - Array of available file paths
+ * @param workspaceRoot - Workspace root for security validation
+ * @returns Path resolution result with exact match or fuzzy suggestions
+ */
+export function resolveFuzzyPath(
+    targetPath: string,
+    availablePaths: string[],
+    workspaceRoot: string
+): {
+    originalPath: string;
+    resolvedPath: string | null;
+    fuzzyMatched: boolean;
+    matchConfidence?: number;
+    suggestions?: Array<{ path: string; confidence: number; reason: 'similar_name' | 'partial_path' | 'same_extension' }>;
+    withinWorkspace: boolean;
+} {
+    const normalizedTarget = normalizePath(targetPath);
+
+    // Check workspace boundary first
+    const { within: withinWorkspace } = resolveWorkspacePath(workspaceRoot, targetPath);
+
+    // Try exact match first
+    const exactMatch = availablePaths.find(path => normalizePath(path) === normalizedTarget);
+    if (exactMatch) {
+        return {
+            originalPath: targetPath,
+            resolvedPath: exactMatch,
+            fuzzyMatched: false,
+            withinWorkspace
+        };
+    }
+
+    // Try fuzzy matching
+    const suggestions = findFuzzyPathMatches(targetPath, availablePaths);
+
+    // If we have a high-confidence match, use it as resolved path
+    const bestMatch = suggestions[0];
+    if (bestMatch && bestMatch.confidence >= 80) {
+        return {
+            originalPath: targetPath,
+            resolvedPath: bestMatch.path,
+            fuzzyMatched: true,
+            matchConfidence: bestMatch.confidence,
+            suggestions: suggestions.slice(1), // Include other suggestions too
+            withinWorkspace
+        };
+    }
+
+    // No good match found, return suggestions only
+    return {
+        originalPath: targetPath,
+        resolvedPath: null,
+        fuzzyMatched: false,
+        suggestions,
+        withinWorkspace
+    };
 }
 
 /**

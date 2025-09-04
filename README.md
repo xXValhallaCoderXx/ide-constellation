@@ -93,6 +93,57 @@ In development (`NODE_ENV=development`), POC logs (`[POC]`) validate provider re
 ### Unified Webview Structure
 See `src/webview/README.md` for detailed layout and bundle mapping.
 
+### Messaging & Panel Architecture
+
+Constellation uses a centralized outbound messaging layer (see `docs/graph-architecture-refactor.md` for full details):
+
+- `PanelRegistry` (`src/services/panel-registry.service.ts`) is the ONLY entry point for opening/focusing panels. External code must not call `WebviewManager.createOrShowPanel()` directly.
+- `WebviewMessenger` (`src/webview/webview.messenger.ts`) encapsulates all extension → webview messages with size guards (1MB), structured logs, and typed helper methods.
+- Direct `panel.webview.postMessage` calls are forbidden outside the messenger except for a handful of temporary, clearly `TODO(remove-legacy-postMessage)`-tagged legacy paths (dashboard highlight, visualInstruction dispatch, export result callbacks). These are scheduled for removal in a subsequent milestone when inbound routing is unified.
+
+Log format (parse-friendly):
+```
+[ISO_TIMESTAMP] [INFO] messenger:send command=<command> size=<bytes>
+[ISO_TIMESTAMP] [WARN] messenger:drop command=<command> reason=<reason> size=<bytes?>
+[ISO_TIMESTAMP] [ERROR] messenger:send command=<command> error=<message>
+```
+
+#### Adding a New Outbound Message
+1. Define / extend the discriminated union in `src/types/messages.types.ts`.
+2. Add a typed convenience method in `WebviewMessenger` returning the boolean result of `send()`.
+3. Replace scattered direct sends with the new method.
+4. Update documentation if the message is user-observable.
+
+#### Origin Naming Convention
+Origins annotate why a panel was opened or an action triggered. Pattern:
+
+```
+<namespace>:<action>
+```
+
+Current namespaces:
+- `sidebar:*` user clicks in sidebar UI (see `ORIGIN.SIDEBAR.*`).
+- `mcp:*` automated machine/provider actions (see `ORIGIN.MCP.*`).
+- `command:*` invoked via VS Code command palette (`ORIGIN.COMMAND.*`).
+- `system:*` internal fallback / automatic flows (`ORIGIN.SYSTEM.*`).
+
+When adding a new origin, extend `ORIGIN` in `routing.types.ts` and (optionally) document it inline—avoid anonymous string literals scattered throughout the code.
+
+#### Grep Audit (Post-Refactor Invariant)
+Only these are allowed to contain `panel.webview.postMessage`:
+1. `webview.messenger.ts` (internal send call).
+2. Explicit TODO-tagged legacy fallback lines.
+3. Webview (front-end) code posting back to extension (not part of this grep pattern, different context).
+
+To verify:
+```bash
+grep -R "panel.webview.postMessage" src | grep -v "TODO(remove-legacy-postMessage)" | grep -v "webview.messenger"
+```
+Should return 0 lines (temporary exceptions will be removed in next milestone).
+
+#### Overlay Messages (Milestone 1 Placeholder)
+`graph:overlay:apply` / `graph:overlay:clear` are defined but have no UI implementation yet; they reserve contract space for a future interactive layering feature.
+
 ### Build & Bundling
 
 - esbuild multi-context builds (extension, 3 webviews, MCP server, worker)

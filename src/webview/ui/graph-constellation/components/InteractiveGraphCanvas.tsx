@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from "preact/hooks";
 import { useRef } from "preact/hooks";
 import { IConstellationGraph } from "@/types/graph.types";
+import { createOverlayState, applyOverlay, clearOverlay, getOverlay } from './overlays/overlay.state';
+import { createOverlay, FocusOverlay, HeatmapOverlay, HeatmapValue, OverlayData, ImpactOverlay } from './overlays/overlay.types';
+import { logOverlay } from './overlays/overlay.logging';
+import { composeRenderable } from './overlays/compose';
 import {
   LayoutType,
   DEFAULT_LAYOUT_TYPE,
@@ -62,6 +66,10 @@ export function InteractiveGraphCanvas({
   onError,
   activeHighlight,
 }: InteractiveGraphCanvasProps) {
+  // Overlay Migration NOTE (Milestone 2): Existing focusState logic below
+  // will be superseded by FocusOverlay (see overlays/focus.adapter.ts) and
+  // composition pipeline. Do not extend this legacy structure—only read
+  // for adapter extraction reference (Task 1.1 complete).
   const [searchQuery, setSearchQuery] = useState("");
   // Track whether focus mode was auto-enabled due to a single search result so we can safely auto-disable only that case
   const autoFocusEnabledRef = useRef(false);
@@ -93,6 +101,10 @@ export function InteractiveGraphCanvas({
     dependencies: "all",
     nodeCount: 500,
   });
+  /**
+   * @deprecated Legacy focus state retained temporarily for transitional UI controls.
+   * Overlay system (`focus` overlay) is authoritative for graph filtering.
+   */
   const [focusState, setFocusState] = useState<FocusState>({
     enabled: false,
     selectedNode: null,
@@ -113,6 +125,152 @@ export function InteractiveGraphCanvas({
     distribution: undefined,
     totalFiles: 0,
   });
+
+  // Graceful Degradation (Task 9.1 / 9.2 / 9.3)
+  // Support heatmap overlay application before base graph loads similar to focus pending logic.
+  const pendingHeatmapRef = useRef<{
+    values: HeatmapValue[] | null;
+    distribution?: any;
+    totalFiles?: number;
+    correlationId?: string;
+    centerNode?: string;
+  }>({ values: null });
+
+  // Overlay State (Milestone 2 experimental wiring – focus only at this stage)
+  const [overlays, setOverlays] = useState(() => createOverlayState());
+  const baseGraphRef = useRef<IConstellationGraph | null>(null);
+  const initialGraphLoadedRef = useRef(false); // guard to avoid clearing overlays on first load
+  useEffect(() => {
+    if (graph) {
+      const isFirst = !initialGraphLoadedRef.current;
+      baseGraphRef.current = graph; // update reference
+      if (!isFirst) {
+        // Clear ephemeral filter overlays (impact + focus) ONLY on subsequent refreshes (FR11)
+        setOverlays(prev => {
+          let next = prev;
+          if (prev.has('impact')) {
+            const cleared = clearOverlay(next, 'impact');
+            if (cleared !== next) {
+              logOverlay('clear', { id: 'impact', kind: 'impact', reason: 'graphRefresh', remaining: cleared.size });
+              next = cleared;
+            }
+          }
+          if (prev.has('focus')) {
+            const clearedFocus = clearOverlay(next, 'focus');
+            if (clearedFocus !== next) {
+              logOverlay('clear', { id: 'focus', kind: 'focus', reason: 'graphRefresh', remaining: clearedFocus.size });
+              next = clearedFocus;
+            }
+          }
+          return next;
+        });
+      } else {
+        initialGraphLoadedRef.current = true; // mark after first assignment
+      }
+    }
+  }, [graph]);
+
+  // Composition derived model
+  const renderModel = useMemo(() => {
+    // Task 10.1: Dev-only timing wrapper for composition
+    const isProd = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'production';
+    let composed;
+    if (!isProd) {
+      const label = 'composeRenderable';
+      console.time(label); // eslint-disable-line no-console
+      composed = composeRenderable(baseGraphRef.current, overlays);
+      console.timeEnd(label); // eslint-disable-line no-console
+    } else {
+      composed = composeRenderable(baseGraphRef.current, overlays);
+    }
+    if (overlays.size > 0) {
+      logOverlay('compose', { nodes: composed.nodes.length, edges: composed.edges.length, overlaysSize: overlays.size });
+    }
+    return composed;
+  }, [overlays, graph]);
+
+  // Derived flags
+  const isImpactActive = useMemo(() => overlays.has('impact'), [overlays]);
+
+  // TEMP dev helper: mirror legacy applyFocus into overlay system (will replace usage later)
+  const applyFocusOverlay = useCallback((targetNodeId: string, correlationId?: string) => {
+    if (!baseGraphRef.current) return;
+    const ov: FocusOverlay = createOverlay({
+      id: 'focus',
+      kind: 'focus',
+      targetNodeId,
+      depth: focusState.depth || 1,
+      includeIncoming: focusState.showDependents,
+      includeOutgoing: focusState.showDependencies,
+      correlationId
+    }) as FocusOverlay;
+    setOverlays(prev => {
+      const next = applyOverlay(prev, ov);
+      logOverlay('apply', { id: ov.id, kind: ov.kind, correlationId });
+      return next;
+    });
+  }, [focusState.depth, focusState.showDependents, focusState.showDependencies]);
+
+  // Heatmap overlay bridge (Task 5.2) – legacy heatmap messages will route into overlay system
+  const applyHeatmapOverlay = useCallback((values: HeatmapValue[], distribution: any, totalFiles: number | undefined, correlationId?: string, centerNode?: string) => {
+    if (!baseGraphRef.current) {
+      // Defer until graph arrives (Task 9.1)
+      pendingHeatmapRef.current = { values, distribution, totalFiles, correlationId, centerNode };
+      console.log(`[graph:applyHeatmap] correlationId=${correlationId} status=pending values=${values.length}`);
+      return;
+    }
+    const ov: HeatmapOverlay = createOverlay({
+      id: 'heatmap',
+      kind: 'heatmap',
+      values,
+      distribution,
+      centerNode,
+      totalFiles,
+      correlationId
+    }) as HeatmapOverlay;
+    setOverlays(prev => {
+      const next = applyOverlay(prev, ov);
+      logOverlay('apply', { id: ov.id, kind: ov.kind, correlationId, note: `values=${values.length}` });
+      return next;
+    });
+  }, []);
+
+  const clearHeatmapOverlay = useCallback((correlationId?: string) => {
+    setOverlays(prev => {
+      const had = prev.has('heatmap');
+      const next = clearOverlay(prev, 'heatmap');
+      if (had) {
+        logOverlay('clear', { id: 'heatmap', kind: 'heatmap', correlationId, remaining: next.size });
+      } else {
+        // Task 9.2: Clearing non-existent id should be a no-op (graceful) with dev info
+        console.log('[graph:clearHeatmap] no-op (overlay not present)');
+      }
+      return next;
+    });
+  }, []);
+
+  // Bridge legacy focus application to overlay system (non-invasive)
+  useEffect(() => {
+    if (focusState.enabled && focusState.selectedNode) {
+      applyFocusOverlay(focusState.selectedNode);
+    }
+  }, [focusState.enabled, focusState.selectedNode, applyFocusOverlay]);
+
+  // Derived graph prop with overlay-filtered nodes for initial testing (Task 4.4)
+  const graphForCanvas = useMemo(() => {
+    if (!graph) return graph;
+    if (renderModel.nodes.length === 0) return graph; // fallback until base + overlays ready
+    return {
+      ...graph,
+      nodes: renderModel.nodes,
+      // edges can remain original until we integrate full filtered edges path
+    } as IConstellationGraph;
+  }, [graph, renderModel.nodes]);
+
+  // Extract heatmap overlay for legend parity (Task 7.1) – single active heatmap by id
+  const heatmapOverlay = useMemo(() => {
+    return getOverlay<HeatmapOverlay>(overlays, 'heatmap');
+  }, [overlays]);
 
   // Statistics state
   const [statsVisible, setStatsVisible] = useState(false);
@@ -137,6 +295,148 @@ export function InteractiveGraphCanvas({
       lastUpdate: Date.now(),
     },
   });
+
+  // Pending focus (race: focus command before graph load)
+  const pendingFocusRef = useRef<{ nodeId: string | null; correlationId?: string | null }>({ nodeId: null, correlationId: null });
+
+  // Handle focus application
+  const applyFocus = useCallback((targetNodeId: string, correlationId?: string) => {
+    if (!graph) {
+      // Defer
+      pendingFocusRef.current = { nodeId: targetNodeId, correlationId };
+      console.log(`[graph:setFocus] correlationId=${correlationId} status=pending target=${targetNodeId}`);
+      return;
+    }
+    const exists = graph.nodes.some(n => n.id === targetNodeId);
+    if (!exists) {
+      console.warn(`[graph:setFocus] correlationId=${correlationId} status=not_found target=${targetNodeId}`);
+      return;
+    }
+    setFocusState(prev => ({
+      ...prev,
+      enabled: true,
+      selectedNode: targetNodeId,
+      depth: 1,
+      showDependencies: true,
+      showDependents: true
+    }));
+    console.log(`[graph:setFocus] correlationId=${correlationId} status=applied target=${targetNodeId}`);
+  }, [graph]);
+
+  // Listener for graph:setFocus messages (routes into overlay system - Task 5.1)
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const msg = event.data;
+      if (!msg || !msg.command) return;
+      switch (msg.command) {
+        case 'graph:setFocus': { // Task 5.1
+          const { targetNodeId, correlationId } = msg.data || {};
+            if (!targetNodeId || typeof targetNodeId !== 'string') return;
+            if (!graph) {
+              const prevPending = pendingFocusRef.current.nodeId;
+              pendingFocusRef.current = { nodeId: targetNodeId, correlationId };
+              if (prevPending && prevPending !== targetNodeId) {
+                console.log(`[graph:setFocus] correlationId=${correlationId} status=overwritten previous=${prevPending} target=${targetNodeId}`);
+              }
+            }
+            applyFocus(targetNodeId, correlationId);
+            applyFocusOverlay(targetNodeId, correlationId);
+            break;
+        }
+        case 'graph:applyHeatmap': { // Task 5.2 legacy
+          const { heatmapData, distribution, totalFiles, centerNode, correlationId } = msg.data || {};
+          if (Array.isArray(heatmapData)) {
+            const values: HeatmapValue[] = heatmapData.map((d: any) => ({ nodeId: d.nodeId, score: d.score, color: d.color, metrics: d.metrics }));
+            applyHeatmapOverlay(values, distribution, totalFiles, correlationId, centerNode);
+          }
+          break;
+        }
+        case 'graph:clearHeatmap': { // Task 5.3 legacy
+          clearHeatmapOverlay();
+          break;
+        }
+        case 'graph:overlay:apply': { // Task 5.x updated for impact + heatmap legacy
+          const payload = msg.data?.overlay;
+          if (!payload) return;
+          // Branch by kind (new impact path)
+          if (payload.kind === 'impact') {
+            const { id = 'impact', targetNodeId, dependencies = [], dependents = [], correlationId } = payload;
+            if (!targetNodeId || typeof targetNodeId !== 'string') {
+              console.warn('[graph:overlay:apply] impact payload missing targetNodeId');
+              return;
+            }
+            const impactOv: ImpactOverlay = createOverlay({
+              id,
+              kind: 'impact',
+              targetNodeId,
+              dependencies: Array.isArray(dependencies) ? dependencies.filter(Boolean) : [],
+              dependents: Array.isArray(dependents) ? dependents.filter(Boolean) : [],
+              correlationId
+            }) as ImpactOverlay;
+            setOverlays(prev => {
+              const next = applyOverlay(prev, impactOv);
+              logOverlay('apply', { id: impactOv.id, kind: impactOv.kind, correlationId, deps: impactOv.dependencies.length, dependents: impactOv.dependents.length, visible: 1 + impactOv.dependencies.length + impactOv.dependents.length });
+              return next;
+            });
+          } else if (payload.nodes && Array.isArray(payload.nodes)) {
+            // Legacy heatmap style overlay ingestion (placeholder until removed)
+            const mappedValues: HeatmapValue[] = payload.nodes.map((n: any) => ({
+              nodeId: n.nodeId,
+              score: typeof n.intensity === 'number' ? n.intensity : (typeof n.score === 'number' ? n.score : 0),
+              color: n.color || '#ff8800',
+              metrics: n.metrics
+            }));
+            applyHeatmapOverlay(mappedValues, undefined, undefined, payload.correlationId);
+          } else {
+            console.warn('[graph:overlay:apply] unrecognized overlay payload shape');
+          }
+          break; }
+        case 'graph:overlay:clear': { // Task 5.x clear by id
+          const overlayId = msg.data?.overlayId || 'heatmap';
+            if (overlayId === 'impact') {
+              setOverlays(prev => {
+                const next = clearOverlay(prev, 'impact');
+                if (next !== prev) {
+                  logOverlay('clear', { id: 'impact', kind: 'impact', correlationId: msg.data?.correlationId, remaining: next.size, reason: 'user' });
+                }
+                return next;
+              });
+            } else if (overlayId === 'heatmap') {
+              clearHeatmapOverlay(msg.data?.correlationId);
+            } else {
+              // Fallback: attempt generic clear
+              setOverlays(prev => {
+                const next = clearOverlay(prev, overlayId);
+                if (next !== prev) {
+                  logOverlay('clear', { id: overlayId, kind: 'unknown', correlationId: msg.data?.correlationId, remaining: next.size, reason: 'user' });
+                }
+                return next;
+              });
+            }
+          break; }
+        default:
+          break;
+      }
+    };
+    window.addEventListener('message', handler as EventListener);
+    return () => window.removeEventListener('message', handler as EventListener);
+  }, [applyFocus, applyFocusOverlay, applyHeatmapOverlay, clearHeatmapOverlay, graph]);
+
+  // Apply pending once graph loads
+  useEffect(() => {
+    if (graph && pendingFocusRef.current.nodeId) {
+      const { nodeId, correlationId } = pendingFocusRef.current;
+      applyFocus(nodeId!, correlationId || undefined);
+      pendingFocusRef.current = { nodeId: null, correlationId: null };
+    }
+    if (graph && pendingHeatmapRef.current.values) {
+      const { values, distribution, totalFiles, correlationId, centerNode } = pendingHeatmapRef.current;
+      if (values) {
+        applyHeatmapOverlay(values, distribution, totalFiles, correlationId, centerNode);
+      }
+      pendingHeatmapRef.current = { values: null };
+    }
+  }, [graph, applyFocus]);
 
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
@@ -845,6 +1145,7 @@ export function InteractiveGraphCanvas({
 
   return (
     <div style={{ width: "100%", position: "relative" }}>
+      {/* TODO(Task 4.8): Future overlay category insertion points (e.g., selection, diff, impact) */}
       {/* Header controls (FR12) */}
       <div
         className="graph-header"
@@ -1092,6 +1393,29 @@ export function InteractiveGraphCanvas({
             <option value="default">Same Tab</option>
             <option value="split">Split</option>
           </select>
+            {isImpactActive && (
+              <button
+                style={{ marginLeft: '8px' }}
+                className="btn-impact-clear"
+                aria-label="Show Full Graph"
+                onClick={() => {
+                  if (window?.vscode) {
+                    window.vscode.postMessage({ command: 'graph:overlay:clear', data: { overlayId: 'impact' } });
+                  } else {
+                    // Fallback: direct state clear if vscode bridge unavailable
+                    setOverlays(prev => {
+                      const next = clearOverlay(prev, 'impact');
+                      if (next !== prev) {
+                        logOverlay('clear', { id: 'impact', kind: 'impact', reason: 'user', remaining: next.size });
+                      }
+                      return next;
+                    });
+                  }
+                }}
+              >
+                Show Full Graph
+              </button>
+            )}
         </div>
       </div>
 
@@ -1107,7 +1431,7 @@ export function InteractiveGraphCanvas({
         maxRetries={3}
       >
         <GraphCanvas
-          graph={graph}
+          graph={graphForCanvas}
           searchQuery={searchQuery}
           searchFocusIndex={currentFocusIndex}
           onNodeClick={handleNodeClick}
@@ -1130,10 +1454,11 @@ export function InteractiveGraphCanvas({
 
       {/* Heatmap Legend */}
       <HeatmapLegend
-        isVisible={heatmapState.isVisible}
-        isHeatmapActive={heatmapState.isActive}
-        distribution={heatmapState.distribution}
-        totalFiles={heatmapState.totalFiles}
+        // Source of truth migration: legend now reads from overlay if present (Task 7.1)
+        isVisible={!!heatmapOverlay || heatmapState.isVisible}
+        isHeatmapActive={!!heatmapOverlay && heatmapState.isActive}
+        distribution={heatmapOverlay?.distribution || heatmapState.distribution}
+        totalFiles={heatmapOverlay?.totalFiles || heatmapState.totalFiles}
         onToggleHeatmap={handleToggleHeatmap}
         onClose={handleCloseLegend}
       />

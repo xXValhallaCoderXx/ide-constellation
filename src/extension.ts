@@ -51,6 +51,26 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // Bridge fallback handler: ui:applyOverlay -> forward to webview (impact overlay or others)
+  bridge.register(BRIDGE_MESSAGE_TYPES.UI_APPLY_OVERLAY, async (msg) => {
+    try {
+      const overlay = msg.payload?.overlay;
+      if (!overlay || !overlay.kind) { return; }
+      log(`Bridge received ui:applyOverlay kind=${overlay.kind} id=${overlay.id || 'impact'} corr=${msg.metadata?.correlationId || 'n/a'}`);
+      // Ensure panel open first for visual feedback
+      panelRegistry?.open('dependencyGraph', 'bridge:ui:applyOverlay');
+      const messenger = (webviewManager as any)?.messenger;
+      if (messenger?.sendGraphOverlayApply) {
+        messenger.sendGraphOverlayApply(overlay);
+      } else {
+        const panel = (webviewManager as any)?.currentPanel as vscode.WebviewPanel | undefined;
+        panel?.webview.postMessage({ command: 'graph:overlay:apply', data: { overlay } });
+      }
+    } catch (e) {
+      log(`Bridge ui:applyOverlay handler error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  });
+
   // --- Always create webview + panel infrastructure first ---
   webviewManager = new WebviewManager(null, output);
   webviewManager.initialize(context);
@@ -198,9 +218,7 @@ export async function activate(context: vscode.ExtensionContext) {
     if (!webviewManager) {
       return;
     }
-    const panel = (webviewManager as any).currentPanel as
-      | vscode.WebviewPanel
-      | undefined; // access private for now
+    const panel = (webviewManager as any).currentPanel as vscode.WebviewPanel | undefined;
     if (!panel) {
       return;
     }
@@ -213,10 +231,7 @@ export async function activate(context: vscode.ExtensionContext) {
       editor.document.isUntitled ||
       editor.document.uri.scheme !== "file"
     ) {
-      panel.webview.postMessage({
-        command: "graph:highlightNode",
-        data: { fileId: null },
-      }); // Task 10.1 guard already ensured
+      (webviewManager as any).messenger?.sendGraphHighlightNode(null);
       return;
     }
     const rel = path
@@ -225,15 +240,9 @@ export async function activate(context: vscode.ExtensionContext) {
     const graph = GraphService.getInstance().getGraph();
     const exists = !!graph?.nodes.find((n) => n.id === rel);
     if (exists) {
-      panel.webview.postMessage({
-        command: "graph:highlightNode",
-        data: { fileId: rel },
-      });
+      (webviewManager as any).messenger?.sendGraphHighlightNode(rel);
     } else {
-      panel.webview.postMessage({
-        command: "graph:highlightNode",
-        data: { fileId: null, reason: "notInGraph" },
-      });
+      (webviewManager as any).messenger?.sendGraphHighlightNode(null, 'notInGraph');
       showTransientStatus("Constellation: File not in graph");
     }
   };
@@ -260,28 +269,34 @@ export async function activate(context: vscode.ExtensionContext) {
 
 
 export async function deactivate() {
-	// No output channel at this point; keep a console log for host logs
-	console.log('Kiro Constellation extension is deactivating...');
+  const ts = new Date().toISOString();
+  console.log(`[${ts}] [INFO] lifecycle:deactivate phase=start`);
 
-	// Clean up GraphService singleton
-	try {
-		const { GraphService } = await import('./services/graph.service');
-		const graphService = GraphService.getInstance();
-		graphService.clear();
-		console.log('GraphService singleton cleared');
-	} catch (error) {
-		console.warn('Failed to clear GraphService singleton:', error);
-	}
+  // Clean up GraphService singleton
+  try {
+    const { GraphService } = await import('./services/graph.service');
+    const graphService = GraphService.getInstance();
+    graphService.clear();
+    console.log(`[${new Date().toISOString()}] [INFO] lifecycle:deactivate action=graphServiceClear status=success`);
+  } catch (error) {
+    console.warn(`[${new Date().toISOString()}] [WARN] lifecycle:deactivate action=graphServiceClear status=failed error=${error instanceof Error ? error.message : String(error)}`);
+  }
 
-	// Clean up webview manager
-	if (webviewManager) {
-		webviewManager.dispose();
-		webviewManager = null;
-	}
+  // Clean up webview manager
+  if (webviewManager) {
+    try {
+      webviewManager.dispose();
+      console.log(`[${new Date().toISOString()}] [INFO] lifecycle:deactivate action=webviewManagerDispose status=success`);
+    } catch (e) {
+      console.warn(`[${new Date().toISOString()}] [WARN] lifecycle:deactivate action=webviewManagerDispose status=failed error=${e instanceof Error ? e.message : String(e)}`);
+    }
+    webviewManager = null;
+  }
 
-	if (CONFIG.USE_STANDARD_PROVIDER_POC) {
-		console.log('[POC] Cleaning up MCP Provider POC...');
-		// MCP Provider cleanup is handled automatically by VS Code through disposables
-		mcpProvider = null;
-	}
+  if (CONFIG.USE_STANDARD_PROVIDER_POC) {
+    console.log(`[${new Date().toISOString()}] [INFO] lifecycle:deactivate action=mcpProviderCleanup mode=POC`);
+    mcpProvider = null; // Disposables handle underlying cleanup
+  }
+
+  console.log(`[${new Date().toISOString()}] [INFO] lifecycle:deactivate phase=complete`);
 }
