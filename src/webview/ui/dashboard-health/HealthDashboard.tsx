@@ -6,6 +6,7 @@ import { ScoreHeader } from './components/ScoreHeader';
 import { DistributionGrid } from './components/DistributionGrid';
 import { RiskList } from './components/RiskList';
 import { Recommendations } from './components/Recommendations';
+import { Button } from '@/webview/components/molecules/Button';
 
 export function HealthDashboard(): JSX.Element {
   const { analysis, loading, error, exportResult, actions } = useHealthAnalysis();
@@ -33,10 +34,10 @@ export function HealthDashboard(): JSX.Element {
 
   const actionsBar = (
     <div className="actions" style={{ textAlign: 'center', margin: '12px 0' }}>
-      <button className="action-button" onClick={() => actions.refresh()} style={btnStyle}>🔄 Refresh Analysis</button>
-      <button className="action-button" onClick={() => actions.export('json')} style={btnStyle}>📊 Export JSON</button>
-      <button className="action-button" onClick={() => actions.export('csv')} style={btnStyle}>📊 Export CSV</button>
-      <button className="action-button" onClick={() => actions.showHeatmap()} style={btnStyle}>🔥 Show Heatmap</button>
+      <Button onClick={() => actions.refresh()} >🔄 Refresh Analysis</Button>
+      <Button onClick={() => actions.export('json')} >📊 Export JSON</Button>
+      <Button onClick={() => actions.export('csv')} >📊 Export CSV</Button>
+      <Button onClick={() => actions.showHeatmap()} >🔥 Show Heatmap</Button>
     </div>
   );
 
