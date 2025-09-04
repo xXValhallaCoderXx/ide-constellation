@@ -8,6 +8,7 @@
     font-size: 14px;
     transition: background-color 0.3s ease;
 }
+
 /* === Text Component === */
 /* Base text wrapper ensures consistent font smoothing and color inheritance */
 .kc-text {
@@ -52,14 +53,39 @@
     line-height: 1.2;
 }
 
-.kc-title--sm { font-size: calc(var(--vscode-font-size) * 1.0); font-weight: 600; }
-.kc-title--md { font-size: calc(var(--vscode-font-size) * 1.15); font-weight: 600; }
-.kc-title--lg { font-size: calc(var(--vscode-font-size) * 1.35); font-weight: 600; }
-.kc-title--xl { font-size: calc(var(--vscode-font-size) * 1.6); font-weight: 600; }
-.kc-title--2xl { font-size: calc(var(--vscode-font-size) * 2.0); font-weight: 700; }
+.kc-title--sm {
+    font-size: calc(var(--vscode-font-size) * 1.0);
+    font-weight: 600;
+}
+
+.kc-title--md {
+    font-size: calc(var(--vscode-font-size) * 1.15);
+    font-weight: 600;
+}
+
+.kc-title--lg {
+    font-size: calc(var(--vscode-font-size) * 1.35);
+    font-weight: 600;
+}
+
+.kc-title--xl {
+    font-size: calc(var(--vscode-font-size) * 1.6);
+    font-weight: 600;
+}
+
+.kc-title--2xl {
+    font-size: calc(var(--vscode-font-size) * 2.0);
+    font-weight: 700;
+}
 
 @media (max-width: 640px) {
+
     /* Slightly scale down larger headings on small viewports */
-    .kc-title--xl { font-size: calc(var(--vscode-font-size) * 1.4); }
-    .kc-title--2xl { font-size: calc(var(--vscode-font-size) * 1.7); }
+    .kc-title--xl {
+        font-size: calc(var(--vscode-font-size) * 1.4);
+    }
+
+    .kc-title--2xl {
+        font-size: calc(var(--vscode-font-size) * 1.7);
+    }
 }
