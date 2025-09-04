@@ -1,15 +1,19 @@
-import { h } from 'preact';
 import { ComponentChildren } from 'preact';
 
 /**
  * Title (heading) component providing a semantic & theme-aware typography scale.
  * Sizes map to a constrained set of variants, decoupled from raw h1-h6 usage.
+ * Includes special styling variants for brand and section headers.
  */
 export interface TitleProps {
   /** Visual size variant */
   variant?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  /** Style variant for special use cases */
+  styleVariant?: 'default' | 'brand' | 'section';
   /** Content */
   children: ComponentChildren;
+  /** Element ID */
+  id?: string;
   /** Additional CSS classes */
   className?: string;
   /** Override default heading element */
@@ -33,7 +37,9 @@ const BASE_CLASS = 'kc-title';
 
 const Title = ({
   variant = 'md',
+  styleVariant = 'default',
   children,
+  id,
   className,
   as,
   fontWeight,
@@ -41,10 +47,11 @@ const Title = ({
 }: TitleProps) => {
   const Tag: any = as || VARIANT_ELEMENT[variant] || 'h3';
   const variantClass = `${BASE_CLASS} ${BASE_CLASS}--${variant}`;
-  const cls = className ? `${variantClass} ${className}` : variantClass;
+  const styleClass = styleVariant !== 'default' ? `${BASE_CLASS}--${styleVariant}` : '';
+  const cls = [variantClass, styleClass, className].filter(Boolean).join(' ');
   const style = fontWeight ? { fontWeight } : undefined;
   return (
-    <Tag className={cls} style={style} aria-label={ariaLabel}>
+    <Tag id={id} className={cls} style={style} aria-label={ariaLabel}>
       {children}
     </Tag>
   );
