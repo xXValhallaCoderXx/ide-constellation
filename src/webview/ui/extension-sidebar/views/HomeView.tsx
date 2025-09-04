@@ -3,13 +3,14 @@ import { openPanel } from '../../shared/postMessage';
 import { PANEL_KEYS } from '@/types/routing.types';
 import { ORIGIN } from '@/types/routing.types';
 import { Button } from '@/webview/components/molecules/Button';
+import Text from '@/webview/components/atoms/Text/Text';
 
 export function HomeView(): JSX.Element {
     const origin = ORIGIN.SIDEBAR.HOME;
 
     return (
         <div className="home-view">
-            <p style={{ marginTop: 0 }}>Quick access</p>
+            <Text variant="body">Quickzzz access</Text>
             <div style={{ display: 'grid', gap: 8 }}>
                 <Button
                     onClick={() => openPanel(PANEL_KEYS.DEPENDENCY_GRAPH, origin)}

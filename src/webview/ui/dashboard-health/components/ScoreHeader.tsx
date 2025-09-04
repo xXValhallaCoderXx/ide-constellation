@@ -1,4 +1,5 @@
 import { JSX } from 'preact';
+import Title from '@/webview/components/atoms/Title/Title';
 
 export interface ScoreHeaderProps {
     score: number;
@@ -13,7 +14,7 @@ export function ScoreHeader(props: ScoreHeaderProps): JSX.Element {
     const { score, totalFiles, statusLabel, statusColor, timestamp, actions } = props;
     return (
         <div className="dashboard-header section" style={{ background: 'var(--vscode-editor-inactiveSelectionBackground)' }}>
-            <h1>Codebase Health Report</h1>
+            <Title variant="xl">Codebase Health Report</Title>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
                     <div style={{ fontSize: '2.2em', fontWeight: 700, color: statusColor, lineHeight: 1 }}>

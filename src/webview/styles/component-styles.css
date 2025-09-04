@@ -8,3 +8,58 @@
     font-size: 14px;
     transition: background-color 0.3s ease;
 }
+/* === Text Component === */
+/* Base text wrapper ensures consistent font smoothing and color inheritance */
+.kc-text {
+    margin: 0;
+    /* Let layout containers control spacing */
+    color: var(--vscode-foreground);
+    font-family: var(--vscode-font-family);
+    line-height: 1.4;
+}
+
+/* Variants */
+.kc-text--body {
+    font-size: var(--vscode-font-size);
+    font-weight: 400;
+}
+
+.kc-text--caption {
+    font-size: calc(var(--vscode-font-size) * 0.75);
+    font-weight: 400;
+    opacity: 0.85;
+}
+
+.kc-text--label {
+    font-size: calc(var(--vscode-font-size) * 0.85);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+/* Optional future: high-contrast adjustments */
+@media (forced-colors: active) {
+    .kc-text--label {
+        text-transform: none;
+    }
+}
+
+/* === Title Component === */
+.kc-title {
+    margin: 0;
+    font-family: var(--vscode-font-family);
+    color: var(--vscode-foreground);
+    line-height: 1.2;
+}
+
+.kc-title--sm { font-size: calc(var(--vscode-font-size) * 1.0); font-weight: 600; }
+.kc-title--md { font-size: calc(var(--vscode-font-size) * 1.15); font-weight: 600; }
+.kc-title--lg { font-size: calc(var(--vscode-font-size) * 1.35); font-weight: 600; }
+.kc-title--xl { font-size: calc(var(--vscode-font-size) * 1.6); font-weight: 600; }
+.kc-title--2xl { font-size: calc(var(--vscode-font-size) * 2.0); font-weight: 700; }
+
+@media (max-width: 640px) {
+    /* Slightly scale down larger headings on small viewports */
+    .kc-title--xl { font-size: calc(var(--vscode-font-size) * 1.4); }
+    .kc-title--2xl { font-size: calc(var(--vscode-font-size) * 1.7); }
+}
