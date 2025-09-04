@@ -401,6 +401,10 @@ export class HealthDashboardProvider {
     const cssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'styles', 'main.css')
     );
+    // Shared component stylesheet for reusable components (e.g., Button)
+    const componentStylesCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'styles', 'component-styles.css')
+    );
     // Merge plan: curated dashboard stylesheet
     const dashboardCssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'ui', 'dashboard-health', 'styles', 'health-dashboard.css')
@@ -423,7 +427,8 @@ export class HealthDashboardProvider {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Health Dashboard</title>
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; script-src 'nonce-${nonce}' ${cspSource}; style-src ${cspSource} 'unsafe-inline'; font-src ${cspSource};" />
-    <link href="${cssUri}" rel="stylesheet">
+  <link href="${cssUri}" rel="stylesheet">
+  <link href="${componentStylesCssUri}" rel="stylesheet">
     ${dashboardCssUri ? `<link href="${dashboardCssUri}" rel="stylesheet">` : ''}
     ${toastCssUri ? `<link href="${toastCssUri}" rel="stylesheet">` : ''}
     ${loadingCssUri ? `<link href="${loadingCssUri}" rel="stylesheet">` : ''}

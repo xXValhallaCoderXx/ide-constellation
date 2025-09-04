@@ -19,7 +19,9 @@ export class ConstellationSidebarProvider implements vscode.WebviewViewProvider 
       enableScripts: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
-        vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'sidebar', 'styles')
+        vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'sidebar', 'styles'),
+        // Allow shared component stylesheet (e.g., .main-button)
+        vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'styles')
       ]
     };
 
@@ -83,6 +85,11 @@ export class ConstellationSidebarProvider implements vscode.WebviewViewProvider 
       vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'sidebar', 'styles', 'sidebar.css')
     );
 
+    // Shared component stylesheet (centralized reusable UI components)
+    const componentStylesCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'src', 'webview', 'styles', 'component-styles.css')
+    );
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -90,7 +97,8 @@ export class ConstellationSidebarProvider implements vscode.WebviewViewProvider 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kiro Constellation Sidebar</title>
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; script-src 'nonce-${nonce}' ${cspSource}; style-src ${cspSource} 'unsafe-inline'; font-src ${cspSource};" />
-    <link href="${cssUri}" rel="stylesheet">
+  <link href="${cssUri}" rel="stylesheet">
+  <link href="${componentStylesCssUri}" rel="stylesheet">
     <style>
         body { 
           font-family: var(--vscode-font-family); 
