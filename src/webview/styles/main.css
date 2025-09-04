@@ -495,3 +495,4 @@ h1 {
     padding: 0 10px;
   }
 }
+/* .main-button styles moved to component-styles.css to centralize reusable component styling */

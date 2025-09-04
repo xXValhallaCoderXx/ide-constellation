@@ -304,6 +304,17 @@ export class WebviewManager {
       )
     );
 
+    // Component styles (centralized reusable UI elements like buttons)
+    const componentStylesCssUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.context.extensionUri,
+        "src",
+        "webview",
+        "styles",
+        "component-styles.css"
+      )
+    );
+
     // Add component-specific CSS files
     const richTooltipCssUri = webview.asWebviewUri(
       vscode.Uri.joinPath(
@@ -385,6 +396,7 @@ export class WebviewManager {
     <title>Kiro Constellation</title>
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; script-src 'nonce-${nonce}' ${cspSource}; style-src ${cspSource} 'unsafe-inline'; font-src ${cspSource};" />
     <link href="${cssUri}" rel="stylesheet">
+  <link href="${componentStylesCssUri}" rel="stylesheet">
     <link href="${richTooltipCssUri}" rel="stylesheet">
     <link href="${toastNotificationCssUri}" rel="stylesheet">
     <link href="${loadingIndicatorCssUri}" rel="stylesheet">
