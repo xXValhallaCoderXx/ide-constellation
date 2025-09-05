@@ -5,6 +5,8 @@ import type { SidebarRouteKey } from "@/types/routing.types";
 import { SIDEBAR_ROUTE_KEYS } from "@/types/routing.types";
 import { SIDEBAR_ROUTES } from "@webview/ui/extension-sidebar/router/routes.config";
 import { SidebarRouter } from "@webview/ui/extension-sidebar/router/SidebarRouter";
+import SidebarScaffold from "@/webview/components/organisms/SidebarScaffold";
+import { TabConfig } from "@/webview/components/molecules/Tabs";
 
 export function SidebarPanel(): JSX.Element {
   const [active, setActive] = useState<SidebarRouteKey>(SIDEBAR_ROUTE_KEYS.HOME);
@@ -22,32 +24,23 @@ export function SidebarPanel(): JSX.Element {
     window.vscode?.setState?.({ activeRoute: active });
   }, [active]);
 
+  // Convert SIDEBAR_ROUTES to TabConfig format
+  const tabs: TabConfig[] = Object.entries(SIDEBAR_ROUTES).map(([key, meta]) => ({
+    id: key,
+    label: meta.label,
+    content: <SidebarRouter active={key as SidebarRouteKey} />
+  }));
+
+  const handleTabChange = (tabId: string) => {
+    setActive(tabId as SidebarRouteKey);
+  };
+
   return (
-    <div className="sidebar-container">
-      <h2 className="sidebar-header">Kiro Constellation</h2>
-
-      <div className="sidebar-tabs" role="tablist" aria-label="Constellation tabs">
-        {Object.entries(SIDEBAR_ROUTES).map(([key, meta]) => {
-          const routeKey = key as SidebarRouteKey;
-          const isActive = active === routeKey;
-          return (
-            <button
-              key={key}
-              className={`sidebar-tab ${isActive ? 'active' : ''}`}
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setActive(routeKey)}
-              type="button"
-            >
-              {meta.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="sidebar-content" role="tabpanel">
-        <SidebarRouter active={active} />
-      </div>
-    </div>
+    <SidebarScaffold
+      brandTitle="Kiro Constellation"
+      tabs={tabs}
+      activeTab={active}
+      onTabChange={handleTabChange}
+    />
   );
 }

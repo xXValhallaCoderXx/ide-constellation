@@ -4,7 +4,8 @@ import * as vscode from 'vscode';
 type SidebarToExtensionMessage =
   | { command: 'showGraph' }
   | { command: 'panel:open'; data: { panel: 'dependencyGraph' | 'healthDashboard'; origin?: string } }
-  | { command: 'project:scan'; data?: { origin?: string } };
+  | { command: 'project:scan'; data?: { origin?: string } }
+  | { command: 'openSettings' };
 
 
 
@@ -67,6 +68,14 @@ export class ConstellationSidebarProvider implements vscode.WebviewViewProvider 
         } catch (error) {
           console.error('Failed to scan project:', error);
           vscode.window.showErrorMessage('Scan Project failed');
+        }
+        break;
+      case 'openSettings':
+        try {
+          await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:kiro.constellation');
+        } catch (error) {
+          console.error('Failed to open settings:', error);
+          vscode.window.showErrorMessage('Failed to open extension settings');
         }
         break;
       default:

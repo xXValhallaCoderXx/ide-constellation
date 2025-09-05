@@ -3,28 +3,36 @@ import { openPanel } from '../../shared/postMessage';
 import { PANEL_KEYS } from '@/types/routing.types';
 import { ORIGIN } from '@/types/routing.types';
 import { Button } from '@/webview/components/molecules/Button';
-import Text from '@/webview/components/atoms/Text/Text';
+import HomePanel from '@/webview/components/organisms/HomePanel';
 
 export function HomeView(): JSX.Element {
     const origin = ORIGIN.SIDEBAR.HOME;
 
-    return (
-        <div className="home-view">
-            <Text variant="body">Quickzzz access</Text>
-            <div style={{ display: 'grid', gap: 8 }}>
-                <Button
-                    onClick={() => openPanel(PANEL_KEYS.DEPENDENCY_GRAPH, origin)}
-                >
-                    Open Dependency Graph
-                </Button>
-                <Button
+    const quickAccessButtons = (
+        <>
+            <Button
+                onClick={() => openPanel(PANEL_KEYS.DEPENDENCY_GRAPH, origin)}
+            >
+                Open Dependency Graph
+            </Button>
+            <Button
+                onClick={() => openPanel(PANEL_KEYS.HEALTH_DASHBOARD, origin)}
+            >
+                Open Health Dashboard
+            </Button>
+            <Button
+                onClick={() => {
+                    // Extension Settings - could open VS Code settings or a custom settings panel
+                    window.vscode?.postMessage({ command: 'openSettings' });
+                }}
+            >
+                Extension Settings
+            </Button>
+        </>
+    );
 
-                    onClick={() => openPanel(PANEL_KEYS.HEALTH_DASHBOARD, origin)}
-                >
-                    Open Health Dashboard
-                </Button>
-            </div>
-        </div>
+    return (
+        <HomePanel quickAccessButtons={quickAccessButtons} />
     );
 }
 

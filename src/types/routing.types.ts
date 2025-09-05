@@ -1,6 +1,7 @@
 export const ROUTE = {
     SIDEBAR: {
         HOME: 'home',
+        GRAPH: 'graph',
         HEALTH: 'health',
         ACTIONS: 'actions',
     },
@@ -31,6 +32,7 @@ export type PanelKey = typeof ROUTE.PANEL[keyof typeof ROUTE.PANEL];
 export const ORIGIN = {
     SIDEBAR: {
         HOME: 'sidebar:home',
+        GRAPH: 'sidebar:graph',
         HEALTH: 'sidebar:health',
         ACTIONS: 'sidebar:actions',
     },
