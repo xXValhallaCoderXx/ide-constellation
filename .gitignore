@@ -7,3 +7,7 @@ tasks
 .env
 .constellation-cache
 .DS_Store
+
+# Webview-ui build artifacts
+webview-ui/node_modules
+webview-ui/dist

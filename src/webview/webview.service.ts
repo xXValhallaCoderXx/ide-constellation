@@ -287,126 +287,40 @@ export class WebviewManager {
     if (!this.context) {
       return "<!DOCTYPE html><html><body><p>Context not initialized</p></body></html>";
     }
+    
     const webview = this.currentPanel?.webview!;
     const nonce = this.getNonce();
-    const cspSource = webview.cspSource;
-    const webviewUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, "dist", "webview.js")
-    );
-
-    const cssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(
-        this.context.extensionUri,
-        "src",
-        "webview",
-        "styles",
-        "main.css"
-      )
-    );
-
-    // Component styles (centralized reusable UI elements like buttons)
-    const componentStylesCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(
-        this.context.extensionUri,
-        "src",
-        "webview",
-        "styles",
-        "component-styles.css"
-      )
-    );
-
-    // Add component-specific CSS files
-    const richTooltipCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(
-        this.context.extensionUri,
-        "src",
-        "webview",
-        "ui",
-        "graph-constellation",
-        "styles",
-        "rich-tooltip.css"
-      )
-    );
-
-    const toastNotificationCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(
-        this.context.extensionUri,
-        "src",
-        "webview",
-        "ui",
-        "graph-constellation",
-        "styles",
-        "toast-notification.css"
-      )
-    );
-
-    const loadingIndicatorCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(
-        this.context.extensionUri,
-        "src",
-        "webview",
-        "ui",
-        "graph-constellation",
-        "styles",
-        "loading-indicator.css"
-      )
-    );
-
-    const contextualHelpCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(
-        this.context.extensionUri,
-        "src",
-        "webview",
-        "ui",
-        "graph-constellation",
-        "styles",
-        "contextual-help.css"
-      )
-    );
-
-    const heatmapLegendCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(
-        this.context.extensionUri,
-        "src",
-        "webview",
-        "ui",
-        "graph-constellation",
-        "styles",
-        "heatmap-legend.css"
-      )
-    );
-
-    const layoutSwitcherCssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(
-        this.context.extensionUri,
-        "src",
-        "webview",
-        "ui",
-        "graph-constellation",
-        "styles",
-        "layout-switcher.css"
-      )
-    );
+    const isDev = this.isDevelopmentMode();
+    
+    // Generate Content Security Policy based on mode
+    const csp = this.generateCSP(webview, nonce, isDev);
+    
+    // Generate script and CSS URIs based on mode
+    const { scriptSrc, styleSrc } = this.getAssetUris(webview, isDev);
 
     return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="vscode">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kiro Constellation</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; script-src 'nonce-${nonce}' ${cspSource}; style-src ${cspSource} 'unsafe-inline'; font-src ${cspSource};" />
-    <link href="${cssUri}" rel="stylesheet">
-  <link href="${componentStylesCssUri}" rel="stylesheet">
-    <link href="${richTooltipCssUri}" rel="stylesheet">
-    <link href="${toastNotificationCssUri}" rel="stylesheet">
-    <link href="${loadingIndicatorCssUri}" rel="stylesheet">
-    <link href="${contextualHelpCssUri}" rel="stylesheet">
-    <link href="${heatmapLegendCssUri}" rel="stylesheet">
-    <link href="${layoutSwitcherCssUri}" rel="stylesheet">
+    <meta http-equiv="Content-Security-Policy" content="${csp}" />
+    ${styleSrc}
     <style>
-        body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); background-color: var(--vscode-editor-background); margin: 0; padding: 0; }
+        body { 
+          font-family: var(--vscode-font-family); 
+          font-size: var(--vscode-font-size); 
+          color: var(--vscode-foreground); 
+          background-color: var(--vscode-editor-background); 
+          margin: 0; 
+          padding: 0; 
+        }
         #root { min-height: 100vh; }
-        .fallback-message { padding: 20px; text-align: center; color: var(--vscode-descriptionForeground); }
+        .fallback-message { 
+          padding: 20px; 
+          text-align: center; 
+          color: var(--vscode-descriptionForeground); 
+        }
     </style>
 </head>
 <body>
@@ -419,6 +333,8 @@ export class WebviewManager {
 
     <script nonce="${nonce}">
         window.vscode = acquireVsCodeApi();
+        
+        // Fallback content if webview script fails to load
         setTimeout(() => {
             const root = document.getElementById('root');
             if (root && root.innerHTML.includes('Loading...')) {
@@ -431,6 +347,7 @@ export class WebviewManager {
                         </div>
                     </div>
                 \`;
+                
                 const statusElement = document.getElementById('status');
                 const checkButton = document.getElementById('checkButton');
                 checkButton.addEventListener('click', () => {
@@ -438,13 +355,18 @@ export class WebviewManager {
                     statusElement.textContent = 'Status: Checking...';
                     window.vscode.postMessage({ command: 'checkStatus' });
                 });
+                
                 window.addEventListener('message', event => {
                     const message = event.data;
                     if (message.command === 'statusUpdate') {
                         const data = message.data;
                         let statusText = \`Status: \${data.status}\`;
-                        if (data.timestamp) { statusText += \` (Last checked: \${new Date(data.timestamp).toLocaleTimeString()})\`; }
-                        if (data.error) { statusText += \` - Error: \${data.error}\`; }
+                        if (data.timestamp) { 
+                          statusText += \` (Last checked: \${new Date(data.timestamp).toLocaleTimeString()})\`; 
+                        }
+                        if (data.error) { 
+                          statusText += \` - Error: \${data.error}\`; 
+                        }
                         statusElement.textContent = statusText;
                         checkButton.disabled = false;
                     }
@@ -452,11 +374,59 @@ export class WebviewManager {
             }
         }, 2000);
     </script>
-    ${
-      webviewUri ? `<script src="${webviewUri}" nonce="${nonce}"></script>` : ""
-    }
+    
+    ${scriptSrc}
 </body>
 </html>`;
+  }
+
+  private generateCSP(webview: vscode.Webview, nonce: string, isDev: boolean): string {
+    const cspSource = webview.cspSource;
+    
+    if (isDev) {
+      // Development mode: Allow connections to Vite dev server
+      return [
+        "default-src 'none'",
+        `img-src ${cspSource} https: data:`,
+        `script-src 'nonce-${nonce}' ${cspSource} http://localhost:5173`,
+        `style-src ${cspSource} 'unsafe-inline' http://localhost:5173`,
+        `font-src ${cspSource}`,
+        `connect-src ${cspSource} ws://localhost:5173 http://localhost:5173`
+      ].join('; ');
+    } else {
+      // Production mode: Strict CSP with only bundled assets
+      return [
+        "default-src 'none'",
+        `img-src ${cspSource} https: data:`,
+        `script-src 'nonce-${nonce}' ${cspSource}`,
+        `style-src ${cspSource} 'unsafe-inline'`,
+        `font-src ${cspSource}`
+      ].join('; ');
+    }
+  }
+
+  private getAssetUris(webview: vscode.Webview, isDev: boolean): { scriptSrc: string; styleSrc: string } {
+    if (isDev) {
+      // Development mode: Load from Vite dev server
+      return {
+        scriptSrc: `<script type="module" src="http://localhost:5173/src/graph-constellation/index.tsx"></script>`,
+        styleSrc: '' // Vite handles CSS injection in dev mode
+      };
+    } else {
+      // Production mode: Load from bundled assets
+      const webviewUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(this.context!.extensionUri, "dist", "webview", "graph-constellation.js")
+      );
+      
+      const cssUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(this.context!.extensionUri, "dist", "webview", "graph-constellation.css")
+      );
+
+      return {
+        scriptSrc: webviewUri ? `<script src="${webviewUri}"></script>` : '',
+        styleSrc: cssUri ? `<link href="${cssUri}" rel="stylesheet">` : ''
+      };
+    }
   }
 
   /**
@@ -980,6 +950,10 @@ export class WebviewManager {
 
   updateMCPServer(_mcpServer: unknown | null): void {
     // no-op in MCP provider mode
+  }
+
+  private isDevelopmentMode(): boolean {
+    return this.context?.extensionMode === vscode.ExtensionMode.Development;
   }
 
   private getNonce(): string {

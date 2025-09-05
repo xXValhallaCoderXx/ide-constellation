@@ -1,9 +1,17 @@
 /* Import existing styles first - these will be gradually migrated to Tailwind */
 @import './styles/main.css';
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@layer tailwind-base {
+  @tailwind base;
+}
+
+@layer tailwind-components {
+  @tailwind components;
+}
+
+@layer tailwind-utilities {
+  @tailwind utilities;
+}
 
 /* VS Code theme integration layer */
 :root {
