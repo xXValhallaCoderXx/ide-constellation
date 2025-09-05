@@ -1,0 +1,45 @@
+.sidebar-container {
+  width: 100%;
+  padding: 0;
+}
+
+.sidebar-header {
+  margin: 0 0 16px 0;
+  font-size: var(--vscode-font-size);
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.show-map-button {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  width: 100%;
+  text-align: center;
+  transition: background-color 0.2s ease;
+}
+
+.show-map-button:hover {
+  background-color: var(--vscode-button-hoverBackground);
+}
+
+.show-map-button:active {
+  background-color: var(--vscode-button-background);
+  transform: translateY(1px);
+}
+
+.show-map-button:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}

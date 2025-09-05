@@ -1,0 +1,397 @@
+/* Loading Indicator Styles */
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--vscode-font-family);
+}
+
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-overlay.top-right {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  bottom: auto;
+  left: auto;
+  width: auto;
+  height: auto;
+}
+
+.loading-overlay.bottom-right {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  top: auto;
+  left: auto;
+  width: auto;
+  height: auto;
+}
+
+.loading-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--vscode-editor-background);
+  opacity: 0.8;
+  backdrop-filter: blur(2px);
+}
+
+.loading-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.loading-content.small {
+  padding: 12px;
+  gap: 8px;
+}
+
+.loading-content.large {
+  padding: 24px;
+  gap: 16px;
+}
+
+/* Spinner Animation */
+.loading-spinner {
+  display: inline-block;
+}
+
+.loading-spinner.small .spinner-ring {
+  width: 20px;
+  height: 20px;
+}
+
+.loading-spinner.medium .spinner-ring {
+  width: 32px;
+  height: 32px;
+}
+
+.loading-spinner.large .spinner-ring {
+  width: 48px;
+  height: 48px;
+}
+
+.spinner-ring {
+  position: relative;
+}
+
+.spinner-ring div {
+  box-sizing: border-box;
+  display: block;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border: 3px solid var(--vscode-progressBar-background);
+  border-radius: 50%;
+  animation: spinnerRotate 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+  border-color: var(--vscode-progressBar-background) transparent transparent transparent;
+}
+
+.spinner-ring div:nth-child(1) { animation-delay: -0.45s; }
+.spinner-ring div:nth-child(2) { animation-delay: -0.3s; }
+.spinner-ring div:nth-child(3) { animation-delay: -0.15s; }
+
+@keyframes spinnerRotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Progress Circle */
+.loading-progress {
+  display: inline-block;
+  position: relative;
+}
+
+.loading-progress.small .progress-circle {
+  width: 24px;
+  height: 24px;
+}
+
+.loading-progress.medium .progress-circle {
+  width: 36px;
+  height: 36px;
+}
+
+.loading-progress.large .progress-circle {
+  width: 48px;
+  height: 48px;
+}
+
+.progress-circle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.progress-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.progress-bg {
+  fill: none;
+  stroke: var(--vscode-progressBar-background);
+  stroke-width: 2;
+}
+
+.progress-bar {
+  fill: none;
+  stroke: var(--vscode-progressBar-foreground);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.3s ease;
+}
+
+.progress-text {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+}
+
+.loading-progress.small .progress-text {
+  font-size: 8px;
+}
+
+.loading-progress.large .progress-text {
+  font-size: 12px;
+}
+
+/* Dots Animation */
+.loading-dots {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.loading-dots.small .dot {
+  width: 4px;
+  height: 4px;
+}
+
+.loading-dots.medium .dot {
+  width: 6px;
+  height: 6px;
+}
+
+.loading-dots.large .dot {
+  width: 8px;
+  height: 8px;
+}
+
+.dot {
+  background: var(--vscode-progressBar-foreground);
+  border-radius: 50%;
+  animation: dotBounce 1.4s ease-in-out infinite both;
+}
+
+.dot:nth-child(1) { animation-delay: -0.32s; }
+.dot:nth-child(2) { animation-delay: -0.16s; }
+.dot:nth-child(3) { animation-delay: 0s; }
+
+@keyframes dotBounce {
+  0%, 80%, 100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Pulse Animation */
+.loading-pulse {
+  position: relative;
+  display: inline-block;
+}
+
+.loading-pulse.small {
+  width: 20px;
+  height: 20px;
+}
+
+.loading-pulse.medium {
+  width: 32px;
+  height: 32px;
+}
+
+.loading-pulse.large {
+  width: 48px;
+  height: 48px;
+}
+
+.pulse-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  border: 2px solid var(--vscode-progressBar-foreground);
+  border-radius: 50%;
+  animation: pulseExpand 2s ease-out infinite;
+}
+
+.pulse-ring:nth-child(1) { animation-delay: 0s; }
+.pulse-ring:nth-child(2) { animation-delay: 0.7s; }
+.pulse-ring:nth-child(3) { animation-delay: 1.4s; }
+
+@keyframes pulseExpand {
+  0% {
+    transform: translate(-50%, -50%) scale(0.1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+
+/* Text Styles */
+.loading-message {
+  color: var(--vscode-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  margin: 0;
+}
+
+.loading-sub-message {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  text-align: center;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.loading-content.small .loading-message {
+  font-size: 11px;
+}
+
+.loading-content.small .loading-sub-message {
+  font-size: 10px;
+}
+
+.loading-content.large .loading-message {
+  font-size: 14px;
+}
+
+.loading-content.large .loading-sub-message {
+  font-size: 12px;
+}
+
+/* Theme-specific adjustments */
+@media (prefers-color-scheme: dark) {
+  .loading-content {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  }
+  
+  .loading-backdrop {
+    background: var(--vscode-editor-background);
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  .loading-content {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+  
+  .loading-backdrop {
+    background: var(--vscode-editor-background);
+    opacity: 0.8;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .loading-content {
+    border-width: 2px;
+  }
+  
+  .spinner-ring div {
+    border-width: 4px;
+  }
+  
+  .progress-bg,
+  .progress-bar {
+    stroke-width: 3;
+  }
+  
+  .pulse-ring {
+    border-width: 3px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .spinner-ring div {
+    animation: none;
+    border-color: var(--vscode-progressBar-foreground);
+  }
+  
+  .dot {
+    animation: none;
+    opacity: 1;
+    transform: scale(1);
+  }
+  
+  .pulse-ring {
+    animation: none;
+    opacity: 0.5;
+  }
+  
+  .progress-bar {
+    transition: none;
+  }
+}
+
+/* Mobile responsiveness */
+@media (max-width: 480px) {
+  .loading-overlay.top-right {
+    top: 10px;
+    right: 10px;
+  }
+  
+  .loading-overlay.bottom-right {
+    bottom: 10px;
+    right: 10px;
+  }
+  
+  .loading-content {
+    padding: 16px;
+    gap: 10px;
+  }
+  
+  .loading-message {
+    font-size: 12px;
+  }
+  
+  .loading-sub-message {
+    font-size: 10px;
+  }
+}

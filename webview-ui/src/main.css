@@ -1,0 +1,56 @@
+/* Import existing styles first - these will be gradually migrated to Tailwind */
+@import './styles/main.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* VS Code theme integration layer */
+:root {
+  /* Ensure VS Code CSS variables are available */
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-editor-background);
+}
+
+/* Override DaisyUI theme colors with VS Code variables when available */
+[data-theme="vscode"] {
+  /* Use CSS custom properties to override DaisyUI colors with VS Code theme */
+  --p: var(--vscode-button-background, 0 71% 40%);
+  --pc: var(--vscode-button-foreground, 0 0% 100%);
+  --s: var(--vscode-button-secondaryBackground, 0 0% 42%);
+  --sc: var(--vscode-button-secondaryForeground, 0 0% 100%);
+  --a: var(--vscode-focusBorder, 213 71% 40%);
+  --n: var(--vscode-panel-background, 218 11% 18%);
+  --nc: var(--vscode-foreground, 0 0% 80%);
+  --b1: var(--vscode-editor-background, 220 13% 12%);
+  --b2: var(--vscode-panel-background, 218 11% 18%);
+  --b3: var(--vscode-input-background, 0 0% 24%);
+  --bc: var(--vscode-foreground, 0 0% 80%);
+  --in: var(--vscode-charts-blue, 213 94% 68%);
+  --su: var(--vscode-charts-green, 152 69% 67%);
+  --wa: var(--vscode-charts-orange, 45 100% 51%);
+  --er: var(--vscode-charts-red, 0 84% 63%);
+}
+
+/* Base body styles to match VS Code */
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-editor-background);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.fallback-message {
+  padding: 20px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
